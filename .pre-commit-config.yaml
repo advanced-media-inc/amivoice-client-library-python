@@ -1,0 +1,33 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    # v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: no-commit-to-branch
+        args: [--branch, main]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.11 # Immutable tagなのでバージョン指定でよい
+    hooks:
+      # Run the linter.
+      - id: ruff-check
+        args: [--fix]
+      # Run the formatter.
+      - id: ruff-format
+  - repo: https://github.com/gitleaks/gitleaks
+    # v8.30.1
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/semgrep/semgrep
+    rev: v1.165.0 # Immutable tagなのでバージョン指定でよい
+    hooks:
+      - id: semgrep
+        args: ['--config', 'auto', '--error']
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    # v1.25.2
+    rev: 9257c6050c0261b8c57e712f632dc4a8010109a9
+    hooks:
+      - id: zizmor
+        args: ['--persona=pedantic', '--no-online-audits']
