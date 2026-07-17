@@ -9,7 +9,10 @@ on:
       - synchronize
       - reopened
     paths:
+      - "src/**"
       - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
 
 concurrency:
   group: unit-test-${{ github.event.pull_request.number }}

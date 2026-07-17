@@ -3,13 +3,13 @@ revision = 3
 requires-python = ">=3.11"
 
 [options]
-exclude-newer = "2026-07-10T06:42:05.451821668Z"
+exclude-newer = "2026-07-10T07:08:30.643076676Z"
 exclude-newer-span = "P7D"
 
 [[package]]
 name = "amivoice-client-library-python"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 
 [package.dev-dependencies]
 dev = [
