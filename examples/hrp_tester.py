@@ -10,11 +10,11 @@ if TYPE_CHECKING:
 # <!-- バイトコードキャッシュファイルの作成を抑制するために...
 sys.dont_write_bytecode = True
 # -->
-import com.amivoice.hrp.Hrp  # noqa: E402
-import com.amivoice.hrp.HrpListener  # noqa: E402
+from com.amivoice.hrp.Hrp import Hrp  # noqa: E402
+from com.amivoice.hrp.HrpListener import HrpListener  # noqa: E402
 
 
-class HrpTester(com.amivoice.hrp.HrpListener):
+class HrpTester(HrpListener):
     """HTTP 音声認識サーバへの音声データ送信と認識結果受信を行うテスタークラス"""
 
     @staticmethod
@@ -232,7 +232,7 @@ class HrpTester(com.amivoice.hrp.HrpListener):
         listener = HrpTester(verbose)
 
         # HTTP 音声認識サーバの初期化
-        hrp = com.amivoice.hrp.Hrp.construct(implementation)
+        hrp = Hrp.construct(implementation)
         hrp.setListener(listener)
         hrp.setServerURL(serverURL)
         hrp.setProxyServerName(proxyServerName)
@@ -270,7 +270,7 @@ class HrpTester(com.amivoice.hrp.HrpListener):
             # <!--
             if verbose:
                 print("")
-                print("======================= " + com.amivoice.hrp.Hrp.getVersion())
+                print("======================= " + Hrp.getVersion())
             # -->
             for i in range(loop):
                 for audioFileName in audioFileNames:

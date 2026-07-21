@@ -9,11 +9,11 @@ if TYPE_CHECKING:
 # <!-- バイトコードキャッシュファイルの作成を抑制するために...
 sys.dont_write_bytecode = True
 # -->
-import com.amivoice.hrp.Hrp  # noqa: E402
-import com.amivoice.hrp.HrpListener  # noqa: E402
+from com.amivoice.hrp.Hrp import Hrp  # noqa: E402
+from com.amivoice.hrp.HrpListener import HrpListener  # noqa: E402
 
 
-class HrpSimpleTester(com.amivoice.hrp.HrpListener):
+class HrpSimpleTester(HrpListener):
     """HTTP 音声認識サーバへの音声データ送信と認識結果受信を行う簡易テスタークラス"""
 
     @staticmethod
@@ -42,7 +42,7 @@ class HrpSimpleTester(com.amivoice.hrp.HrpListener):
         listener = HrpSimpleTester()
 
         # HTTP 音声認識サーバの初期化
-        hrp = com.amivoice.hrp.Hrp.construct()
+        hrp = Hrp.construct()
         hrp.setListener(listener)
         hrp.setServerURL(serverURL)
         hrp.setCodec(codec)

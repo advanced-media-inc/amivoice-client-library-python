@@ -9,11 +9,11 @@ if TYPE_CHECKING:
 # <!-- バイトコードキャッシュファイルの作成を抑制するために...
 sys.dont_write_bytecode = True
 # -->
-import com.amivoice.wrp.Wrp  # noqa: E402
-import com.amivoice.wrp.WrpListener  # noqa: E402
+from com.amivoice.wrp.Wrp import Wrp  # noqa: E402
+from com.amivoice.wrp.WrpListener import WrpListener  # noqa: E402
 
 
-class WrpSimpleTester(com.amivoice.wrp.WrpListener):
+class WrpSimpleTester(WrpListener):
     """WebSocket 音声認識サーバへの音声データ送信と認識結果受信を行う簡易テスタークラス"""
 
     @staticmethod
@@ -42,7 +42,7 @@ class WrpSimpleTester(com.amivoice.wrp.WrpListener):
         listener = WrpSimpleTester()
 
         # WebSocket 音声認識サーバの初期化
-        wrp = com.amivoice.wrp.Wrp.construct()
+        wrp = Wrp.construct()
         wrp.setListener(listener)
         wrp.setServerURL(serverURL)
         wrp.setCodec(codec)

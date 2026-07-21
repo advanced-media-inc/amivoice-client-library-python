@@ -10,11 +10,11 @@ if TYPE_CHECKING:
 # <!-- バイトコードキャッシュファイルの作成を抑制するために...
 sys.dont_write_bytecode = True
 # -->
-import com.amivoice.wrp.Wrp  # noqa: E402
-import com.amivoice.wrp.WrpListener  # noqa: E402
+from com.amivoice.wrp.Wrp import Wrp  # noqa: E402
+from com.amivoice.wrp.WrpListener import WrpListener  # noqa: E402
 
 
-class WrpTester(com.amivoice.wrp.WrpListener):
+class WrpTester(WrpListener):
     """WebSocket 音声認識サーバへの音声データ送信と認識結果受信を行うテスタークラス"""
 
     @staticmethod
@@ -207,7 +207,7 @@ class WrpTester(com.amivoice.wrp.WrpListener):
         listener = WrpTester(verbose)
 
         # WebSocket 音声認識サーバの初期化
-        wrp = com.amivoice.wrp.Wrp.construct(implementation)
+        wrp = Wrp.construct(implementation)
         wrp.setListener(listener)
         wrp.setServerURL(serverURL)
         wrp.setProxyServerName(proxyServerName)
@@ -244,7 +244,7 @@ class WrpTester(com.amivoice.wrp.WrpListener):
             # <!--
             if verbose:
                 print("")
-                print("======================= " + com.amivoice.wrp.Wrp.getVersion())
+                print("======================= " + Wrp.getVersion())
             # -->
             for i in range(loop):
                 for audioFileName in audioFileNames:
