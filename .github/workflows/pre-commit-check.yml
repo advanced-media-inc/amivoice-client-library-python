@@ -1,0 +1,255 @@
+---
+name: Pre-commit Check
+
+on:
+  pull_request:
+    types: ["opened", "synchronize"]
+
+concurrency:
+  group: pre-commit-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  python-version: 3.11
+  UV_VERSION: "0.11.28"
+
+jobs:
+  pre-commit-check:
+    name: Pre-commit Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # PRへのコメント投稿に必要
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          # Get list of changed files in this PR
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD | tr '\n' ' ')
+          echo "changed_files=$CHANGED_FILES" >> $GITHUB_OUTPUT
+          echo "Changed files: $CHANGED_FILES"
+
+      - name: Run pre-commit on changed files
+        id: pre-commit
+        env:
+          STEP_CHANGED_FILES: ${{ steps.changed-files.outputs.changed_files }}
+        run: |
+          # Create output file for results
+          echo "## Pre-commit チェック結果" > pre_commit_output.md
+          echo "" >> pre_commit_output.md
+
+          # Get changed files
+          CHANGED_FILES="$STEP_CHANGED_FILES"
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "✅ 今回のプルリクエストではファイルの変更がありませんでした。" \
+              >> pre_commit_output.md
+            echo "status=success" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Run prek on changed files
+          # 出力を一旦カラー付きの生ログとして保存し、ANSIカラーを除去した解析用ログを別に作る
+          set +e
+          uv run prek run --files $CHANGED_FILES 2>&1 | tee pre_commit_raw_color.log
+          pre_commit_exit_code=${PIPESTATUS[0]}
+          set -e
+
+          # ANSIエスケープシーケンス除去（色コード削除）
+          sed -E 's/\x1b\[[0-9;]*m//g' pre_commit_raw_color.log > pre_commit_raw.log || true
+
+          # 解析用に内容を変数へ（後で <details> に埋め込む）
+          pre_commit_output=$(cat pre_commit_raw.log)
+
+          if [ $pre_commit_exit_code -eq 0 ]; then
+            echo "✅ 今回のプルリクエストではprekのエラーはありませんでした。" >> pre_commit_output.md
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ Prekでいくつかの問題/自動修正が見つかりました:" >> pre_commit_output.md
+            echo "" >> pre_commit_output.md
+
+            # --- 出力パース: フックごとの結果と Fixing 行からファイル抽出 ---
+            # 方針:
+            # 1. 行末が Failed/Passed/Skipped/Fixed の行をフック行として検出
+            # 2. 直近フックに続く "Fixing <file>" 行をそのフックの対象ファイルとして追加
+            # 3. テーブルでは Passed を表示するが、ファイル欄は "-" にする
+            # 4. Failed/Fixed の場合は抽出したファイル（無ければメッセージ）を列挙
+            declare -A hook_status
+            declare -A hook_files
+            hooks_order=()
+            current_hook=""
+
+            while IFS= read -r line; do
+              # フック行検出（行末ステータス）: 例 "trim trailing whitespace.............Fixed"
+              if [[ $line =~ (Failed|Passed|Skipped|Fixed)$ ]] && [[ $line != *"hook id:"* ]]; then
+                status_token=${BASH_REMATCH[1]}
+                # フック名抽出: 末尾ステータスと直前のドット列を削除
+                hook_name=$(echo "$line" | sed -E 's/\.*(Failed|Passed|Skipped|Fixed)$//' | sed 's/[[:space:]]*$//')
+                current_hook="$hook_name"
+                if [ -z "${hook_status[$current_hook]+x}" ]; then
+                  hooks_order+=("$current_hook")
+                fi
+                hook_status["$current_hook"]="$status_token"
+              # Fixing 行（自動修正ファイル）
+              elif [[ $line == Fixing* ]]; then
+                file_path=$(echo "$line" | sed -E 's/^Fixing[[:space:]]+//')
+                if [ -n "$current_hook" ]; then
+                  existing="${hook_files[$current_hook]}"
+                  hook_files[$current_hook]="${existing} ${file_path}"
+                fi
+              # zizmor の検出行（ --> filepath:line:col）
+              elif [[ $line =~ ^[[:space:]]*--\>[[:space:]](.+):[0-9]+:[0-9]+$ ]]; then
+                file_path="${BASH_REMATCH[1]}"
+                if [ -n "$current_hook" ]; then
+                  existing="${hook_files[$current_hook]}"
+                  # 同一ファイルの重複を避ける
+                  if [[ "$existing" != *"$file_path"* ]]; then
+                    hook_files[$current_hook]="${existing} ${file_path}"
+                  fi
+                fi
+              fi
+            done < pre_commit_raw.log
+
+            # テーブル生成
+            echo "| Hook | Status | ファイル |" >> pre_commit_output.md
+            echo "|------|--------|----------|" >> pre_commit_output.md
+
+            for hk in "${hooks_order[@]}"; do
+              st=${hook_status[$hk]}
+              case "$st" in
+                Passed) icon="✅ Passed" ; files="-" ;;
+                Failed) icon="❌ Failed" ;;
+                Fixed) icon="🛠 Fixed" ;;
+                Skipped) icon="⏩ Skipped" ; files="-" ;;
+                *) icon="$st" ;;
+              esac
+              if [ "$st" != "Passed" ] && [ "$st" != "Skipped" ]; then
+                files=$(echo "${hook_files[$hk]}" | xargs)
+                if [ -z "$files" ]; then
+                  files="(Fixing行から抽出なし)"
+                fi
+              fi
+              # 空の場合ガード
+              [ -z "$files" ] && files="-"
+              echo "| $hk | $icon | $files |" >> pre_commit_output.md
+            done
+
+            echo "" >> pre_commit_output.md
+            echo "<details>" >> pre_commit_output.md
+            echo "<summary>詳細なエラー出力</summary>" >> pre_commit_output.md
+            echo "" >> pre_commit_output.md
+            echo '```' >> pre_commit_output.md
+            echo "$pre_commit_output" >> pre_commit_output.md
+            echo '```' >> pre_commit_output.md
+            echo "</details>" >> pre_commit_output.md
+
+            echo "status=failure" >> $GITHUB_OUTPUT
+          fi
+
+          # デバッグ用にコメント内容を表示
+          echo "Comment content:"
+          cat pre_commit_output.md
+
+      - name: Create/Rewrite PR comment
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          pr_number="$PR_NUMBER"
+          repo_owner="$REPO_OWNER"
+          repo_name=$(echo "$REPO" | cut -d'/' -f2)
+
+          # このGitHub Actionsで作成されたコメントであるかを判別するためのマーカー
+          MARKER_START="<!-- pre-commit-report -->"
+          MARKER_END="<!-- /pre-commit-report -->"
+          BODY_FILE="pre_commit_output.md"
+
+          # マーカー挿入（無い場合のみ付け足す）
+          if ! grep -q "$MARKER_START" "$BODY_FILE"; then
+            tmpfile=$(mktemp)
+            {
+              echo "$MARKER_START"
+              cat "$BODY_FILE"
+              echo ""
+              echo "$MARKER_END"
+            } > "$tmpfile"
+            mv "$tmpfile" "$BODY_FILE"
+          fi
+          comment_result="$(cat "$BODY_FILE")"
+
+          echo "Fetching existing comments..."
+          # コメント一覧取得
+          query_json=$(jq -n \
+            --arg prNumber "$pr_number" \
+            --arg repoOwner "$repo_owner" \
+            --arg repoName "$repo_name" \
+            '{
+              query: "query($prNumber: Int!, $repoOwner: String!, $repoName: String!) { repository(owner: $repoOwner, name: $repoName) { pullRequest(number: $prNumber) { comments(first: 100) { edges { node { id body } } } } } }",
+              variables: {
+                prNumber: ($prNumber|tonumber),
+                repoOwner: $repoOwner,
+                repoName: $repoName
+              }
+            }')
+          response=$(curl -s -H "Authorization: bearer $GH_TOKEN" -X POST -d "$query_json" https://api.github.com/graphql)
+          comment_id=$(
+          echo "$response" | jq -r \
+            --arg marker "$MARKER_START" \
+            '.data.repository.pullRequest.comments.edges[]
+            | select(.node.body | contains($marker))
+            | .node.id' \
+            | head -n 1
+          )
+
+          # debug
+          echo "comment_id=$comment_id"
+          if [ -n "$comment_id" ]; then
+            echo "更新"
+            mutation_json=$(jq -n \
+              --arg commentId "$comment_id" \
+              --arg newBody "$comment_result" \
+              '{
+                query: "mutation($commentId: ID!, $newBody: String!) { updateIssueComment(input: {id: $commentId, body: $newBody}) { issueComment { id body } } }",
+                variables: {
+                  commentId: $commentId,
+                  newBody: $newBody
+                }
+              }')
+            curl -s -H "Authorization: bearer $GH_TOKEN" -X POST -d "$mutation_json" https://api.github.com/graphql
+          else
+            echo "新規"
+            gh pr comment "$PR_NUMBER" -b "$comment_result"
+          fi
+
+      - name: GitHub Actions Results For Pull Request
+        if: ${{ github.event_name == 'pull_request' && steps.pre-commit.outputs.status != 'success' }}
+        run: |
+          echo "prek failed."
+          exit 1

@@ -1,0 +1,77 @@
+[build-system]
+requires = ["setuptools>=82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "amivoice-client-library-python"
+version = "0.1.0"
+description = "AmiVoice API Client Library for Python"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["amivoice*", "com*"]
+
+[tool.setuptools.package-data]
+amivoice = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+addopts = "-v"
+
+[dependency-groups]
+dev = [
+    "prek>=0.4.3",
+    "pytest>=9.1.1",
+    "ruff==0.14.11",
+]
+
+[tool.uv]
+exclude-newer = "7 days"
+
+[tool.ruff]
+line-length = 130
+indent-width = 4
+target-version = "py311"
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 20
+indent-style = "space"
+quote-style = "double"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "D",   # pydocstyle
+    "SIM", # flake8-simplify
+    "RUF", # Ruff-specific rules
+    "TCH", # flake8-type-checking
+    "PTH", # flake8-use-pathlib
+    "PL",  # Pylint
+]
+ignore = [
+    "F841",    # unused-variable. pytestのmockなどで頻出する
+    "T201",    # print. 開発時には一時的に使用することが多い
+    "RUF001",
+    "RUF002",
+    "RUF003",  # ambiguous-unicode-character-string. 日本語において頻出する
+    "PLW0603", # global-statement. Lambdaなどではキャッシュなどでグローバル変数を使うことが多い
+    "PLR2004", # magic-value-comparison. 基本的には従うべきだが、1回しか参照されない場合は冗長になるケースが存在する
+    "SIM108",  # if-else-block-instead-of-if-exp. 複雑な三項演算子が生成される可能性があるため
+    "D100",
+    "D104",    # undocumented-public-*. moduleとpackageのdocstringを省略することがあるため
+    "D400",    # missing-trailing-period. 日本語コメントには適していないため
+    "D415",    # missing-terminal-punctuation. 日本語コメントには適していないため
+    "D203",
+    "D213",    # Google Styleに適していないルール
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

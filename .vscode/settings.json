@@ -1,0 +1,16 @@
+{
+    "conventionalCommits.scopes": [
+        "agent-settings",
+        "pre-commit",
+        "uv"
+    ],
+    "ruff.configuration": "${workspaceFolder}/pyproject.toml",
+    "ruff.fixAll": true,
+    "ruff.organizeImports": true,
+    "autoDocstring.docstringFormat": "google",
+    "github.copilot.chat.commitMessageGeneration.instructions": [
+        {
+            "file": ".github/commit-message-instructions.md"
+        }
+    ]
+}
