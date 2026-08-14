@@ -1,0 +1,314 @@
+name: Publish PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Formal X.Y.Z version to publish"
+        required: true
+        type: string
+
+concurrency:
+  group: publish-pypi
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  PYTHON_VERSION: "3.11"
+  UV_VERSION: "0.11.28"
+  DISTRIBUTION_NAME: "amivoice-api-client"
+
+jobs:
+  authorize:
+    name: Authorize release execution
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      authorized: ${{ steps.admin-check.outputs.authorized }}
+
+    steps:
+      - name: Verify main ref and repository administrators
+        id: admin-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INITIAL_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "PyPI publication is allowed only from main: $GITHUB_REF" >&2
+            exit 1
+          fi
+
+          check_repository_administrator() {
+            local username="$1"
+            local encoded_username
+            local response
+
+            encoded_username=$(jq -rn --arg username "$username" '$username | @uri')
+            response=$(curl --silent --show-error --fail-with-body \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/collaborators/$encoded_username/permission")
+            if ! jq -e '.permission == "admin"' <<<"$response" >/dev/null; then
+              echo "Release authorization failed for actor: $username" >&2
+              return 1
+            fi
+          }
+
+          check_repository_administrator "$INITIAL_ACTOR"
+          check_repository_administrator "$TRIGGERING_ACTOR"
+          echo "authorized=true" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build formal PyPI distribution
+    needs: authorize
+    if: ${{ github.ref == 'refs/heads/main' && needs.authorize.outputs.authorized == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.validate-version.outputs.version }}
+      source_commit: ${{ github.sha }}
+      artifact_name: pypi-release-artifact
+      publish_required: ${{ steps.pypi-state.outputs.publish_required }}
+
+    steps:
+      - name: Revalidate repository administrators before checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INITIAL_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "PyPI build is allowed only from main: $GITHUB_REF" >&2
+            exit 1
+          fi
+
+          check_repository_administrator() {
+            local username="$1"
+            local encoded_username
+            local response
+
+            encoded_username=$(jq -rn --arg username "$username" '$username | @uri')
+            response=$(curl --silent --show-error --fail-with-body \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/collaborators/$encoded_username/permission")
+            jq -e '.permission == "admin"' <<<"$response" >/dev/null
+          }
+
+          check_repository_administrator "$INITIAL_ACTOR"
+          check_repository_administrator "$TRIGGERING_ACTOR"
+
+      - name: Check out the repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install development dependencies
+        run: uv sync --locked --dev --python "$PYTHON_VERSION"
+
+      - name: Validate requested version and project metadata
+        id: validate-version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: uv run --locked python -m tools.release.pypi_release validate-version --pyproject pyproject.toml --version "$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests and static checks
+        run: |
+          uv run --locked pytest tests/unit
+          uv run --locked ruff check .
+          uv run --locked ruff format --check .
+
+      - name: Build the formal distribution
+        env:
+          RELEASE_VERSION: ${{ steps.validate-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          rm -rf dist build src/*.egg-info release-artifact
+          uv run --locked python -m build --sdist --wheel
+          uv run --locked twine check dist/*
+          uv run --locked python tools/release/validate_package_artifacts.py \
+            --dist-dir dist \
+            --distribution "$DISTRIBUTION_NAME" \
+            --version "$RELEASE_VERSION"
+          mkdir -p release-artifact/dist
+          cp dist/*.whl dist/*.tar.gz release-artifact/dist/
+          uv run --locked python -m tools.release.pypi_release write-manifest \
+            --dist-dir dist \
+            --manifest release-artifact/release-manifest.json \
+            --distribution "$DISTRIBUTION_NAME" \
+            --version "$RELEASE_VERSION"
+
+      - name: Check current PyPI state before upload
+        id: pypi-state
+        env:
+          RELEASE_VERSION: ${{ steps.validate-version.outputs.version }}
+        run: |
+          uv run --locked python -m tools.release.pypi_release check-pypi \
+            --dist-dir dist \
+            --manifest release-artifact/release-manifest.json \
+            --distribution "$DISTRIBUTION_NAME" \
+            --version "$RELEASE_VERSION" \
+            --output github-output >> "$GITHUB_OUTPUT"
+
+      - name: Upload immutable release artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pypi-release-artifact
+          path: release-artifact
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Write build summary
+        env:
+          RELEASE_VERSION: ${{ steps.validate-version.outputs.version }}
+          PUBLISH_REQUIRED: ${{ steps.pypi-state.outputs.publish_required }}
+        run: |
+          {
+            echo "## PyPI build"
+            echo
+            echo "- Version: \\`$RELEASE_VERSION\\`"
+            echo "- Upload required: \\`$PUBLISH_REQUIRED\\`"
+            echo
+            echo '```text'
+            sha256sum dist/*
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish to PyPI
+    needs: [authorize, build]
+    if: ${{ github.ref == 'refs/heads/main' && needs.authorize.outputs.authorized == 'true' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/p/amivoice-api-client
+    permissions:
+      contents: read
+      actions: read # Artifact download requires read access
+      id-token: write # Trusted Publishing requires an OIDC token
+
+    steps:
+      - name: Revalidate repository administrators before publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INITIAL_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "PyPI publication is allowed only from main: $GITHUB_REF" >&2
+            exit 1
+          fi
+
+          check_repository_administrator() {
+            local username="$1"
+            local encoded_username
+            local response
+
+            encoded_username=$(jq -rn --arg username "$username" '$username | @uri')
+            response=$(curl --silent --show-error --fail-with-body \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/collaborators/$encoded_username/permission")
+            jq -e '.permission == "admin"' <<<"$response" >/dev/null
+          }
+
+          check_repository_administrator "$INITIAL_ACTOR"
+          check_repository_administrator "$TRIGGERING_ACTOR"
+
+      - name: Download the immutable release artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pypi-release-artifact
+          path: release-artifact
+
+      - name: Check out the source used for the artifact
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.build.outputs.source_commit }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+
+      - name: Install release validation dependencies
+        run: uv sync --locked --dev --python "$PYTHON_VERSION"
+
+      - name: Recheck PyPI state before upload
+        id: pypi-state
+        env:
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          uv run --locked python -m tools.release.pypi_release check-pypi \
+            --dist-dir release-artifact/dist \
+            --manifest release-artifact/release-manifest.json \
+            --distribution "$DISTRIBUTION_NAME" \
+            --version "$RELEASE_VERSION" \
+            --output github-output >> "$GITHUB_OUTPUT"
+
+      - name: Publish with Trusted Publishing
+        if: ${{ steps.pypi-state.outputs.publish_required == 'true' }}
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          packages-dir: release-artifact/dist
+          skip-existing: false
+
+      - name: Write publication summary
+        env:
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          PUBLISH_REQUIRED: ${{ steps.pypi-state.outputs.publish_required }}
+        run: |
+          {
+            echo "## PyPI publication"
+            echo
+            echo "- Version: \\`$RELEASE_VERSION\\`"
+            echo "- Upload performed: \\`$PUBLISH_REQUIRED\\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  finalize:
+    name: Finalize GitHub tag and Release
+    needs: [authorize, build, publish]
+    if: ${{ github.ref == 'refs/heads/main' && needs.authorize.outputs.authorized == 'true' && needs.publish.result == 'success' }}
+    permissions:
+      contents: write # The reusable workflow creates the release tag and GitHub Release
+      actions: read # The reusable workflow downloads the immutable release artifact
+    uses: ./.github/workflows/finalize-github-release.yml
+    with:
+      version: ${{ needs.build.outputs.version }}
+      source_commit: ${{ needs.build.outputs.source_commit }}
+      artifact_name: ${{ needs.build.outputs.artifact_name }}
