@@ -243,17 +243,17 @@ jobs:
           check_repository_administrator "$INITIAL_ACTOR"
           check_repository_administrator "$TRIGGERING_ACTOR"
 
-      - name: Download the immutable release artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: pypi-release-artifact
-          path: release-artifact
-
       - name: Check out the source used for the artifact
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.build.outputs.source_commit }}
           persist-credentials: false
+
+      - name: Download the immutable release artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pypi-release-artifact
+          path: release-artifact
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
