@@ -21,6 +21,7 @@ from tools.release.pypi_release import (
     validate_project_release_version,
     verify_local_release_manifest,
     verify_pypi_release,
+    verify_pypi_release_with_retry,
 )
 
 
@@ -299,3 +300,66 @@ def test_verify_pypi_release_matching_valid_returns_none() -> None:
     verify_pypi_release(index_metadata, manifest)
 
     # Then: no exception is raised
+
+
+def test_verify_pypi_release_with_retry_delayed_index_valid_returns_none() -> None:
+    """A release appearing after a propagation delay passes verification"""
+    # Given: PyPI first omits the release and then exposes matching files
+    manifest = create_manifest()
+    payloads = [
+        {"releases": {}},
+        {
+            "releases": {
+                "1.1.0": [
+                    {"filename": "amivoice_api_client-1.1.0-py3-none-any.whl", "digests": {"sha256": "a" * 64}},
+                    {"filename": "amivoice_api_client-1.1.0.tar.gz", "digests": {"sha256": "b" * 64}},
+                ]
+            }
+        },
+    ]
+    sleep_delays: list[float] = []
+
+    def open_sequence(url: str, *, timeout: float) -> FakePyPIResponse:
+        return FakePyPIResponse(payloads.pop(0))
+
+    def record_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+
+    # When: the published release is verified with retry enabled
+    verify_pypi_release_with_retry(
+        manifest,
+        retry_attempts=2,
+        retry_delay_seconds=2.0,
+        opener=open_sequence,
+        sleep=record_sleep,
+    )
+
+    # Then: verification waits once and succeeds on the second API response
+    assert sleep_delays == [2.0]
+    assert payloads == []
+
+
+def test_verify_pypi_release_with_retry_exhausted_invalid_raise_PyPIReleaseError() -> None:
+    """Repeatedly missing PyPI releases fail after the configured attempts"""
+    # Given: every PyPI response omits the requested release
+    manifest = create_manifest()
+    sleep_delays: list[float] = []
+
+    def open_missing(url: str, *, timeout: float) -> FakePyPIResponse:
+        return FakePyPIResponse({"releases": {}})
+
+    def record_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+
+    # When: verification exhausts its retry attempts
+    with pytest.raises(PyPIReleaseError, match="after 3 attempts"):
+        verify_pypi_release_with_retry(
+            manifest,
+            retry_attempts=3,
+            retry_delay_seconds=1.0,
+            opener=open_missing,
+            sleep=record_sleep,
+        )
+
+    # Then: backoff occurs only between attempts
+    assert sleep_delays == [1.0, 2.0]

@@ -5,6 +5,8 @@ import hashlib
 import json
 import re
 import sys
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -20,6 +22,8 @@ PYPI_JSON_URL = f"https://pypi.org/pypi/{DISTRIBUTION_NAME}/json"
 MINIMUM_FORMAL_RELEASE_VERSION = Version("0.1.0")
 FORMAL_VERSION_PATTERN = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+PYPI_RELEASE_VERIFICATION_ATTEMPTS = 6
+PYPI_RELEASE_VERIFICATION_DELAY_SECONDS = 5.0
 
 
 class PyPIReleaseError(RuntimeError):
@@ -356,6 +360,48 @@ def verify_pypi_release(index_metadata: PyPIIndexMetadata, manifest: ReleaseMani
         raise PyPIReleaseError(f"PyPI artifacts do not match the release manifest for {manifest.version}")
 
 
+def verify_pypi_release_with_retry(
+    manifest: ReleaseManifest,
+    *,
+    retry_attempts: int = PYPI_RELEASE_VERIFICATION_ATTEMPTS,
+    retry_delay_seconds: float = PYPI_RELEASE_VERIFICATION_DELAY_SECONDS,
+    opener: UrlOpener = urlopen,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """Verify a published PyPI release with exponential backoff for propagation delay
+
+    Args:
+        manifest: Expected published release manifest
+        retry_attempts: Maximum number of JSON API verification attempts
+        retry_delay_seconds: Initial delay between verification attempts
+        opener: URL opener injected by tests or callers
+        sleep: Delay function injected by tests or callers
+
+    Raises:
+        PyPIReleaseError: If verification fails after all attempts
+        ValueError: If retry settings are invalid
+    """
+    if retry_attempts < 1:
+        raise ValueError("retry_attempts must be at least one")
+    if retry_delay_seconds < 0:
+        raise ValueError("retry_delay_seconds must not be negative")
+
+    last_error: PyPIReleaseError | None = None
+    for attempt in range(retry_attempts):
+        try:
+            index_metadata = fetch_pypi_index(opener=opener)
+            verify_pypi_release(index_metadata, manifest)
+            return
+        except PyPIReleaseError as error:
+            last_error = error
+
+        if attempt + 1 < retry_attempts:
+            sleep(retry_delay_seconds * (2**attempt))
+
+    assert last_error is not None
+    raise PyPIReleaseError(f"PyPI release verification failed after {retry_attempts} attempts: {last_error}") from last_error
+
+
 def _manifest_to_json(manifest: ReleaseManifest) -> dict[str, object]:
     return {
         "distribution": manifest.distribution_name,
@@ -431,7 +477,7 @@ def main(arguments: list[str] | None = None) -> int:
             if manifest.version != str(requested_version) or manifest.distribution_name != parsed_arguments.distribution:
                 raise PyPIReleaseError("Release manifest does not match the requested PyPI release")
             verify_local_release_manifest(parsed_arguments.dist_dir, manifest)
-            verify_pypi_release(fetch_pypi_index(), manifest)
+            verify_pypi_release_with_retry(manifest)
             print(f"verified_version={manifest.version}")
     except (PackageArtifactError, PyPIReleaseError, ValueError) as error:
         print(f"PyPI release validation failed: {error}", file=sys.stderr)
