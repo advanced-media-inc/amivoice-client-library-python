@@ -3,12 +3,32 @@ requires = ["setuptools>=82"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "amivoice-client-library-python"
+name = "amivoice-api-client"
 version = "0.1.0"
 description = "AmiVoice API Client Library for Python"
 readme = "README.md"
 requires-python = ">=3.11"
+authors = [{ name = "Advanced Media, Inc." }]
+license = "MIT"
+license-files = ["LICENSE"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/advanced-media-inc/amivoice-client-library-python"
+Repository = "https://github.com/advanced-media-inc/amivoice-client-library-python"
+Documentation = "https://github.com/advanced-media-inc/amivoice-client-library-python/blob/main/docs/usage.md"
+Issues = "https://github.com/advanced-media-inc/amivoice-client-library-python/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -23,9 +43,12 @@ addopts = "-v"
 
 [dependency-groups]
 dev = [
+    "build>=1.5.0",
+    "packaging>=26.2",
     "prek>=0.4.3",
     "pytest>=9.1.1",
     "ruff==0.14.11",
+    "twine>=7.0.0",
 ]
 
 [tool.uv]

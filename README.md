@@ -27,7 +27,7 @@ result = client.transcribe("audio.wav")
 print(result.text)
 ```
 
-詳細な利用方法は [docs/usage.md](docs/usage.md) を参照してください。
+詳細な利用方法は [利用方法](https://github.com/advanced-media-inc/amivoice-client-library-python/blob/main/docs/usage.md) を参照してください。
 
 ## 開発
 

@@ -14,7 +14,7 @@ from .exceptions import (
 from .models import NotificationEvent, RecognitionResult, StreamEvent, StreamEventType, UtteranceEvent
 
 try:
-    __version__ = version("amivoice-client-library-python")
+    __version__ = version("amivoice-api-client")
 except PackageNotFoundError:
     __version__ = "0.0.0"
 
