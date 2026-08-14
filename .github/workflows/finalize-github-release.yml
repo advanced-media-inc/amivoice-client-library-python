@@ -24,9 +24,16 @@ env:
   DISTRIBUTION_NAME: "amivoice-api-client"
 
 jobs:
+  authorize:
+    name: Verify release authorization
+    uses: ./.github/workflows/verify-release-authorization.yml
+    permissions:
+      contents: read
+
   finalize:
     name: Verify PyPI and create GitHub Release
-    if: ${{ github.ref == 'refs/heads/main' }}
+    needs: authorize
+    if: ${{ github.ref == 'refs/heads/main' && needs.authorize.outputs.authorized == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
@@ -37,20 +44,13 @@ jobs:
       actions: read # The job downloads the immutable release artifact
 
     steps:
-      - name: Verify main ref and repository administrators before checkout
+      - name: Validate release inputs before checkout
         env:
-          GH_TOKEN: ${{ github.token }}
-          INITIAL_ACTOR: ${{ github.actor }}
-          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
           RELEASE_VERSION: ${{ inputs.version }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
         run: |
           set -euo pipefail
 
-          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
-            echo "GitHub Release finalization is allowed only from main: $GITHUB_REF" >&2
-            exit 1
-          fi
           if [[ ! "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "GitHub Release version is not a formal X.Y.Z version: $RELEASE_VERSION" >&2
             exit 1
@@ -59,26 +59,6 @@ jobs:
             echo "GitHub Release source commit is not a full commit SHA" >&2
             exit 1
           fi
-
-          check_repository_administrator() {
-            local username="$1"
-            local encoded_username
-            local response
-
-            encoded_username=$(jq -rn --arg username "$username" '$username | @uri')
-            response=$(curl --silent --show-error --fail-with-body \
-              --header "Accept: application/vnd.github+json" \
-              --header "X-GitHub-Api-Version: 2022-11-28" \
-              --header "Authorization: Bearer $GH_TOKEN" \
-              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/collaborators/$encoded_username/permission")
-            if ! jq -e '.permission == "admin"' <<<"$response" >/dev/null; then
-              echo "Release authorization failed for actor: $username" >&2
-              return 1
-            fi
-          }
-
-          check_repository_administrator "$INITIAL_ACTOR"
-          check_repository_administrator "$TRIGGERING_ACTOR"
 
       - name: Check out the exact source commit
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
