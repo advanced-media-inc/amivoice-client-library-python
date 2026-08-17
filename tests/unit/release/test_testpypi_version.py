@@ -100,6 +100,19 @@ def test_calculate_next_development_version_maximum_valid_return_next() -> None:
     assert next_version == Version("1.0.0.dev11")
 
 
+def test_calculate_next_development_version_equivalent_release_segments_valid_return_next() -> None:
+    """PEP 440-equivalent release segments are counted for the next development version"""
+    # Given: a release whose public version omits a trailing zero
+    base_version = Version("1.0.0")
+    release_names = ("1.0.dev1", "1.0.0.dev2")
+
+    # When: the next TestPyPI development version is calculated
+    next_version = calculate_next_development_version(base_version, release_names)
+
+    # Then: the equivalent release is included in the maximum
+    assert next_version == Version("1.0.0.dev3")
+
+
 def test_calculate_next_development_version_no_visible_release_valid_return_dev1() -> None:
     """A missing or pruned release history starts at dev1"""
     # Given: no matching TestPyPI release remains visible

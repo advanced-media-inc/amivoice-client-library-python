@@ -178,26 +178,25 @@ def calculate_next_development_version(base_version: Version, release_names: Ite
     Returns:
         The next development version, starting at dev1
     """
-    development_pattern = re.compile(rf"^{re.escape(str(base_version))}\.dev([1-9][0-9]*)$")
     development_numbers: list[int] = []
 
     for release_name in release_names:
-        match = development_pattern.fullmatch(release_name)
-        if match is None:
-            continue
-
         try:
             parsed_release = Version(release_name)
         except InvalidVersion:
             continue
 
         if (
-            parsed_release.release == base_version.release
-            and parsed_release.is_devrelease
-            and parsed_release.dev is not None
-            and parsed_release.post is None
-            and parsed_release.local is None
+            not parsed_release.is_devrelease
+            or parsed_release.dev is None
+            or parsed_release.dev < 1
+            or parsed_release.post is not None
+            or parsed_release.local is not None
         ):
+            continue
+
+        expected_release = Version(f"{base_version}.dev{parsed_release.dev}")
+        if parsed_release == expected_release:
             development_numbers.append(parsed_release.dev)
 
     next_number = max(development_numbers, default=0) + 1
