@@ -191,6 +191,25 @@ def test_resolve_testpypi_release_base_published_invalid_raise_ReleaseVersionErr
     # Then: a formally released base version cannot receive a dev release
 
 
+def test_resolve_testpypi_release_equivalent_base_published_invalid_raise_ReleaseVersionError(tmp_path: Path) -> None:
+    """A PEP 440-equivalent published base version prevents development uploads"""
+    # Given: project metadata and an equivalent base release visible on PyPI
+    pyproject_path = write_pyproject_version(tmp_path, "1.0.0")
+    metadata_by_url = {
+        "https://test.pypi.org/pypi/amivoice-api-client/json": ReleaseIndexMetadata(()),
+        "https://pypi.org/pypi/amivoice-api-client/json": ReleaseIndexMetadata(("1.0",)),
+    }
+
+    def fetch_metadata(url: str) -> ReleaseIndexMetadata:
+        return metadata_by_url[url]
+
+    # When: the TestPyPI release is resolved
+    with pytest.raises(ReleaseVersionError):
+        resolve_testpypi_release(pyproject_path, metadata_fetcher=fetch_metadata)
+
+    # Then: an equivalent formally released base version cannot receive a dev release
+
+
 def test_resolve_testpypi_release_no_history_valid_return_dev1(tmp_path: Path) -> None:
     """An empty TestPyPI project receives the first development version"""
     # Given: a valid project and empty package index metadata

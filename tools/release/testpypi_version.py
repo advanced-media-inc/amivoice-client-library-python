@@ -203,6 +203,26 @@ def calculate_next_development_version(base_version: Version, release_names: Ite
     return Version(f"{base_version}.dev{next_number}")
 
 
+def contains_equivalent_release(base_version: Version, release_names: Iterable[str]) -> bool:
+    """Check whether release names contain a PEP 440-equivalent version
+
+    Args:
+        base_version: Version to find in the release names
+        release_names: Release names returned by a package index
+
+    Returns:
+        True when an equivalent release version is present
+    """
+    for release_name in release_names:
+        try:
+            if Version(release_name) == base_version:
+                return True
+        except InvalidVersion:
+            continue
+
+    return False
+
+
 def resolve_testpypi_release(
     pyproject_path: Path,
     *,
@@ -229,7 +249,9 @@ def resolve_testpypi_release(
     testpypi_metadata = metadata_fetcher(testpypi_url)
     pypi_metadata = metadata_fetcher(pypi_url)
 
-    if str(base_version) in testpypi_metadata.release_names or str(base_version) in pypi_metadata.release_names:
+    if contains_equivalent_release(base_version, testpypi_metadata.release_names) or contains_equivalent_release(
+        base_version, pypi_metadata.release_names
+    ):
         raise ReleaseVersionError(f"Base version {base_version} is already published")
 
     development_version = calculate_next_development_version(base_version, testpypi_metadata.release_names)
