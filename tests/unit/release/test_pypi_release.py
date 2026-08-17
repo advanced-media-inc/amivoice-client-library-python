@@ -1,5 +1,6 @@
 """Tests for formal PyPI release validation."""
 
+import hashlib
 import json
 from pathlib import Path
 from urllib.error import HTTPError
@@ -7,6 +8,7 @@ from urllib.error import HTTPError
 import pytest
 from packaging.version import Version
 
+from tests.unit.release.package_artifact_test_helpers import create_valid_package_artifacts
 from tools.release.pypi_release import (
     PyPIFileMetadata,
     PyPIIndexMetadata,
@@ -22,6 +24,7 @@ from tools.release.pypi_release import (
     verify_local_release_manifest,
     verify_pypi_release,
     verify_pypi_release_with_retry,
+    write_release_manifest,
 )
 
 
@@ -272,6 +275,36 @@ def test_write_and_read_release_manifest_valid_round_trip(tmp_path: Path) -> Non
 
     # Then: the manifest metadata and digest are preserved
     assert loaded_manifest == manifest
+
+
+def test_write_release_manifest_valid_artifacts_valid_return_manifest(tmp_path: Path) -> None:
+    """A valid artifact set is hashed and written to a deterministic manifest"""
+    # Given: valid wheel and source distribution artifacts
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    create_valid_package_artifacts(dist_dir)
+    manifest_path = tmp_path / "release-artifact" / "release-manifest.json"
+    expected_files = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(dist_dir.iterdir())}
+    expected_manifest = ReleaseManifest("amivoice-api-client", "1.0.0", expected_files)
+    expected_json = (
+        json.dumps(
+            {
+                "distribution": expected_manifest.distribution_name,
+                "version": expected_manifest.version,
+                "files": [{"filename": filename, "sha256": expected_files[filename]} for filename in sorted(expected_files)],
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
+    # When: the release manifest is generated
+    written_manifest = write_release_manifest(dist_dir, manifest_path, "amivoice-api-client", "1.0.0")
+
+    # Then: artifact hashes and metadata are preserved in the return value and file
+    assert written_manifest == expected_manifest
+    assert read_release_manifest(manifest_path) == expected_manifest
+    assert manifest_path.read_text(encoding="utf-8") == expected_json
 
 
 def test_verify_local_release_manifest_matching_valid_returns_none(tmp_path: Path) -> None:
