@@ -9,7 +9,7 @@ uv sync
 アプリケーションから配布パッケージを利用する場合は、次のコマンドを実行します。
 
 ```bash
-pip install amivoice-client-library-python
+pip install amivoice-api-client
 ```
 
 ## 認証

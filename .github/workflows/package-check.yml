@@ -1,0 +1,100 @@
+name: Package Check
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - "README.md"
+      - "docs/**"
+      - "pyproject.toml"
+      - "src/**"
+      - "tools/release/**"
+      - "tests/**"
+      - "uv.lock"
+      - ".github/workflows/package-check.yml"
+
+concurrency:
+  group: package-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+  UV_VERSION: "0.11.28"
+  DISTRIBUTION_NAME: "amivoice-api-client"
+
+jobs:
+  package-check:
+    name: Build and install package distributions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install development dependencies
+        run: uv sync --locked --dev --python "$PYTHON_VERSION"
+
+      - name: Read project version
+        id: project-version
+        run: |
+          project_version=$(uv run --locked python -c 'import tomllib; from pathlib import Path; print(tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"])')
+          echo "version=$project_version" >> "$GITHUB_OUTPUT"
+          echo "Building version: $project_version"
+
+      - name: Build wheel and source distribution
+        run: |
+          rm -rf dist build src/*.egg-info
+          uv run --locked python -m build --sdist --wheel
+
+      - name: Check distribution metadata
+        run: uv run --locked twine check dist/*
+
+      - name: Validate distribution contents
+        env:
+          PROJECT_VERSION: ${{ steps.project-version.outputs.version }}
+        run: |
+          uv run --locked python tools/release/validate_package_artifacts.py \
+            --dist-dir dist \
+            --distribution "$DISTRIBUTION_NAME" \
+            --version "$PROJECT_VERSION"
+
+      - name: Install wheel and source distribution in clean environments
+        env:
+          PROJECT_VERSION: ${{ steps.project-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          for artifact in dist/*.whl dist/*.tar.gz; do
+            environment_dir=$(mktemp -d "$RUNNER_TEMP/package-smoke.XXXXXX")
+            uv venv --python "$PYTHON_VERSION" "$environment_dir"
+            uv pip install --python "$environment_dir/bin/python" "$artifact"
+            (
+              cd "$RUNNER_TEMP"
+              "$environment_dir/bin/python" "$GITHUB_WORKSPACE/tools/release/package_smoke_test.py" \
+                --distribution "$DISTRIBUTION_NAME" \
+                --version "$PROJECT_VERSION"
+            )
+            uv pip check --python "$environment_dir/bin/python"
+          done
