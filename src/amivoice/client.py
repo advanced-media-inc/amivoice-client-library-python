@@ -139,6 +139,8 @@ class AmiVoiceClient:
         domain_id: ドメイン ID（HRP 専用）。
         confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）。
         no_input_timeout: 無入力タイムアウト（ミリ秒）（WRP 専用）。
+        complete_timeout: ルールグラマの確定待ちタイムアウト（ミリ秒） 0 以上
+        wildcard_model_penalty: ルールグラマのワイルドカードモデルペナルティ 負値は無効
         http_api_url: HRP（HTTP）API エンドポイント URL の既定値。
         ws_api_url: WRP（WebSocket）API エンドポイント URL の既定値。
         hrp_transport: テスト用 HRP トランスポート注入口。
@@ -205,6 +207,8 @@ class AmiVoiceClient:
         extension: str | None = None,
         billing_key: str | None = None,
         recognition_timeout: int | None = None,
+        complete_timeout: int | None = None,
+        wildcard_model_penalty: float | None = None,
         max_decoding_time: int | None = None,
         max_response_time: int | None = None,
         max_decoding_rate: float | None = None,
@@ -246,6 +250,8 @@ class AmiVoiceClient:
             extension=extension,
             billing_key=billing_key,
             recognition_timeout=recognition_timeout,
+            complete_timeout=complete_timeout,
+            wildcard_model_penalty=wildcard_model_penalty,
             result_encoding=result_encoding,
             voice_detection=voice_detection,
             accept_topic=accept_topic,
@@ -292,6 +298,8 @@ class AmiVoiceClient:
         extension: str | None | _UnsetType = UNSET,
         billing_key: str | None | _UnsetType = UNSET,
         recognition_timeout: int | None | _UnsetType = UNSET,
+        complete_timeout: int | None | _UnsetType = UNSET,
+        wildcard_model_penalty: float | None | _UnsetType = UNSET,
         max_decoding_time: int | None | _UnsetType = UNSET,
         max_response_time: int | None | _UnsetType = UNSET,
         max_decoding_rate: float | None | _UnsetType = UNSET,
@@ -331,6 +339,8 @@ class AmiVoiceClient:
             extension: 使用量集計タグの呼び出し時 override。
             billing_key: 使用量集計タグの呼び出し時 override。
             recognition_timeout: 認識タイムアウト（ミリ秒）の呼び出し時 override。
+            complete_timeout: ルールグラマの確定待ちタイムアウト（ミリ秒）の呼び出し時 override 0 以上
+            wildcard_model_penalty: ルールグラマのワイルドカードモデルペナルティの呼び出し時 override 負値は無効
             max_decoding_time: 認識処理時間の上限（ミリ秒）の呼び出し時 override、0 は無効
             max_response_time: 応答時間の上限（ミリ秒）の呼び出し時 override、リアルタイム録音時のみ有効、0 は無効
             max_decoding_rate: 認識処理時間倍率の上限の呼び出し時 override、バッチ音声のみ有効、負値は無効
@@ -374,6 +384,8 @@ class AmiVoiceClient:
             extension=extension,
             billing_key=billing_key,
             recognition_timeout=recognition_timeout,
+            complete_timeout=complete_timeout,
+            wildcard_model_penalty=wildcard_model_penalty,
             result_encoding=result_encoding,
             voice_detection=voice_detection,
             accept_topic=accept_topic,
@@ -428,8 +440,12 @@ class AmiVoiceClient:
         target_decoding_rate = None if params.target_decoding_rate is None else repr(params.target_decoding_rate)
         confidence_level = None if params.confidence_level is None else repr(params.confidence_level)
         extension = resolve_billing_extension(params.extension, params.billing_key)
+        complete_timeout = None if params.complete_timeout is None else str(params.complete_timeout)
+        wildcard_model_penalty = None if params.wildcard_model_penalty is None else repr(params.wildcard_model_penalty)
         optional_setters: "tuple[tuple[Callable[[str | None], None], str | None], ...]" = (
             (hrp.setGrammarFileNames, params.grammar_file_names),
+            (hrp.setCompleteTimeout, complete_timeout),
+            (hrp.setWildcardModelPenalty, wildcard_model_penalty),
             (hrp.setCodec, params.codec),
             (hrp.setResultType, params.result_type),
             (hrp.setProxyServerName, params.proxy_server_name),
@@ -525,6 +541,8 @@ class AmiVoiceClient:
         extension: str | None | _UnsetType = UNSET,
         billing_key: str | None | _UnsetType = UNSET,
         recognition_timeout: int | None | _UnsetType = UNSET,
+        complete_timeout: int | None | _UnsetType = UNSET,
+        wildcard_model_penalty: float | None | _UnsetType = UNSET,
         max_decoding_time: int | None | _UnsetType = UNSET,
         max_response_time: int | None | _UnsetType = UNSET,
         max_decoding_rate: float | None | _UnsetType = UNSET,
@@ -557,6 +575,8 @@ class AmiVoiceClient:
             extension: 使用量集計タグの呼び出し時 override。
             billing_key: 使用量集計タグの呼び出し時 override。
             recognition_timeout: 認識タイムアウト（ミリ秒）の呼び出し時 override。
+            complete_timeout: ルールグラマの確定待ちタイムアウト（ミリ秒）の呼び出し時 override 0 以上
+            wildcard_model_penalty: ルールグラマのワイルドカードモデルペナルティの呼び出し時 override 負値は無効
             max_decoding_time: 認識処理時間の上限（ミリ秒）の呼び出し時 override、0 は無効
             max_response_time: 応答時間の上限（ミリ秒）の呼び出し時 override、リアルタイム録音時のみ有効、0 は無効
             max_decoding_rate: 認識処理時間倍率の上限の呼び出し時 override、バッチ音声のみ有効、負値は無効
@@ -613,6 +633,8 @@ class AmiVoiceClient:
             extension=extension,
             billing_key=billing_key,
             recognition_timeout=recognition_timeout,
+            complete_timeout=complete_timeout,
+            wildcard_model_penalty=wildcard_model_penalty,
             no_input_timeout=no_input_timeout,
         )
         resolved_url = _resolve_url(api_url, self._ws_api_url)
@@ -652,6 +674,8 @@ def transcribe(  # noqa: PLR0913
     extension: str | None = None,
     billing_key: str | None = None,
     recognition_timeout: int | None = None,
+    complete_timeout: int | None = None,
+    wildcard_model_penalty: float | None = None,
     max_decoding_time: int | None = None,
     max_response_time: int | None = None,
     max_decoding_rate: float | None = None,
@@ -692,6 +716,8 @@ def transcribe(  # noqa: PLR0913
         extension: 使用量集計タグ。
         billing_key: 使用量集計タグを専用形式で指定する文字列。
         recognition_timeout: 認識タイムアウト（ミリ秒）。0 は無制限。
+        complete_timeout: ルールグラマの確定待ちタイムアウト（ミリ秒） 0 以上
+        wildcard_model_penalty: ルールグラマのワイルドカードモデルペナルティ 負値は無効
         max_decoding_time: 認識処理時間の上限（ミリ秒）、0 は無効
         max_response_time: 音声時間に加える応答時間の上限（ミリ秒）、リアルタイム録音時のみ有効、0 は無効
         max_decoding_rate: 音声時間に対する認識処理時間倍率の上限、バッチ音声のみ有効、負値は無効
@@ -736,6 +762,8 @@ def transcribe(  # noqa: PLR0913
         extension=extension,
         billing_key=billing_key,
         recognition_timeout=recognition_timeout,
+        complete_timeout=complete_timeout,
+        wildcard_model_penalty=wildcard_model_penalty,
         result_encoding=result_encoding,
         voice_detection=voice_detection,
         accept_topic=accept_topic,

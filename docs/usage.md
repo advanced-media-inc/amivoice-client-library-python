@@ -134,6 +134,34 @@ result = client.transcribe("audio.wav")
 
 `max_decoding_rate`は音声時間に対する認識処理時間の上限倍率を指定し、`target_decoding_rate`は暫定結果の目標倍率を指定します。これらはバッチ音声のみ有効です。時間系の`0`は無効を表し、レート系の負値も無効指定として利用できます。公式仕様のデフォルト値は、時間系が`0`、レート系が`-1`です。未指定の場合はパラメータを送信せず、サーバー側のデフォルト値に委ねます。
 
+### ルールグラマ
+
+AmiVoice API Private の「音声入力_ルール」エンジンを使う場合は、`build_grammar_file_names()`で接続エンジン名とグラマ指定を組み立てます。この機能は通常の AmiVoice API 環境では利用できません。
+
+グラマ本文を直接指定するときは、`encode_grammar()`で GZIP 圧縮と Base64 エンコードを行います。URL とエンコード済み本文は混在でき、ヘルパーは URL エンコードを追加しません。
+
+```python
+from pathlib import Path
+
+from amivoice import AmiVoiceClient, build_grammar_file_names, encode_grammar
+
+grammar_file_names = build_grammar_file_names(
+    encode_grammar(Path("Number.gram").read_text()),
+    "https://example.com/grammars/Burger.gram",
+    fallback=True,
+)
+client = AmiVoiceClient(
+    grammar_file_names=grammar_file_names,
+    complete_timeout=5_000,
+    wildcard_model_penalty=4.0,
+)
+result = client.transcribe("audio.wav")
+```
+
+通常のグラマ指定では`|`で連結します。前のグラマで認識に失敗した場合は、次のグラマへフォールバックするため`||`で連結します。`complete_timeout`は確定待ちタイムアウトをミリ秒で指定します。`wildcard_model_penalty`は`<GARBAGE>`の認識されやすさを調整し、目安は`2.0`から`6.0`です。Private 環境のデフォルト値は異なることがあります。目安の範囲外も指定できます。ただし、負値は指定できません。
+
+「音声入力_ルール」エンジンは非同期 HTTP では利用できません。JSGF や SRGS の文法検証は行わないため、グラマのフォーマットと書き方は[グラマファイルの公式ドキュメント](https://docs.amivoice.com/amivoice-api/manual/grammar-file)を確認してください。誤ったグラマを指定した場合はサーバー側でエラーになります。
+
 ### 使用量集計タグ
 
 使用量をユーザーやアプリケーション単位で集計する場合は、`billing_key`を指定します。同期 HTTP と WebSocket の両方で利用できます。

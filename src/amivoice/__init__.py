@@ -15,6 +15,7 @@ from .exceptions import (
     DictionaryApiError,
     RecognitionError,
 )
+from .grammar import RULE_GRAMMAR_ENGINE, build_grammar_file_names, encode_grammar
 from .models import NotificationEvent, RecognitionResult, StreamEvent, StreamEventType, Token, UtteranceEvent, UtteranceResult
 
 try:
@@ -23,6 +24,7 @@ except PackageNotFoundError:
     __version__ = "0.0.0"
 
 __all__ = [
+    "RULE_GRAMMAR_ENGINE",
     "AmiVoiceClient",
     "AmiVoiceError",
     "AuthenticationError",
@@ -43,5 +45,7 @@ __all__ = [
     "UtteranceEvent",
     "UtteranceResult",
     "build_billing_extension",
+    "build_grammar_file_names",
+    "encode_grammar",
     "transcribe",
 ]

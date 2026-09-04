@@ -64,6 +64,8 @@ class Hrp:
         self.connectTimeout_: int = 0
         self.receiveTimeout_: int = 0
         self.grammarFileNames_: str | None = None
+        self.completeTimeout_: str | None = None
+        self.wildcardModelPenalty_: str | None = None
         self.mode_: str | None = None
         self.profileId_: str | None = None
         self.profileWords_: str | None = None
@@ -139,6 +141,22 @@ class Hrp:
             grammarFileNames: グラマファイル名の文字列
         """
         self.grammarFileNames_ = grammarFileNames
+
+    def setCompleteTimeout(self, completeTimeout: str | None) -> None:
+        """ルールグラマの確定待ちタイムアウトを設定する
+
+        Args:
+            completeTimeout: 確定待ちタイムアウト（ミリ秒）の文字列
+        """
+        self.completeTimeout_ = completeTimeout
+
+    def setWildcardModelPenalty(self, wildcardModelPenalty: str | None) -> None:
+        """ルールグラマのワイルドカードモデルペナルティを設定する
+
+        Args:
+            wildcardModelPenalty: ワイルドカードモデルペナルティの文字列
+        """
+        self.wildcardModelPenalty_ = wildcardModelPenalty
 
     def setMode(self, mode: str | None) -> None:
         """認識モードを設定する
@@ -494,6 +512,18 @@ class Hrp:
                     domainId += "grammarFileNames="
                     with suppress(Exception):
                         domainId += q(self.grammarFileNames_)
+                if self.completeTimeout_ is not None:
+                    if len(domainId) > 0:
+                        domainId += " "
+                    domainId += "completeTimeout="
+                    with suppress(Exception):
+                        domainId += q(self.completeTimeout_)
+                if self.wildcardModelPenalty_ is not None:
+                    if len(domainId) > 0:
+                        domainId += " "
+                    domainId += "wildcardModelPenalty="
+                    with suppress(Exception):
+                        domainId += q(self.wildcardModelPenalty_)
                 if self.mode_ is not None:
                     if len(domainId) > 0:
                         domainId += " "

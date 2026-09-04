@@ -237,6 +237,8 @@ def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) 
     keep_filler = None if params.keep_filler_token is None else bool_string(params.keep_filler_token)
     interval = None if params.result_updated_interval is None else str(params.result_updated_interval)
     recognition_timeout = None if params.recognition_timeout is None else str(params.recognition_timeout)
+    complete_timeout = None if params.complete_timeout is None else str(params.complete_timeout)
+    wildcard_model_penalty = None if params.wildcard_model_penalty is None else repr(params.wildcard_model_penalty)
     max_decoding_time = None if params.max_decoding_time is None else str(params.max_decoding_time)
     max_response_time = None if params.max_response_time is None else str(params.max_response_time)
     max_decoding_rate = None if params.max_decoding_rate is None else repr(params.max_decoding_rate)
@@ -247,6 +249,8 @@ def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) 
     no_input_timeout = None if params.no_input_timeout is None else str(params.no_input_timeout)
     optional_setters: tuple[tuple[Callable[[str | None], None], str | None], ...] = (
         (wrp.setGrammarFileNames, params.grammar_file_names),
+        (wrp.setCompleteTimeout, complete_timeout),
+        (wrp.setWildcardModelPenalty, wildcard_model_penalty),
         (wrp.setCodec, params.codec),
         (wrp.setResultType, params.result_type),
         (wrp.setProxyServerName, params.proxy_server_name),

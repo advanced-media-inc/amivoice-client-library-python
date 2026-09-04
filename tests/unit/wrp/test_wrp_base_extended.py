@@ -610,3 +610,32 @@ def test_get_waiting_results_returns_current_count() -> None:  # noqa: D103
     wrp.waitingResults_ = 3
 
     assert wrp.getWaitingResults() == 3
+
+
+def test_feed_data_resume_builds_command_from_rule_grammar_parameters() -> None:  # noqa: D103
+    wrp = MockWrp(connected=True)
+    wrp.state_ = 0
+    captured: dict[str, bytes] = {}
+
+    def send_request(data: bytes, data_offset: int, data_bytes: int, command: int) -> None:
+        del data_offset, data_bytes, command
+        captured["data"] = data
+        wrp.state_ = 2
+
+    wrp.sendRequest_ = send_request
+    wrp.setCompleteTimeout("5000")
+    wrp.setWildcardModelPenalty("4.0")
+
+    result = wrp.feedDataResume()
+
+    assert result is True
+    assert captured["data"] == b"s 16K \x01 completeTimeout=5000 wildcardModelPenalty=4.0"
+
+
+def test_set_rule_grammar_parameters_stores_values() -> None:  # noqa: D103
+    wrp = MockWrp()
+    wrp.setCompleteTimeout("5000")
+    wrp.setWildcardModelPenalty("4.0")
+
+    assert wrp.completeTimeout_ == "5000"
+    assert wrp.wildcardModelPenalty_ == "4.0"

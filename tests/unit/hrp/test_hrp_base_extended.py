@@ -808,3 +808,27 @@ def test_set_result_encoding_stores_value() -> None:  # noqa: D103
     hrp.setResultEncoding("UTF-8")
 
     assert hrp.resultEncoding_ == "UTF-8"
+
+
+def test_feed_data_resume_builds_domain_id_from_rule_grammar_parameters() -> None:  # noqa: D103
+    hrp = MockHrp(connected=True)
+    hrp.state_ = 0
+    captured: dict[str, str] = {}
+
+    hrp.sendRequestHeader_ = _capture_header(captured, hrp)
+    hrp.setCompleteTimeout("5000")
+    hrp.setWildcardModelPenalty("4.0")
+
+    result = hrp.feedDataResume()
+
+    assert result is True
+    assert captured["domainId"] == "completeTimeout=5000 wildcardModelPenalty=4.0"
+
+
+def test_set_rule_grammar_parameters_stores_values() -> None:  # noqa: D103
+    hrp = MockHrp()
+    hrp.setCompleteTimeout("5000")
+    hrp.setWildcardModelPenalty("4.0")
+
+    assert hrp.completeTimeout_ == "5000"
+    assert hrp.wildcardModelPenalty_ == "4.0"

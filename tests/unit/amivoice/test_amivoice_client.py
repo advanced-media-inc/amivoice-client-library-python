@@ -1176,3 +1176,98 @@ def test_AmiVoiceClient_stream_end_timeout_raises_when_results_pending() -> None
     # When / Then: end(timeout=...) が待機結果ゼロを見ないままタイムアウトする
     with client.stream() as session, pytest.raises(RecognitionError, match="Timed out waiting for remaining"):
         session.end(timeout=0.2)
+
+
+@pytest.mark.parametrize(
+    ("parameter_name", "setter_name", "value", "expected"),
+    [
+        ("complete_timeout", "setCompleteTimeout", 5000, "5000"),
+        ("wildcard_model_penalty", "setWildcardModelPenalty", 4.0, "4.0"),
+    ],
+)
+def test_AmiVoiceClient_transcribe_rule_grammar_parameter_constructor_default_passes_string(
+    parameter_name: str,
+    setter_name: str,
+    value: int | float,
+    expected: str,
+) -> None:
+    """コンストラクタのルールグラマ専用パラメータが HRP setter に渡ることを確認する"""
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, **{parameter_name: value})
+
+    client.transcribe(b"audio-data")
+
+    getattr(mock_hrp, setter_name).assert_called_once_with(expected)
+
+
+@pytest.mark.parametrize(
+    ("parameter_name", "setter_name", "default_value", "override_value", "expected"),
+    [
+        ("complete_timeout", "setCompleteTimeout", 5000, 7000, "7000"),
+        ("wildcard_model_penalty", "setWildcardModelPenalty", 4.0, 5.5, "5.5"),
+    ],
+)
+def test_AmiVoiceClient_transcribe_rule_grammar_parameter_override_passes_string(
+    parameter_name: str,
+    setter_name: str,
+    default_value: int | float,
+    override_value: int | float,
+    expected: str,
+) -> None:
+    """Transcribe のルールグラマ専用パラメータ override が既定値を上書きすることを確認する"""
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, **{parameter_name: default_value})
+
+    client.transcribe(b"audio-data", **{parameter_name: override_value})
+
+    getattr(mock_hrp, setter_name).assert_called_once_with(expected)
+
+
+@pytest.mark.parametrize(
+    ("parameter_name", "setter_name", "value", "expected"),
+    [
+        ("complete_timeout", "setCompleteTimeout", 5000, "5000"),
+        ("wildcard_model_penalty", "setWildcardModelPenalty", 4.0, "4.0"),
+    ],
+)
+def test_AmiVoiceClient_stream_rule_grammar_parameter_constructor_default_passes_string(
+    parameter_name: str,
+    setter_name: str,
+    value: int | float,
+    expected: str,
+) -> None:
+    """コンストラクタのルールグラマ専用パラメータが WRP setter に渡ることを確認する"""
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", **{parameter_name: value})
+
+    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream() as session:
+        session.end()
+
+    getattr(mock_wrp, setter_name).assert_called_once_with(expected)
+
+
+@pytest.mark.parametrize(
+    ("parameter_name", "setter_name", "default_value", "override_value", "expected"),
+    [
+        ("complete_timeout", "setCompleteTimeout", 5000, 7000, "7000"),
+        ("wildcard_model_penalty", "setWildcardModelPenalty", 4.0, 5.5, "5.5"),
+    ],
+)
+def test_AmiVoiceClient_stream_rule_grammar_parameter_override_passes_string(
+    parameter_name: str,
+    setter_name: str,
+    default_value: int | float,
+    override_value: int | float,
+    expected: str,
+) -> None:
+    """Stream のルールグラマ専用パラメータ override が既定値を上書きすることを確認する"""
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", **{parameter_name: default_value})
+
+    with (
+        patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
+        client.stream(**{parameter_name: override_value}) as session,
+    ):
+        session.end()
+
+    getattr(mock_wrp, setter_name).assert_called_once_with(expected)

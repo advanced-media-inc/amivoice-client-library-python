@@ -118,6 +118,8 @@ def test_transcribe_processing_time_params_valid_passes_strings() -> None:
         transcribe(
             b"audio-data",
             api_key="test-key",
+            complete_timeout=5000,
+            wildcard_model_penalty=4.0,
             max_decoding_time=1000,
             max_response_time=2000,
             max_decoding_rate=1.25,
@@ -126,6 +128,8 @@ def test_transcribe_processing_time_params_valid_passes_strings() -> None:
         )
 
     # Then: 各 setter に対応する文字列が渡る
+    mock_hrp.setCompleteTimeout.assert_called_once_with("5000")
+    mock_hrp.setWildcardModelPenalty.assert_called_once_with("4.0")
     mock_hrp.setMaxDecodingTime.assert_called_once_with("1000")
     mock_hrp.setMaxResponseTime.assert_called_once_with("2000")
     mock_hrp.setMaxDecodingRate.assert_called_once_with("1.25")
