@@ -43,6 +43,28 @@ print(result.text)
 
 `transcribe()`には、ファイルパス、`pathlib.Path`、`bytes`、バイナリファイルオブジェクトを渡せます。
 
+### 型付き認識結果
+
+`RecognitionResult.results`から発話区間、単語、信頼度、時刻、話者ラベル、言語ラベルを型付きで参照できます。
+
+```python
+result = client.transcribe("audio.wav")
+
+print(result.utterance_id)
+for utterance in result.results:
+    print(utterance.text, utterance.starttime, utterance.endtime)
+    for token in utterance.tokens:
+        print(
+            token.written,
+            token.spoken,
+            token.confidence,
+            token.label,
+            token.language,
+        )
+```
+
+`spoken`、`confidence`、`starttime`、`endtime`、`label`、`language`など、エンジンや設定により省略されるフィールドは`None`になります。`RecognitionResult.raw`、`data`、`text`、`is_error`、`session_id`も引き続き利用できます。
+
 ## WebSocketストリーミング認識
 
 ```python
