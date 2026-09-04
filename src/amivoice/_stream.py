@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterator
 from com.amivoice.wrp.Wrp import Wrp as _Wrp
 from com.amivoice.wrp.WrpListener import WrpListener
 
+from ._billing import resolve_billing_extension
 from ._params import RecognitionParams
 from ._transport import WrpTransport, bool_string
 from .exceptions import ConnectionFailedError, RecognitionError
@@ -237,6 +238,7 @@ def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) 
     interval = None if params.result_updated_interval is None else str(params.result_updated_interval)
     recognition_timeout = None if params.recognition_timeout is None else str(params.recognition_timeout)
     confidence_level = None if params.confidence_level is None else repr(params.confidence_level)
+    extension = resolve_billing_extension(params.extension, params.billing_key)
     no_input_timeout = None if params.no_input_timeout is None else str(params.no_input_timeout)
     optional_setters: tuple[tuple[Callable[[str | None], None], str | None], ...] = (
         (wrp.setGrammarFileNames, params.grammar_file_names),
@@ -249,7 +251,7 @@ def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) 
         (wrp.setProfileWords, params.profile_words),
         (wrp.setSegmenterType, params.segmenter_type),
         (wrp.setSegmenterProperties, params.segmenter_properties),
-        (wrp.setExtension, params.extension),
+        (wrp.setExtension, extension),
         (wrp.setKeepFillerToken, keep_filler),
         (wrp.setResultUpdatedInterval, interval),
         (wrp.setRecognitionTimeout, recognition_timeout),

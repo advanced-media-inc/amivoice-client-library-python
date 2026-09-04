@@ -7,6 +7,7 @@ override を一元管理する。呼び出し時 override は :func:`merge_param
 from dataclasses import dataclass, replace
 from typing import Final
 
+from ._billing import resolve_billing_extension
 from .exceptions import ConfigurationError
 
 
@@ -41,6 +42,7 @@ class RecognitionParams:
     keep_filler_token: bool | None = None
     result_updated_interval: int | None = None
     extension: str | None = None
+    billing_key: str | None = None
     recognition_timeout: int | None = None
     # HRP 専用
     result_encoding: str | None = None
@@ -53,7 +55,8 @@ class RecognitionParams:
     no_input_timeout: int | None = None
 
     def __post_init__(self) -> None:
-        """confidence_level の入力値を検証する"""
+        """認識パラメータの入力値を検証する"""
+        resolve_billing_extension(self.extension, self.billing_key)
         value = self.confidence_level
         if value is None:
             return

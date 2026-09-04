@@ -251,6 +251,42 @@ def test_AmiVoiceClient_transcribe_confidence_level_omitted_valid_not_set() -> N
     mock_hrp.setConfidenceLevel.assert_not_called()
 
 
+def test_AmiVoiceClient_transcribe_billing_key_constructor_default_valid_passes_extension() -> None:
+    """コンストラクタの billing_key が HRP の extension setter に渡ることを確認する"""
+    # Given: billing_key を設定した HRP クライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, billing_key="user01")
+
+    # When: transcribe を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: billing_key 用のコンパクト JSON が extension setter に渡る
+    mock_hrp.setExtension.assert_called_once_with('{"client_info":{"billing_key":"user01"}}')
+
+
+def test_AmiVoiceClient_transcribe_billing_key_call_override_valid_passes_extension() -> None:
+    """Transcribe の billing_key override がインスタンス既定値を上書きすることを確認する"""
+    # Given: billing_key の既定値を設定した HRP クライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, billing_key="default")
+
+    # When: 呼び出し時に billing_key を上書きして transcribe を実行する
+    client.transcribe(b"audio-data", billing_key="override")
+
+    # Then: override の billing_key から生成した JSON が渡る
+    mock_hrp.setExtension.assert_called_once_with('{"client_info":{"billing_key":"override"}}')
+
+
+def test_AmiVoiceClient_transcribe_extension_and_billing_key_invalid_raise_ConfigurationError() -> None:
+    """Transcribe で extension と billing_key を同時指定すると ConfigurationError が送出されることを確認する"""
+    # Given: 既存 extension を設定した HRP クライアント
+    client = AmiVoiceClient(api_key="key", extension="legacy-extension")
+
+    # When / Then: 呼び出し時に billing_key を追加すると ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match="extension and billing_key"):
+        client.transcribe(b"audio-data", billing_key="user01")
+
+
 def test_AmiVoiceClient_transcribe_segmenter_valid_passes_generated_parameter() -> None:
     """型付き segmenter 設定が HRP の setter に渡されることを確認する。"""
     # Given: 型付きセグメンター設定と注入済み HRP トランスポート
@@ -641,6 +677,44 @@ def test_AmiVoiceClient_stream_confidence_level_omitted_valid_not_set() -> None:
 
     # Then: サーバー側のデフォルトに委ねるため setter は呼ばれない
     mock_wrp.setConfidenceLevel.assert_not_called()
+
+
+def test_AmiVoiceClient_stream_billing_key_constructor_default_valid_passes_extension() -> None:
+    """コンストラクタの billing_key が WRP の extension setter に渡ることを確認する"""
+    # Given: billing_key を設定した WebSocket クライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", billing_key="user01")
+
+    # When: billing_key を設定した stream を開く
+    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream() as session:
+        session.end()
+
+    # Then: billing_key 用のコンパクト JSON が extension setter に渡る
+    mock_wrp.setExtension.assert_called_once_with('{"client_info":{"billing_key":"user01"}}')
+
+
+def test_AmiVoiceClient_stream_billing_key_call_override_valid_passes_extension() -> None:
+    """Stream の billing_key override がインスタンス既定値を上書きすることを確認する"""
+    # Given: billing_key の既定値を設定した WebSocket クライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", billing_key="default")
+
+    # When: 呼び出し時に billing_key を上書きして stream を開く
+    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream(billing_key="override") as session:
+        session.end()
+
+    # Then: override の billing_key から生成した JSON が渡る
+    mock_wrp.setExtension.assert_called_once_with('{"client_info":{"billing_key":"override"}}')
+
+
+def test_AmiVoiceClient_stream_extension_and_billing_key_invalid_raise_ConfigurationError() -> None:
+    """Stream で extension と billing_key を同時指定すると ConfigurationError が送出されることを確認する"""
+    # Given: 既存 extension を設定した WebSocket クライアント
+    client = AmiVoiceClient(api_key="key", extension="legacy-extension")
+
+    # When / Then: 呼び出し時に billing_key を追加すると ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match="extension and billing_key"):
+        client.stream(billing_key="user01")
 
 
 def test_AmiVoiceClient_stream_segmenter_and_raw_properties_invalid_raise_ConfigurationError() -> None:

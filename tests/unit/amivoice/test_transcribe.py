@@ -108,6 +108,32 @@ def test_transcribe_confidence_level_valid_passes_repr() -> None:
     mock_hrp.setConfidenceLevel.assert_called_once_with("0.3")
 
 
+def test_transcribe_billing_key_valid_passes_extension() -> None:
+    """モジュールレベル transcribe の billing_key が HRP の extension setter に渡ることを確認する"""
+    # Given: billing_key とモック HRP
+    mock_hrp = _make_mock_hrp()
+
+    # When: billing_key を指定して transcribe を呼び出す
+    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
+        transcribe(b"audio-data", api_key="test-key", billing_key="user01")
+
+    # Then: billing_key 用のコンパクト JSON が extension setter に渡る
+    mock_hrp.setExtension.assert_called_once_with('{"client_info":{"billing_key":"user01"}}')
+
+
+def test_transcribe_extension_and_billing_key_invalid_raise_ConfigurationError() -> None:
+    """モジュールレベル transcribe で extension と billing_key を同時指定すると ConfigurationError が送出されることを確認する"""
+    # Given: 既存 extension と billing_key
+    # When / Then: transcribe の設定で ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match="extension and billing_key"):
+        transcribe(
+            b"audio-data",
+            api_key="test-key",
+            extension="legacy-extension",
+            billing_key="user01",
+        )
+
+
 def test_transcribe_segmenter_and_raw_properties_invalid_raise_ConfigurationError() -> None:
     """モジュールレベル transcribe で設定を同時指定すると ConfigurationError が送出されることを確認する。"""
     # Given: 型付きセグメンター設定

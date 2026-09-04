@@ -2,6 +2,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
+from ._billing import build_billing_extension
 from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager, StreamSession
 from .client import AmiVoiceClient, transcribe
@@ -36,5 +37,6 @@ __all__ = [
     "Token",
     "UtteranceEvent",
     "UtteranceResult",
+    "build_billing_extension",
     "transcribe",
 ]

@@ -99,6 +99,33 @@ result = client.transcribe("audio.wav")
 
 `confidence_level`を指定しない場合はパラメータを送信せず、サーバー側のデフォルト値に委ねます。公式仕様上のデフォルト値は`0.1`ですが、予告なく変更される可能性があります。
 
+### 使用量集計タグ
+
+使用量をユーザーやアプリケーション単位で集計する場合は、`billing_key`を指定します。同期 HTTP と WebSocket の両方で利用できます。
+
+```python
+from amivoice import AmiVoiceClient
+
+client = AmiVoiceClient(billing_key="user01")
+result = client.transcribe("audio.wav")
+
+with client.stream() as session:
+    session.write(audio_chunk)
+    session.end()
+```
+
+`billing_key`は内部で`extension`の専用 JSON 形式に変換されます。既存の`extension`と同時には指定できません。低レベル API に直接渡す場合は、`build_billing_extension()`を使用できます。
+
+```python
+from amivoice import build_billing_extension
+from com.amivoice.hrp.Hrp import Hrp
+
+hrp = Hrp.construct()
+hrp.setExtension(build_billing_extension("user01"))
+```
+
+使用量の確認は、AmiVoice Cloud Platform のマイページにある発話量 CSV を利用してください。
+
 ## WebSocketストリーミング認識
 
 ```python

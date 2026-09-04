@@ -13,6 +13,7 @@ from com.amivoice.hrp.Hrp import Hrp as _Hrp
 from com.amivoice.hrp.HrpListener import HrpListener
 
 from ._audio import resolve_audio
+from ._billing import resolve_billing_extension
 from ._params import UNSET, RecognitionParams, _UnsetType, merge_params
 from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager
@@ -123,6 +124,7 @@ class AmiVoiceClient:
         keep_filler_token: フィラー単語を出力するか。
         result_updated_interval: 途中結果の発行間隔（ミリ秒）。
         extension: 使用量集計タグ。
+        billing_key: 使用量集計タグを専用形式で指定する文字列。
         recognition_timeout: 認識タイムアウト（ミリ秒）。0 は無制限。
         result_encoding: 認識結果の文字エンコーディング（HRP 専用）。
         voice_detection: 発話区間検出パラメータ。
@@ -139,7 +141,8 @@ class AmiVoiceClient:
 
     Raises:
         AuthenticationError: ``api_key`` が指定されず環境変数も設定されていない場合。
-        ConfigurationError: ``segmenter`` と ``segmenter_properties`` を同時指定した場合。
+        ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
+            ``extension`` と ``billing_key`` を同時指定した場合。
 
     Example::
 
@@ -195,6 +198,7 @@ class AmiVoiceClient:
         keep_filler_token: bool | None = None,
         result_updated_interval: int | None = None,
         extension: str | None = None,
+        billing_key: str | None = None,
         recognition_timeout: int | None = None,
         result_encoding: str | None = None,
         voice_detection: str | None = None,
@@ -230,6 +234,7 @@ class AmiVoiceClient:
             keep_filler_token=keep_filler_token,
             result_updated_interval=result_updated_interval,
             extension=extension,
+            billing_key=billing_key,
             recognition_timeout=recognition_timeout,
             result_encoding=result_encoding,
             voice_detection=voice_detection,
@@ -270,6 +275,7 @@ class AmiVoiceClient:
         keep_filler_token: bool | None | _UnsetType = UNSET,
         result_updated_interval: int | None | _UnsetType = UNSET,
         extension: str | None | _UnsetType = UNSET,
+        billing_key: str | None | _UnsetType = UNSET,
         recognition_timeout: int | None | _UnsetType = UNSET,
         result_encoding: str | None | _UnsetType = UNSET,
         voice_detection: str | None | _UnsetType = UNSET,
@@ -303,6 +309,7 @@ class AmiVoiceClient:
             keep_filler_token: フィラー単語出力設定の呼び出し時 override。
             result_updated_interval: 途中結果発行間隔の呼び出し時 override。
             extension: 使用量集計タグの呼び出し時 override。
+            billing_key: 使用量集計タグの呼び出し時 override。
             recognition_timeout: 認識タイムアウト（ミリ秒）の呼び出し時 override。
             result_encoding: 認識結果エンコーディングの呼び出し時 override。
             voice_detection: 発話区間検出パラメータの呼び出し時 override。
@@ -318,7 +325,8 @@ class AmiVoiceClient:
             認識結果。
 
         Raises:
-            ConfigurationError: ``segmenter`` と ``segmenter_properties`` を同時指定した場合。
+            ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
+                ``extension`` と ``billing_key`` を同時指定した場合。
             ConnectionFailedError: AmiVoice API への接続に失敗した場合。
             RecognitionError: 音声認識処理中にエラーが発生した場合。
         """
@@ -339,6 +347,7 @@ class AmiVoiceClient:
             keep_filler_token=keep_filler_token,
             result_updated_interval=result_updated_interval,
             extension=extension,
+            billing_key=billing_key,
             recognition_timeout=recognition_timeout,
             result_encoding=result_encoding,
             voice_detection=voice_detection,
@@ -383,6 +392,7 @@ class AmiVoiceClient:
         interval = None if params.result_updated_interval is None else str(params.result_updated_interval)
         recognition_timeout = None if params.recognition_timeout is None else str(params.recognition_timeout)
         confidence_level = None if params.confidence_level is None else repr(params.confidence_level)
+        extension = resolve_billing_extension(params.extension, params.billing_key)
         optional_setters: "tuple[tuple[Callable[[str | None], None], str | None], ...]" = (
             (hrp.setGrammarFileNames, params.grammar_file_names),
             (hrp.setCodec, params.codec),
@@ -400,7 +410,7 @@ class AmiVoiceClient:
             (hrp.setProfileWords, params.profile_words),
             (hrp.setSegmenterType, params.segmenter_type),
             (hrp.setSegmenterProperties, params.segmenter_properties),
-            (hrp.setExtension, params.extension),
+            (hrp.setExtension, extension),
             (hrp.setKeepFillerToken, keep_filler),
             (hrp.setResultUpdatedInterval, interval),
             (hrp.setRecognitionTimeout, recognition_timeout),
@@ -473,6 +483,7 @@ class AmiVoiceClient:
         keep_filler_token: bool | None | _UnsetType = UNSET,
         result_updated_interval: int | None | _UnsetType = UNSET,
         extension: str | None | _UnsetType = UNSET,
+        billing_key: str | None | _UnsetType = UNSET,
         recognition_timeout: int | None | _UnsetType = UNSET,
         no_input_timeout: int | None | _UnsetType = UNSET,
         api_url: str | _UnsetType = UNSET,
@@ -499,6 +510,7 @@ class AmiVoiceClient:
             keep_filler_token: フィラー単語出力設定の呼び出し時 override。
             result_updated_interval: 途中結果発行間隔の呼び出し時 override。
             extension: 使用量集計タグの呼び出し時 override。
+            billing_key: 使用量集計タグの呼び出し時 override。
             recognition_timeout: 認識タイムアウト（ミリ秒）の呼び出し時 override。
             confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）の呼び出し時 override。
             no_input_timeout: 無入力タイムアウトの呼び出し時 override。
@@ -508,7 +520,8 @@ class AmiVoiceClient:
             ``StreamConnectionManager``。``__enter__`` で ``StreamSession`` を返す。
 
         Raises:
-            ConfigurationError: ``segmenter`` と ``segmenter_properties`` を同時指定した場合。
+            ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
+                ``extension`` と ``billing_key`` を同時指定した場合。
 
         Example::
 
@@ -543,6 +556,7 @@ class AmiVoiceClient:
             keep_filler_token=keep_filler_token,
             result_updated_interval=result_updated_interval,
             extension=extension,
+            billing_key=billing_key,
             recognition_timeout=recognition_timeout,
             no_input_timeout=no_input_timeout,
         )
@@ -581,6 +595,7 @@ def transcribe(  # noqa: PLR0913
     keep_filler_token: bool | None = None,
     result_updated_interval: int | None = None,
     extension: str | None = None,
+    billing_key: str | None = None,
     recognition_timeout: int | None = None,
     result_encoding: str | None = None,
     voice_detection: str | None = None,
@@ -615,6 +630,7 @@ def transcribe(  # noqa: PLR0913
         keep_filler_token: フィラー単語を出力するか。
         result_updated_interval: 途中結果の発行間隔（ミリ秒）。
         extension: 使用量集計タグ。
+        billing_key: 使用量集計タグを専用形式で指定する文字列。
         recognition_timeout: 認識タイムアウト（ミリ秒）。0 は無制限。
         result_encoding: 認識結果の文字エンコーディング。
         voice_detection: 発話区間検出パラメータ。
@@ -631,7 +647,8 @@ def transcribe(  # noqa: PLR0913
 
     Raises:
         AuthenticationError: ``api_key`` が指定されず環境変数も設定されていない場合。
-        ConfigurationError: ``segmenter`` と ``segmenter_properties`` を同時指定した場合。
+        ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
+            ``extension`` と ``billing_key`` を同時指定した場合。
         ConnectionFailedError: AmiVoice API への接続に失敗した場合。
         RecognitionError: 音声認識処理中にエラーが発生した場合。
     """
@@ -652,6 +669,7 @@ def transcribe(  # noqa: PLR0913
         keep_filler_token=keep_filler_token,
         result_updated_interval=result_updated_interval,
         extension=extension,
+        billing_key=billing_key,
         recognition_timeout=recognition_timeout,
         result_encoding=result_encoding,
         voice_detection=voice_detection,
