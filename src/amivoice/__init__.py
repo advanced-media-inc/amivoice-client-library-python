@@ -6,11 +6,13 @@ from ._billing import build_billing_extension
 from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager, StreamSession
 from .client import AmiVoiceClient, transcribe
+from .dictionary import ProfileWord, UserDictionaryClient
 from .exceptions import (
     AmiVoiceError,
     AuthenticationError,
     ConfigurationError,
     ConnectionFailedError,
+    DictionaryApiError,
     RecognitionError,
 )
 from .models import NotificationEvent, RecognitionResult, StreamEvent, StreamEventType, Token, UtteranceEvent, UtteranceResult
@@ -26,7 +28,9 @@ __all__ = [
     "AuthenticationError",
     "ConfigurationError",
     "ConnectionFailedError",
+    "DictionaryApiError",
     "NotificationEvent",
+    "ProfileWord",
     "RecognitionError",
     "RecognitionResult",
     "SegmenterProperties",
@@ -35,6 +39,7 @@ __all__ = [
     "StreamEventType",
     "StreamSession",
     "Token",
+    "UserDictionaryClient",
     "UtteranceEvent",
     "UtteranceResult",
     "build_billing_extension",

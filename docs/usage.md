@@ -161,6 +161,69 @@ hrp.setExtension(build_billing_extension("user01"))
 
 使用量の確認は、AmiVoice Cloud Platform のマイページにある発話量 CSV を利用してください。
 
+## ユーザー辞書管理
+
+ユーザー辞書登録 API を利用すると、プロファイルへ単語を登録・取得・削除できます。API キーは環境変数 `AMIVOICE_API_KEY` から解決されますが、`UserDictionaryClient` のコンストラクタへ渡すこともできます。
+
+```python
+from amivoice import ProfileWord, UserDictionaryClient
+
+# 登録は単語の追加ではなく、指定した一覧による全件置換
+user_dictionary = UserDictionaryClient()
+user_dictionary.register_words(
+    "-a-general",
+    "user01",
+    (
+        ProfileWord(written="AmiVoice", spoken="あみぼいす", classname="固有名詞"),
+        ProfileWord(written="WWW", spoken="とりぷるだぶる"),
+    ),
+    sampling_rate="16k",
+)
+
+words = user_dictionary.get_words("-a-general", "user01", sampling_rate="16k")
+for word in words:
+    print(word.written, word.spoken, word.classname)
+
+# 空の一覧を登録するとプロファイルの単語を全件削除
+user_dictionary.clear_words("-a-general", "user01", sampling_rate="16k")
+
+# ハイブリッドエンジンで利用できるクラス名を取得
+classnames = user_dictionary.list_classnames("-a-general")
+```
+
+End to End エンジンの単語強調では、`alternative_written` と `biasing` を指定します。`biasing` は `0.0` 以上 `1.0` 以下です。
+
+```python
+user_dictionary.register_words(
+    "-a-e2e",
+    "user01",
+    (
+        ProfileWord(
+            written="AmiVoice",
+            alternative_written="あみぼいす",
+            biasing=0.75,
+        ),
+    ),
+)
+```
+
+ハイブリッドエンジンでは 8k 用と 16k 用のプロファイルが分かれるため、音声のサンプリングレートに合わせて `sampling_rate="8k"` または `sampling_rate="16k"` を指定します。省略時は 16k 用のプロファイルが対象です。登録時は既存の単語を保持したい場合も、保持する単語を含む全件を渡してください。
+
+ユーザー辞書はアプリケーションのデータベースなどで保持し、バックアップしてください。プロファイルをマスターデータにせず、API のプロファイルを更新する前にアプリケーションで全件を管理することが推奨されています。
+
+登録した単語を音声認識で利用する場合は、登録時と同じ接続エンジン名を指定し、`profile_id` の先頭に `:` を付けます。
+
+```python
+from amivoice import AmiVoiceClient
+
+recognition_client = AmiVoiceClient(
+    grammar_file_names="-a-general",
+    codec="16K",
+    profile_id=":user01",
+)
+result = recognition_client.transcribe("audio.wav")
+```
+
 ## WebSocketストリーミング認識
 
 ```python
