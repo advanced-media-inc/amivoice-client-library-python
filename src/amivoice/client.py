@@ -14,10 +14,11 @@ from com.amivoice.hrp.HrpListener import HrpListener
 
 from ._audio import resolve_audio
 from ._params import UNSET, RecognitionParams, _UnsetType, merge_params
+from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager
 from ._transport import HrpTransport, WrpTransport, bool_string
 from ._types import AudioSource
-from .exceptions import AuthenticationError, ConnectionFailedError, RecognitionError
+from .exceptions import AuthenticationError, ConfigurationError, ConnectionFailedError, RecognitionError
 from .models import RecognitionResult, parse_result
 
 _DEFAULT_HRP_URL: str = "https://acp-api.amivoice.com/v1/recognize"
@@ -32,6 +33,50 @@ def _construct_hrp_transport() -> HrpTransport:
 def _resolve_url(override: str | _UnsetType, default: str) -> str:
     """呼び出し時 URL override が未指定ならインスタンス既定値を返す。"""
     return override if isinstance(override, str) else default
+
+
+def _resolve_segmenter_properties(
+    segmenter: SegmenterProperties | None,
+    segmenter_properties: str | None,
+) -> str | None:
+    """コンストラクタの型付き設定または生文字列を解決する。
+
+    Args:
+        segmenter: 型付きセグメンター設定
+        segmenter_properties: 既存の生文字列設定
+
+    Returns:
+        トランスポートへ渡すセグメンター設定文字列
+
+    Raises:
+        ConfigurationError: 両方の設定が指定された場合
+    """
+    if segmenter is not None and segmenter_properties is not None:
+        raise ConfigurationError("segmenter and segmenter_properties cannot be specified together")
+    return segmenter.to_parameter() if segmenter is not None else segmenter_properties
+
+
+def _resolve_segmenter_override(
+    segmenter: SegmenterProperties | None | _UnsetType,
+    segmenter_properties: str | None | _UnsetType,
+) -> str | None | _UnsetType:
+    """呼び出し時の型付き segmenter override と生文字列を解決する。
+
+    Args:
+        segmenter: 型付きセグメンター設定または未指定 sentinel
+        segmenter_properties: 既存の生文字列設定または未指定 sentinel
+
+    Returns:
+        トランスポートへ渡すセグメンター設定文字列または未指定 sentinel
+
+    Raises:
+        ConfigurationError: 両方の設定が指定された場合
+    """
+    if not isinstance(segmenter, _UnsetType) and not isinstance(segmenter_properties, _UnsetType):
+        raise ConfigurationError("segmenter and segmenter_properties cannot be specified together")
+    if isinstance(segmenter, _UnsetType):
+        return segmenter_properties
+    return segmenter.to_parameter() if segmenter is not None else None
 
 
 class _HrpListenerAdapter(HrpListener):
@@ -73,6 +118,7 @@ class AmiVoiceClient:
         profile_id: プロファイル ID。
         profile_words: セッション単語登録リスト。
         segmenter_type: セグメンタータイプ。
+        segmenter: 発話検出、話者ダイアライゼーション、言語識別の型付き設定。
         segmenter_properties: セグメンター設定。
         keep_filler_token: フィラー単語を出力するか。
         result_updated_interval: 途中結果の発行間隔（ミリ秒）。
@@ -92,6 +138,7 @@ class AmiVoiceClient:
 
     Raises:
         AuthenticationError: ``api_key`` が指定されず環境変数も設定されていない場合。
+        ConfigurationError: ``segmenter`` と ``segmenter_properties`` を同時指定した場合。
 
     Example::
 
@@ -141,6 +188,7 @@ class AmiVoiceClient:
         profile_id: str | None = None,
         profile_words: str | None = None,
         segmenter_type: str | None = None,
+        segmenter: SegmenterProperties | None = None,
         segmenter_properties: str | None = None,
         keep_filler_token: bool | None = None,
         result_updated_interval: int | None = None,
@@ -163,6 +211,7 @@ class AmiVoiceClient:
         if resolved_key is None:
             raise AuthenticationError("AMIVOICE_API_KEY is not set")
 
+        resolved_segmenter_properties = _resolve_segmenter_properties(segmenter, segmenter_properties)
         self._api_key: str = resolved_key
         self._params = RecognitionParams(
             grammar_file_names=grammar_file_names,
@@ -175,7 +224,7 @@ class AmiVoiceClient:
             profile_id=profile_id,
             profile_words=profile_words,
             segmenter_type=segmenter_type,
-            segmenter_properties=segmenter_properties,
+            segmenter_properties=resolved_segmenter_properties,
             keep_filler_token=keep_filler_token,
             result_updated_interval=result_updated_interval,
             extension=extension,
@@ -212,6 +261,7 @@ class AmiVoiceClient:
         profile_id: str | None | _UnsetType = UNSET,
         profile_words: str | None | _UnsetType = UNSET,
         segmenter_type: str | None | _UnsetType = UNSET,
+        segmenter: SegmenterProperties | None | _UnsetType = UNSET,
         segmenter_properties: str | None | _UnsetType = UNSET,
         keep_filler_token: bool | None | _UnsetType = UNSET,
         result_updated_interval: int | None | _UnsetType = UNSET,
@@ -244,6 +294,7 @@ class AmiVoiceClient:
             profile_id: プロファイル ID の呼び出し時 override。
             profile_words: セッション単語登録リストの呼び出し時 override。
             segmenter_type: セグメンタータイプの呼び出し時 override。
+            segmenter: 型付きセグメンター設定の呼び出し時 override。
             segmenter_properties: セグメンター設定の呼び出し時 override。
             keep_filler_token: フィラー単語出力設定の呼び出し時 override。
             result_updated_interval: 途中結果発行間隔の呼び出し時 override。
@@ -262,9 +313,11 @@ class AmiVoiceClient:
             認識結果。
 
         Raises:
+            ConfigurationError: ``segmenter`` と ``segmenter_properties`` を同時指定した場合。
             ConnectionFailedError: AmiVoice API への接続に失敗した場合。
             RecognitionError: 音声認識処理中にエラーが発生した場合。
         """
+        resolved_segmenter_properties = _resolve_segmenter_override(segmenter, segmenter_properties)
         params = merge_params(
             self._params,
             grammar_file_names=grammar_file_names,
@@ -277,7 +330,7 @@ class AmiVoiceClient:
             profile_id=profile_id,
             profile_words=profile_words,
             segmenter_type=segmenter_type,
-            segmenter_properties=segmenter_properties,
+            segmenter_properties=resolved_segmenter_properties,
             keep_filler_token=keep_filler_token,
             result_updated_interval=result_updated_interval,
             extension=extension,
@@ -406,6 +459,7 @@ class AmiVoiceClient:
         profile_id: str | None | _UnsetType = UNSET,
         profile_words: str | None | _UnsetType = UNSET,
         segmenter_type: str | None | _UnsetType = UNSET,
+        segmenter: SegmenterProperties | None | _UnsetType = UNSET,
         segmenter_properties: str | None | _UnsetType = UNSET,
         keep_filler_token: bool | None | _UnsetType = UNSET,
         result_updated_interval: int | None | _UnsetType = UNSET,
@@ -431,6 +485,7 @@ class AmiVoiceClient:
             profile_id: プロファイル ID の呼び出し時 override。
             profile_words: セッション単語登録リストの呼び出し時 override。
             segmenter_type: セグメンタータイプの呼び出し時 override。
+            segmenter: 型付きセグメンター設定の呼び出し時 override。
             segmenter_properties: セグメンター設定の呼び出し時 override。
             keep_filler_token: フィラー単語出力設定の呼び出し時 override。
             result_updated_interval: 途中結果発行間隔の呼び出し時 override。
@@ -441,6 +496,9 @@ class AmiVoiceClient:
 
         Returns:
             ``StreamConnectionManager``。``__enter__`` で ``StreamSession`` を返す。
+
+        Raises:
+            ConfigurationError: ``segmenter`` と ``segmenter_properties`` を同時指定した場合。
 
         Example::
 
@@ -457,6 +515,7 @@ class AmiVoiceClient:
                         )
                 session.end()
         """
+        resolved_segmenter_properties = _resolve_segmenter_override(segmenter, segmenter_properties)
         params = merge_params(
             self._params,
             grammar_file_names=grammar_file_names,
@@ -469,7 +528,7 @@ class AmiVoiceClient:
             profile_id=profile_id,
             profile_words=profile_words,
             segmenter_type=segmenter_type,
-            segmenter_properties=segmenter_properties,
+            segmenter_properties=resolved_segmenter_properties,
             keep_filler_token=keep_filler_token,
             result_updated_interval=result_updated_interval,
             extension=extension,
@@ -505,6 +564,7 @@ def transcribe(  # noqa: PLR0913
     profile_id: str | None = None,
     profile_words: str | None = None,
     segmenter_type: str | None = None,
+    segmenter: SegmenterProperties | None = None,
     segmenter_properties: str | None = None,
     keep_filler_token: bool | None = None,
     result_updated_interval: int | None = None,
@@ -538,6 +598,7 @@ def transcribe(  # noqa: PLR0913
         profile_id: プロファイル ID。
         profile_words: セッション単語登録リスト。
         segmenter_type: セグメンタータイプ。
+        segmenter: 発話検出、話者ダイアライゼーション、言語識別の型付き設定。
         segmenter_properties: セグメンター設定。
         keep_filler_token: フィラー単語を出力するか。
         result_updated_interval: 途中結果の発行間隔（ミリ秒）。
@@ -557,6 +618,7 @@ def transcribe(  # noqa: PLR0913
 
     Raises:
         AuthenticationError: ``api_key`` が指定されず環境変数も設定されていない場合。
+        ConfigurationError: ``segmenter`` と ``segmenter_properties`` を同時指定した場合。
         ConnectionFailedError: AmiVoice API への接続に失敗した場合。
         RecognitionError: 音声認識処理中にエラーが発生した場合。
     """
@@ -572,6 +634,7 @@ def transcribe(  # noqa: PLR0913
         profile_id=profile_id,
         profile_words=profile_words,
         segmenter_type=segmenter_type,
+        segmenter=segmenter,
         segmenter_properties=segmenter_properties,
         keep_filler_token=keep_filler_token,
         result_updated_interval=result_updated_interval,

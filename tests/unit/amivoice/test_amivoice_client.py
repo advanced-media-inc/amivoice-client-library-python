@@ -7,10 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from amivoice._segmenter import SegmenterProperties
 from amivoice._stream import StreamConnectionManager, StreamSession
 from amivoice.client import _DEFAULT_HRP_URL, _DEFAULT_WRP_URL, AmiVoiceClient
 from amivoice.exceptions import (
     AuthenticationError,
+    ConfigurationError,
     ConnectionFailedError,
     RecognitionError,
 )
@@ -111,6 +113,16 @@ def test_AmiVoiceClient_construction_raises_authentication_error_when_no_key(mon
         AmiVoiceClient()
 
 
+def test_AmiVoiceClient_construction_segmenter_and_raw_properties_invalid_raise_ConfigurationError() -> None:
+    """Segmenter と segmenter_properties を同時指定すると ConfigurationError が送出されることを確認する。"""
+    # Given: 型付き設定と既存の生文字列設定
+    properties = SegmenterProperties(threshold=5000)
+
+    # When / Then: 両方を指定してクライアントを生成すると ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match="segmenter and segmenter_properties"):
+        AmiVoiceClient(api_key="key", segmenter=properties, segmenter_properties="threshold=1000")
+
+
 # ---------------------------------------------------------------------------
 # transcribe() — HRP 経路
 # ---------------------------------------------------------------------------
@@ -198,6 +210,51 @@ def test_AmiVoiceClient_transcribe_recognition_timeout_passed_to_setter() -> Non
 
     # Then
     mock_hrp.setRecognitionTimeout.assert_called_once_with("30000")
+
+
+def test_AmiVoiceClient_transcribe_segmenter_valid_passes_generated_parameter() -> None:
+    """型付き segmenter 設定が HRP の setter に渡されることを確認する。"""
+    # Given: 型付きセグメンター設定と注入済み HRP トランスポート
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(
+        api_key="key",
+        hrp_transport=mock_hrp,
+        segmenter=SegmenterProperties(speaker_diarization=True, diarizer_alpha=1e-20),
+    )
+
+    # When: transcribe を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: 生成された segmenterProperties 文字列が setter に渡される
+    mock_hrp.setSegmenterProperties.assert_called_once_with("useDiarizer=1 diarizerAlpha=1e-20")
+
+
+def test_AmiVoiceClient_transcribe_raw_segmenter_properties_valid_passes_unchanged() -> None:
+    """既存の生 segmenter_properties 文字列がそのまま HRP に渡ることを確認する。"""
+    # Given: 生文字列を指定したクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, segmenter_properties="threshold=5000")
+
+    # When: transcribe を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: 生文字列が変更されず setter に渡される
+    mock_hrp.setSegmenterProperties.assert_called_once_with("threshold=5000")
+
+
+def test_AmiVoiceClient_transcribe_segmenter_and_raw_properties_invalid_raise_ConfigurationError() -> None:
+    """Transcribe で segmenter と生文字列を同時指定すると ConfigurationError が送出されることを確認する。"""
+    # Given: 認証済みクライアントと型付き設定
+    client = AmiVoiceClient(api_key="key")
+    properties = SegmenterProperties(threshold=5000)
+
+    # When / Then: 両方を指定して transcribe すると ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match="segmenter and segmenter_properties"):
+        client.transcribe(
+            b"audio-data",
+            segmenter=properties,
+            segmenter_properties="threshold=1000",
+        )
 
 
 def test_AmiVoiceClient_transcribe_call_args_override_instance_defaults() -> None:
@@ -502,6 +559,32 @@ def test_AmiVoiceClient_stream_uses_constructor_ws_api_url() -> None:
 
     # Then: コンストラクタの ws_api_url が第2引数に渡される
     assert mock_build.call_args.args[1] == custom
+
+
+def test_AmiVoiceClient_stream_segmenter_valid_passes_generated_parameter() -> None:
+    """型付き segmenter 設定が WRP の setter に渡されることを確認する。"""
+    # Given: 型付き設定を指定したクライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key")
+    properties = SegmenterProperties(languages=("ja", "en"))
+
+    # When: 型付き設定で stream を開く
+    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream(segmenter=properties) as session:
+        session.end()
+
+    # Then: 生成された文字列が WRP の setter に渡される
+    mock_wrp.setSegmenterProperties.assert_called_once_with("useLid=ja,en")
+
+
+def test_AmiVoiceClient_stream_segmenter_and_raw_properties_invalid_raise_ConfigurationError() -> None:
+    """Stream で segmenter と生文字列を同時指定すると ConfigurationError が送出されることを確認する。"""
+    # Given: 認証済みクライアントと型付き設定
+    client = AmiVoiceClient(api_key="key")
+    properties = SegmenterProperties(threshold=5000)
+
+    # When / Then: 両方を指定して stream を呼ぶと ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match="segmenter and segmenter_properties"):
+        client.stream(segmenter=properties, segmenter_properties="threshold=1000")
 
 
 def test_AmiVoiceClient_stream_call_args_override_instance_defaults() -> None:

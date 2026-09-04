@@ -2,6 +2,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
+from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager, StreamSession
 from .client import AmiVoiceClient, transcribe
 from .exceptions import (
@@ -27,6 +28,7 @@ __all__ = [
     "NotificationEvent",
     "RecognitionError",
     "RecognitionResult",
+    "SegmenterProperties",
     "StreamConnectionManager",
     "StreamEvent",
     "StreamEventType",

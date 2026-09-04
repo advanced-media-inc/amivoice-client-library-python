@@ -8,9 +8,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from amivoice._segmenter import SegmenterProperties
 from amivoice.client import _DEFAULT_HRP_URL, transcribe
 from amivoice.exceptions import (
     AuthenticationError,
+    ConfigurationError,
     ConnectionFailedError,
     RecognitionError,
 )
@@ -77,6 +79,35 @@ def test_transcribe_custom_api_url_valid_uses_given_url() -> None:
 
     # Then: カスタム URL が setServerURL に渡される
     mock_hrp.setServerURL.assert_called_once_with(custom_url)
+
+
+def test_transcribe_segmenter_valid_passes_generated_parameter() -> None:
+    """モジュールレベル transcribe の型付き設定が HRP に渡されることを確認する。"""
+    # Given: 型付きセグメンター設定とモック HRP
+    mock_hrp = _make_mock_hrp()
+    properties = SegmenterProperties(speaker_diarization=True)
+
+    # When: 型付き設定を指定して transcribe を呼び出す
+    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
+        transcribe(b"audio-data", api_key="test-key", segmenter=properties)
+
+    # Then: 生成された segmenterProperties 文字列が HRP に渡される
+    mock_hrp.setSegmenterProperties.assert_called_once_with("useDiarizer=1")
+
+
+def test_transcribe_segmenter_and_raw_properties_invalid_raise_ConfigurationError() -> None:
+    """モジュールレベル transcribe で設定を同時指定すると ConfigurationError が送出されることを確認する。"""
+    # Given: 型付きセグメンター設定
+    properties = SegmenterProperties(threshold=5000)
+
+    # When / Then: 型付き設定と生文字列を同時指定すると ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match="segmenter and segmenter_properties"):
+        transcribe(
+            b"audio-data",
+            api_key="test-key",
+            segmenter=properties,
+            segmenter_properties="threshold=1000",
+        )
 
 
 def test_transcribe_connection_fails_invalid_raise_ConnectionFailedError() -> None:
