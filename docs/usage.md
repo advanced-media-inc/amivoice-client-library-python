@@ -1,4 +1,4 @@
-# 利用方法
+# AmiVoice Python クライアントで HTTP・WebSocket 認識を利用する
 
 ## インストール
 
@@ -64,6 +64,25 @@ for utterance in result.results:
 ```
 
 `spoken`、`confidence`、`starttime`、`endtime`、`label`、`language`など、エンジンや設定により省略されるフィールドは`None`になります。`RecognitionResult.raw`、`data`、`text`、`is_error`、`session_id`も引き続き利用できます。
+
+### セグメンター設定
+
+発話検出、話者ダイアライゼーション、言語識別は`SegmenterProperties`で指定できます。次の設定は同期 HTTP と WebSocket で利用できます。
+
+```python
+from amivoice import AmiVoiceClient, SegmenterProperties
+
+client = AmiVoiceClient(
+    segmenter=SegmenterProperties(
+        speaker_diarization=True,
+        diarizer_alpha="1e-20",
+        languages=("ja", "en"),
+    ),
+)
+result = client.transcribe("audio.wav")
+```
+
+`segmenter`と既存の`segmenter_properties`は同時に指定できません。`languages`には`ja`、`en`、`zh`、`ko`、`th`を指定できます。言語識別結果と音声認識結果の言語を比較してください。`useLid`を利用する場合は、両者の言語が異なるケースもあります。
 
 ## WebSocketストリーミング認識
 
