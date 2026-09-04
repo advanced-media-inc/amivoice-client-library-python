@@ -62,6 +62,22 @@ def test_segmenter_properties_speaker_diarization_true_valid_return_enabled_flag
     assert parameter == "useDiarizer=1"
 
 
+def test_segmenter_properties_integer_diarizer_values_valid_return_parameter() -> None:
+    """話者ダイアライゼーション調整値に整数を指定できることを確認する。"""
+    # Given: 整数の話者ダイアライゼーション調整値
+    properties = SegmenterProperties(
+        speaker_diarization=True,
+        diarizer_alpha=1,
+        diarizer_transition_bias=2,
+    )
+
+    # When: to_parameter を呼び出す
+    parameter = properties.to_parameter()
+
+    # Then: 整数の調整値が文字列として出力される
+    assert parameter == "useDiarizer=1 diarizerAlpha=1 diarizerTransitionBias=2"
+
+
 def test_segmenter_properties_speaker_diarization_false_valid_return_disabled_flag() -> None:
     """話者ダイアライゼーション無効時に useDiarizer=0 になることを確認する。"""
     # Given: 話者ダイアライゼーションを無効にした設定

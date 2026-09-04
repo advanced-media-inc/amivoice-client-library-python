@@ -33,8 +33,8 @@ class SegmenterProperties:
     decay_time: int | None = None
     # 話者ダイアライゼーション
     speaker_diarization: bool | None = None
-    diarizer_alpha: float | str | None = None
-    diarizer_transition_bias: float | str | None = None
+    diarizer_alpha: int | float | str | None = None
+    diarizer_transition_bias: int | float | str | None = None
     # 言語識別
     languages: tuple[str, ...] | None = None
 
@@ -112,7 +112,7 @@ def _validate_non_negative_integer(field_name: str, value: int | None) -> None:
         raise ConfigurationError(f"Invalid segmenter {field_name}: must be a non-negative integer")
 
 
-def _validate_diarizer_value(field_name: str, value: float | str | None) -> None:
+def _validate_diarizer_value(field_name: str, value: int | float | str | None) -> None:
     """話者ダイアライゼーション調整値の型を検証する。
 
     Args:
@@ -120,19 +120,19 @@ def _validate_diarizer_value(field_name: str, value: float | str | None) -> None
         value: 検証対象の値
 
     Raises:
-        ConfigurationError: 値が浮動小数点数、文字列、None のいずれでもない場合
+        ConfigurationError: 値が整数、浮動小数点数、文字列、None のいずれでもない場合
     """
     if value is None:
         return
-    if isinstance(value, bool) or not isinstance(value, (float, str)):
-        raise ConfigurationError(f"Invalid segmenter {field_name}: must be a float or string")
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ConfigurationError(f"Invalid segmenter {field_name}: must be an integer, float, or string")
 
 
-def _format_diarizer_value(value: float | str) -> str:
+def _format_diarizer_value(value: int | float | str) -> str:
     """話者ダイアライゼーション調整値を文字列化する。
 
     Args:
-        value: 文字列または浮動小数点数の調整値
+        value: 文字列または整数、浮動小数点数の調整値
 
     Returns:
         指定値を保持した文字列表現
