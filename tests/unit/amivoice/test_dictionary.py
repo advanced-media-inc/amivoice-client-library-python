@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from amivoice import DictionaryApiError, ProfileWord, UserDictionaryClient
+from amivoice import ConnectionFailedError, DictionaryApiError, ProfileWord, UserDictionaryClient
 from amivoice.exceptions import AuthenticationError, ConfigurationError
 
 
@@ -16,6 +16,7 @@ class FakeDictionaryTransport:
     """テスト用の辞書 API トランスポート"""
 
     responses: list[tuple[int, bytes]] = field(default_factory=list)
+    error: OSError | None = None
     requests: list[tuple[str, str, dict[str, str], bytes | None]] = field(default_factory=list)
 
     def request(
@@ -27,6 +28,8 @@ class FakeDictionaryTransport:
     ) -> tuple[int, bytes]:
         """リクエストを記録し、キューからレスポンスを返す"""
         self.requests.append((method, url, headers, body))
+        if self.error is not None:
+            raise self.error
         return self.responses.pop(0)
 
 
@@ -177,6 +180,19 @@ def test_dictionary_api_invalid_json_invalid_raise_DictionaryApiError() -> None:
     # When / Then: API 呼び出しで DictionaryApiError が送出される
     with pytest.raises(DictionaryApiError, match="JSON"):
         client.get_words("-a-general", "profile")
+
+
+def test_dictionary_api_network_failure_invalid_raise_ConnectionFailedError() -> None:
+    """通信失敗時に ConnectionFailedError が送出されることを確認する"""
+    # Given: OSError を送出するフェイクトランスポート
+    transport = FakeDictionaryTransport(error=OSError("connection refused"))
+    client = UserDictionaryClient(api_key="test-key", transport=transport)
+
+    # When / Then: API 呼び出しで ConnectionFailedError が送出される
+    with pytest.raises(ConnectionFailedError, match="connection refused") as exc_info:
+        client.get_words("-a-general", "profile")
+
+    assert isinstance(exc_info.value.__cause__, OSError)
 
 
 def test_user_dictionary_client_api_key_missing_invalid_raise_AuthenticationError(monkeypatch: pytest.MonkeyPatch) -> None:

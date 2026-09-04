@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Literal, NoReturn, Protocol
 from urllib.parse import quote, urlsplit
 
-from .exceptions import AuthenticationError, ConfigurationError, DictionaryApiError
+from .exceptions import AuthenticationError, ConfigurationError, ConnectionFailedError, DictionaryApiError
 
 __all__ = ["DictionaryTransport", "ProfileWord", "UserDictionaryClient"]
 
@@ -398,11 +398,19 @@ class UserDictionaryClient:
         return _parse_classnames_response(response_body, status_code)
 
     def _request(self, method: str, url: str, body: bytes | None) -> tuple[int, bytes]:
-        """認証ヘッダー付きで辞書 API にリクエストする"""
+        """認証ヘッダー付きで辞書 API にリクエストする
+
+        Raises:
+            ConnectionFailedError: 通信に失敗した場合
+            DictionaryApiError: API が 2xx 以外のステータスを返した場合
+        """
         headers = {"Authorization": f"Bearer {self._api_key}"}
         if body is not None:
             headers["Content-Type"] = "application/json"
-        status_code, response_body = self._transport.request(method, url, headers, body)
+        try:
+            status_code, response_body = self._transport.request(method, url, headers, body)
+        except OSError as exc:
+            raise ConnectionFailedError(f"Dictionary API connection failed: {exc}") from exc
         if not 200 <= status_code < 300:
             body_text = _response_body_text(response_body)
             raise DictionaryApiError(
