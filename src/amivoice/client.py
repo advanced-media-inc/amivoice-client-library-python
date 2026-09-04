@@ -130,6 +130,7 @@ class AmiVoiceClient:
         content_type: HTTP ``Content-Type`` ヘッダ（HRP 専用）。
         accept: HTTP ``Accept`` ヘッダ（HRP 専用）。
         domain_id: ドメイン ID（HRP 専用）。
+        confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）。
         no_input_timeout: 無入力タイムアウト（ミリ秒）（WRP 専用）。
         http_api_url: HRP（HTTP）API エンドポイント URL の既定値。
         ws_api_url: WRP（WebSocket）API エンドポイント URL の既定値。
@@ -190,6 +191,7 @@ class AmiVoiceClient:
         segmenter_type: str | None = None,
         segmenter: SegmenterProperties | None = None,
         segmenter_properties: str | None = None,
+        confidence_level: float | None = None,
         keep_filler_token: bool | None = None,
         result_updated_interval: int | None = None,
         extension: str | None = None,
@@ -235,6 +237,7 @@ class AmiVoiceClient:
             content_type=content_type,
             accept=accept,
             domain_id=domain_id,
+            confidence_level=confidence_level,
             no_input_timeout=no_input_timeout,
         )
         self._http_api_url = http_api_url
@@ -263,6 +266,7 @@ class AmiVoiceClient:
         segmenter_type: str | None | _UnsetType = UNSET,
         segmenter: SegmenterProperties | None | _UnsetType = UNSET,
         segmenter_properties: str | None | _UnsetType = UNSET,
+        confidence_level: float | None | _UnsetType = UNSET,
         keep_filler_token: bool | None | _UnsetType = UNSET,
         result_updated_interval: int | None | _UnsetType = UNSET,
         extension: str | None | _UnsetType = UNSET,
@@ -306,6 +310,7 @@ class AmiVoiceClient:
             content_type: HTTP ``Content-Type`` ヘッダの呼び出し時 override。
             accept: HTTP ``Accept`` ヘッダの呼び出し時 override。
             domain_id: ドメイン ID の呼び出し時 override。
+            confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）の呼び出し時 override。
             raise_on_error: エラー結果の場合に ``RecognitionError`` を送出するか否か。
             api_url: HRP API エンドポイント URL の呼び出し時 override。
 
@@ -341,6 +346,7 @@ class AmiVoiceClient:
             content_type=content_type,
             accept=accept,
             domain_id=domain_id,
+            confidence_level=confidence_level,
         )
         resolved_url = _resolve_url(api_url, self._http_api_url)
 
@@ -376,6 +382,7 @@ class AmiVoiceClient:
         keep_filler = None if params.keep_filler_token is None else bool_string(params.keep_filler_token)
         interval = None if params.result_updated_interval is None else str(params.result_updated_interval)
         recognition_timeout = None if params.recognition_timeout is None else str(params.recognition_timeout)
+        confidence_level = None if params.confidence_level is None else repr(params.confidence_level)
         optional_setters: "tuple[tuple[Callable[[str | None], None], str | None], ...]" = (
             (hrp.setGrammarFileNames, params.grammar_file_names),
             (hrp.setCodec, params.codec),
@@ -387,6 +394,7 @@ class AmiVoiceClient:
             (hrp.setContentType, params.content_type),
             (hrp.setAccept, params.accept),
             (hrp.setDomainId, params.domain_id),
+            (hrp.setConfidenceLevel, confidence_level),
             (hrp.setMode, params.mode),
             (hrp.setProfileId, params.profile_id),
             (hrp.setProfileWords, params.profile_words),
@@ -461,6 +469,7 @@ class AmiVoiceClient:
         segmenter_type: str | None | _UnsetType = UNSET,
         segmenter: SegmenterProperties | None | _UnsetType = UNSET,
         segmenter_properties: str | None | _UnsetType = UNSET,
+        confidence_level: float | None | _UnsetType = UNSET,
         keep_filler_token: bool | None | _UnsetType = UNSET,
         result_updated_interval: int | None | _UnsetType = UNSET,
         extension: str | None | _UnsetType = UNSET,
@@ -491,6 +500,7 @@ class AmiVoiceClient:
             result_updated_interval: 途中結果発行間隔の呼び出し時 override。
             extension: 使用量集計タグの呼び出し時 override。
             recognition_timeout: 認識タイムアウト（ミリ秒）の呼び出し時 override。
+            confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）の呼び出し時 override。
             no_input_timeout: 無入力タイムアウトの呼び出し時 override。
             api_url: WRP API エンドポイント URL の呼び出し時 override。
 
@@ -529,6 +539,7 @@ class AmiVoiceClient:
             profile_words=profile_words,
             segmenter_type=segmenter_type,
             segmenter_properties=resolved_segmenter_properties,
+            confidence_level=confidence_level,
             keep_filler_token=keep_filler_token,
             result_updated_interval=result_updated_interval,
             extension=extension,
@@ -566,6 +577,7 @@ def transcribe(  # noqa: PLR0913
     segmenter_type: str | None = None,
     segmenter: SegmenterProperties | None = None,
     segmenter_properties: str | None = None,
+    confidence_level: float | None = None,
     keep_filler_token: bool | None = None,
     result_updated_interval: int | None = None,
     extension: str | None = None,
@@ -610,6 +622,7 @@ def transcribe(  # noqa: PLR0913
         content_type: HTTP ``Content-Type`` ヘッダ。
         accept: HTTP ``Accept`` ヘッダ。
         domain_id: ドメイン ID。
+        confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）。
         raise_on_error: エラー結果の場合に ``RecognitionError`` を送出するか否か。
         _transport: テスト用 HRP トランスポート注入口（非公開）。
 
@@ -646,6 +659,7 @@ def transcribe(  # noqa: PLR0913
         content_type=content_type,
         accept=accept,
         domain_id=domain_id,
+        confidence_level=confidence_level,
         hrp_transport=_transport,
     )
     return client.transcribe(audio, raise_on_error=raise_on_error, api_url=api_url)

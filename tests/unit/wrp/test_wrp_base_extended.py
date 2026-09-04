@@ -195,6 +195,25 @@ def test_feed_data_resume_oserror_returns_false_with_error_message() -> None:  #
     assert "can't start feeding data to WebSocket server" in wrp.getLastMessage()
 
 
+def test_feed_data_resume_builds_command_from_confidence_level() -> None:  # noqa: D103
+    wrp = MockWrp(connected=True)
+    wrp.state_ = 0
+    captured: dict[str, bytes] = {}
+
+    def send_request(data: bytes, data_offset: int, data_bytes: int, command: int) -> None:
+        del data_offset, data_bytes, command
+        captured["data"] = data
+        wrp.state_ = 2
+
+    wrp.sendRequest_ = send_request
+    wrp.setConfidenceLevel("0.3")
+
+    result = wrp.feedDataResume()
+
+    assert result is True
+    assert captured["data"] == b"s 16K \x01 confidenceLevel=0.3"
+
+
 # ---------------------------------------------------------------------------
 # feedData() — all branches
 # ---------------------------------------------------------------------------
@@ -501,6 +520,13 @@ def test_on_error_any_active_state_transitions_to_error(active_state: int) -> No
 # ---------------------------------------------------------------------------
 # setServiceAuthorization() — sets authorization_ when non-None
 # ---------------------------------------------------------------------------
+
+
+def test_set_confidence_level_stores_value() -> None:  # noqa: D103
+    wrp = MockWrp()
+    wrp.setConfidenceLevel("0.3")
+
+    assert wrp.confidenceLevel_ == "0.3"
 
 
 def test_set_service_authorization_stores_value() -> None:  # noqa: D103

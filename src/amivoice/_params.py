@@ -7,6 +7,8 @@ override を一元管理する。呼び出し時 override は :func:`merge_param
 from dataclasses import dataclass, replace
 from typing import Final
 
+from .exceptions import ConfigurationError
+
 
 class _UnsetType:
     """キーワード引数未指定を表す内部 sentinel。"""
@@ -35,6 +37,7 @@ class RecognitionParams:
     profile_words: str | None = None
     segmenter_type: str | None = None
     segmenter_properties: str | None = None
+    confidence_level: float | None = None
     keep_filler_token: bool | None = None
     result_updated_interval: int | None = None
     extension: str | None = None
@@ -48,6 +51,14 @@ class RecognitionParams:
     domain_id: str | None = None
     # WRP 専用
     no_input_timeout: int | None = None
+
+    def __post_init__(self) -> None:
+        """confidence_level の入力値を検証する"""
+        value = self.confidence_level
+        if value is None:
+            return
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0.0 <= value <= 1.0:
+            raise ConfigurationError("Invalid confidence_level: must be a number between 0.0 and 1.0")
 
 
 def merge_params(base: RecognitionParams, **overrides: object) -> RecognitionParams:

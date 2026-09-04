@@ -80,6 +80,7 @@ class Hrp:
         self.extension_: str | None = None
         self.authorization_: str | None = None
         self.domainId_: str | None = None
+        self.confidenceLevel_: str | None = None
         self.codec_: str | None = None
         self.resultType_: str | None = None
         self.resultEncoding_: str | None = None
@@ -266,6 +267,14 @@ class Hrp:
             domainId: ドメイン ID の文字列
         """
         self.domainId_ = domainId
+
+    def setConfidenceLevel(self, confidenceLevel: str | None) -> None:
+        """信頼度しきい値を設定する
+
+        Args:
+            confidenceLevel: 信頼度しきい値の文字列
+        """
+        self.confidenceLevel_ = confidenceLevel
 
     def setCodec(self, codec: str | None) -> None:
         """音声コーデックを設定する
@@ -557,6 +566,12 @@ class Hrp:
                     domainId += "recognitionTimeout="
                     with suppress(Exception):
                         domainId += q(self.recognitionTimeout_)
+                if self.confidenceLevel_ is not None:
+                    if len(domainId) > 0:
+                        domainId += " "
+                    domainId += "confidenceLevel="
+                    with suppress(Exception):
+                        domainId += q(self.confidenceLevel_)
                 if self.extension_ is not None:
                     if len(domainId) > 0:
                         domainId += " "

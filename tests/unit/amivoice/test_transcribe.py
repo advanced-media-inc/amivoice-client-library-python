@@ -95,6 +95,19 @@ def test_transcribe_segmenter_valid_passes_generated_parameter() -> None:
     mock_hrp.setSegmenterProperties.assert_called_once_with("useDiarizer=1")
 
 
+def test_transcribe_confidence_level_valid_passes_repr() -> None:
+    """モジュールレベル transcribe の confidence_level が repr 文字列で HRP に渡ることを確認する。"""
+    # Given: confidence_level とモック HRP
+    mock_hrp = _make_mock_hrp()
+
+    # When: confidence_level を指定して transcribe を呼び出す
+    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
+        transcribe(b"audio-data", api_key="test-key", confidence_level=0.3)
+
+    # Then: 小数表記を維持した文字列が setter に渡される
+    mock_hrp.setConfidenceLevel.assert_called_once_with("0.3")
+
+
 def test_transcribe_segmenter_and_raw_properties_invalid_raise_ConfigurationError() -> None:
     """モジュールレベル transcribe で設定を同時指定すると ConfigurationError が送出されることを確認する。"""
     # Given: 型付きセグメンター設定

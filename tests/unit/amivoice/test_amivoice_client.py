@@ -212,6 +212,45 @@ def test_AmiVoiceClient_transcribe_recognition_timeout_passed_to_setter() -> Non
     mock_hrp.setRecognitionTimeout.assert_called_once_with("30000")
 
 
+def test_AmiVoiceClient_transcribe_confidence_level_constructor_default_valid_passes_repr() -> None:
+    """コンストラクタの confidence_level が repr 文字列で HRP に渡ることを確認する。"""
+    # Given: confidence_level を設定した HRP クライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, confidence_level=0.3)
+
+    # When: transcribe を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: 小数表記を維持した文字列が setter に渡される
+    mock_hrp.setConfidenceLevel.assert_called_once_with("0.3")
+
+
+def test_AmiVoiceClient_transcribe_confidence_level_call_override_valid_passes_repr() -> None:
+    """Transcribe の confidence_level override がインスタンス既定値を上書きすることを確認する。"""
+    # Given: confidence_level の既定値を設定した HRP クライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, confidence_level=0.3)
+
+    # When: 呼び出し時に confidence_level を上書きして transcribe を実行する
+    client.transcribe(b"audio-data", confidence_level=0.7)
+
+    # Then: override の値が repr 文字列で setter に渡される
+    mock_hrp.setConfidenceLevel.assert_called_once_with("0.7")
+
+
+def test_AmiVoiceClient_transcribe_confidence_level_omitted_valid_not_set() -> None:
+    """confidence_level 未指定時に HRP の setter が呼ばれないことを確認する。"""
+    # Given: confidence_level を指定していない HRP クライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
+
+    # When: transcribe を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: サーバー側のデフォルトに委ねるため setter は呼ばれない
+    mock_hrp.setConfidenceLevel.assert_not_called()
+
+
 def test_AmiVoiceClient_transcribe_segmenter_valid_passes_generated_parameter() -> None:
     """型付き segmenter 設定が HRP の setter に渡されることを確認する。"""
     # Given: 型付きセグメンター設定と注入済み HRP トランスポート
@@ -574,6 +613,34 @@ def test_AmiVoiceClient_stream_segmenter_valid_passes_generated_parameter() -> N
 
     # Then: 生成された文字列が WRP の setter に渡される
     mock_wrp.setSegmenterProperties.assert_called_once_with("useLid=ja,en")
+
+
+def test_AmiVoiceClient_stream_confidence_level_call_override_valid_passes_repr() -> None:
+    """Stream の confidence_level override が repr 文字列で WRP に渡ることを確認する。"""
+    # Given: confidence_level の既定値を設定したクライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", confidence_level=0.3)
+
+    # When: 呼び出し時に confidence_level を上書きして stream を開く
+    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream(confidence_level=0.7) as session:
+        session.end()
+
+    # Then: override の値が repr 文字列で setter に渡される
+    mock_wrp.setConfidenceLevel.assert_called_once_with("0.7")
+
+
+def test_AmiVoiceClient_stream_confidence_level_omitted_valid_not_set() -> None:
+    """confidence_level 未指定時に WRP の setter が呼ばれないことを確認する。"""
+    # Given: confidence_level を指定していないクライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key")
+
+    # When: confidence_level を指定せず stream を開く
+    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream() as session:
+        session.end()
+
+    # Then: サーバー側のデフォルトに委ねるため setter は呼ばれない
+    mock_wrp.setConfidenceLevel.assert_not_called()
 
 
 def test_AmiVoiceClient_stream_segmenter_and_raw_properties_invalid_raise_ConfigurationError() -> None:

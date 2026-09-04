@@ -76,6 +76,7 @@ class Wrp:
         self.targetDecodingRate_ = None
         self.noInputTimeout_ = None
         self.recognitionTimeout_ = None
+        self.confidenceLevel_: str | None = None
         self.extension_ = None
         self.authorization_ = None
         self.codec_ = None
@@ -252,6 +253,14 @@ class Wrp:
             recognitionTimeout: 認識処理タイムアウトの文字列（ミリ秒）
         """
         self.recognitionTimeout_ = recognitionTimeout
+
+    def setConfidenceLevel(self, confidenceLevel: str | None) -> None:
+        """信頼度しきい値を設定する
+
+        Args:
+            confidenceLevel: 信頼度しきい値の文字列
+        """
+        self.confidenceLevel_ = confidenceLevel
 
     def setExtension(self, extension: str | None) -> None:
         """使用量集計タグを設定する
@@ -549,6 +558,14 @@ class Wrp:
                     command += '"'
                 else:
                     command += self.recognitionTimeout_
+            if self.confidenceLevel_ is not None:
+                command += " confidenceLevel="
+                if self.confidenceLevel_.find(" ") != -1:
+                    command += '"'
+                    command += self.confidenceLevel_
+                    command += '"'
+                else:
+                    command += self.confidenceLevel_
             if self.extension_ is not None:
                 command += " extension="
                 if self.extension_.find(" ") != -1 or self.extension_.find('"') != -1:

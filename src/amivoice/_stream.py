@@ -236,6 +236,7 @@ def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) 
     keep_filler = None if params.keep_filler_token is None else bool_string(params.keep_filler_token)
     interval = None if params.result_updated_interval is None else str(params.result_updated_interval)
     recognition_timeout = None if params.recognition_timeout is None else str(params.recognition_timeout)
+    confidence_level = None if params.confidence_level is None else repr(params.confidence_level)
     no_input_timeout = None if params.no_input_timeout is None else str(params.no_input_timeout)
     optional_setters: tuple[tuple[Callable[[str | None], None], str | None], ...] = (
         (wrp.setGrammarFileNames, params.grammar_file_names),
@@ -252,6 +253,7 @@ def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) 
         (wrp.setKeepFillerToken, keep_filler),
         (wrp.setResultUpdatedInterval, interval),
         (wrp.setRecognitionTimeout, recognition_timeout),
+        (wrp.setConfidenceLevel, confidence_level),
         (wrp.setNoInputTimeout, no_input_timeout),
     )
     for setter, value in optional_setters:

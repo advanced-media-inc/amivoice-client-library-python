@@ -327,6 +327,19 @@ def test_feed_data_resume_builds_domain_id_from_segmenter_properties() -> None: 
     assert "segmenterProperties=" in captured["domainId"]
 
 
+def test_feed_data_resume_builds_domain_id_from_confidence_level() -> None:  # noqa: D103
+    hrp = MockHrp(connected=True)
+    hrp.state_ = 0
+    captured = {}
+
+    hrp.sendRequestHeader_ = _capture_header(captured, hrp)
+    hrp.setConfidenceLevel("0.3")
+
+    hrp.feedDataResume()
+
+    assert captured["domainId"] == "confidenceLevel=0.3"
+
+
 def test_feed_data_resume_builds_domain_id_from_keep_filler_token() -> None:  # noqa: D103
     hrp = MockHrp(connected=True)
     hrp.state_ = 0
@@ -732,6 +745,13 @@ def test_on_message_without_listener_does_not_raise() -> None:  # noqa: D103
     hrp = MockHrp()
 
     hrp.onMessage_('{"text":"hello world"}')
+
+
+def test_set_confidence_level_stores_value() -> None:  # noqa: D103
+    hrp = MockHrp()
+    hrp.setConfidenceLevel("0.3")
+
+    assert hrp.confidenceLevel_ == "0.3"
 
 
 def test_set_service_authorization_stores_value() -> None:  # noqa: D103

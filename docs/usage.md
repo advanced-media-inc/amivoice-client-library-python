@@ -84,6 +84,21 @@ result = client.transcribe("audio.wav")
 
 `segmenter`と既存の`segmenter_properties`は同時に指定できません。`languages`には`ja`、`en`、`zh`、`ko`、`th`を指定できます。言語識別結果と音声認識結果の言語を比較してください。`useLid`を利用する場合は、両者の言語が異なるケースもあります。
 
+### 信頼度しきい値
+
+発話区間の認識結果を信頼度しきい値でリジェクトする場合は、`confidence_level`を指定します。同期 HTTP と WebSocket の両方で利用でき、指定可能な範囲は`0.0`以上`1.0`以下です。
+
+```python
+from amivoice import AmiVoiceClient
+
+client = AmiVoiceClient(confidence_level=0.3)
+result = client.transcribe("audio.wav")
+```
+
+指定した値未満の発話区間はサーバー側でリジェクトされます。リジェクトされた結果はレスポンスコードが`o`となり、認識結果として成功扱いですが、`text`が空になることがあります。`1.0`を指定すると、ほとんどの認識結果がリジェクトされるため、値は用途に合わせて設定してください。
+
+`confidence_level`を指定しない場合はパラメータを送信せず、サーバー側のデフォルト値に委ねます。公式仕様上のデフォルト値は`0.1`ですが、予告なく変更される可能性があります。
+
 ## WebSocketストリーミング認識
 
 ```python
