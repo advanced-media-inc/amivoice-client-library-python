@@ -212,6 +212,172 @@ def test_AmiVoiceClient_transcribe_recognition_timeout_passed_to_setter() -> Non
     mock_hrp.setRecognitionTimeout.assert_called_once_with("30000")
 
 
+@pytest.mark.parametrize(
+    ("parameter_name", "setter_name", "value", "expected"),
+    [
+        ("max_decoding_time", "setMaxDecodingTime", 1000, "1000"),
+        ("max_response_time", "setMaxResponseTime", 2000, "2000"),
+        ("max_decoding_rate", "setMaxDecodingRate", 1.25, "1.25"),
+        ("target_response_time", "setTargetResponseTime", 3000, "3000"),
+        ("target_decoding_rate", "setTargetDecodingRate", -1.0, "-1.0"),
+    ],
+)
+def test_AmiVoiceClient_transcribe_processing_parameter_constructor_default_valid_passes_string(
+    parameter_name: str,
+    setter_name: str,
+    value: int | float,
+    expected: str,
+) -> None:
+    """コンストラクタの処理時間制御パラメータが HRP setter に文字列で渡ることを確認する"""
+    # Given: 処理時間制御パラメータを設定した HRP クライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, **{parameter_name: value})
+
+    # When: transcribe を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: 対応する setter に文字列で値が渡る
+    getattr(mock_hrp, setter_name).assert_called_once_with(expected)
+
+
+@pytest.mark.parametrize(
+    ("parameter_name", "setter_name", "default_value", "override_value", "expected"),
+    [
+        ("max_decoding_time", "setMaxDecodingTime", 1000, 2000, "2000"),
+        ("max_response_time", "setMaxResponseTime", 2000, 3000, "3000"),
+        ("max_decoding_rate", "setMaxDecodingRate", 1.25, 2.5, "2.5"),
+        ("target_response_time", "setTargetResponseTime", 3000, 4000, "4000"),
+        ("target_decoding_rate", "setTargetDecodingRate", -1.0, 0.75, "0.75"),
+    ],
+)
+def test_AmiVoiceClient_transcribe_processing_parameter_call_override_valid_passes_string(
+    parameter_name: str,
+    setter_name: str,
+    default_value: int | float,
+    override_value: int | float,
+    expected: str,
+) -> None:
+    """Transcribe の処理時間制御パラメータ override が既定値を上書きすることを確認する"""
+    # Given: 処理時間制御パラメータの既定値を設定した HRP クライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, **{parameter_name: default_value})
+
+    # When: 呼び出し時に処理時間制御パラメータを上書きして transcribe を実行する
+    client.transcribe(b"audio-data", **{parameter_name: override_value})
+
+    # Then: override の値が対応する setter に文字列で渡る
+    getattr(mock_hrp, setter_name).assert_called_once_with(expected)
+
+
+@pytest.mark.parametrize(
+    "setter_name",
+    [
+        "setMaxDecodingTime",
+        "setMaxResponseTime",
+        "setMaxDecodingRate",
+        "setTargetResponseTime",
+        "setTargetDecodingRate",
+    ],
+)
+def test_AmiVoiceClient_transcribe_processing_parameter_omitted_valid_not_set(setter_name: str) -> None:
+    """処理時間制御パラメータ未指定時に HRP setter が呼ばれないことを確認する"""
+    # Given: 処理時間制御パラメータを指定していない HRP クライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
+
+    # When: transcribe を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: サーバー側のデフォルトに委ねるため setter は呼ばれない
+    getattr(mock_hrp, setter_name).assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("parameter_name", "setter_name", "value", "expected"),
+    [
+        ("max_decoding_time", "setMaxDecodingTime", 1000, "1000"),
+        ("max_response_time", "setMaxResponseTime", 2000, "2000"),
+        ("max_decoding_rate", "setMaxDecodingRate", 1.25, "1.25"),
+        ("target_response_time", "setTargetResponseTime", 3000, "3000"),
+        ("target_decoding_rate", "setTargetDecodingRate", -1.0, "-1.0"),
+    ],
+)
+def test_AmiVoiceClient_stream_processing_parameter_constructor_default_valid_passes_string(
+    parameter_name: str,
+    setter_name: str,
+    value: int | float,
+    expected: str,
+) -> None:
+    """コンストラクタの処理時間制御パラメータが WRP setter に文字列で渡ることを確認する"""
+    # Given: 処理時間制御パラメータを設定した WebSocket クライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", **{parameter_name: value})
+
+    # When: stream を開く
+    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream() as session:
+        session.end()
+
+    # Then: 対応する setter に文字列で値が渡る
+    getattr(mock_wrp, setter_name).assert_called_once_with(expected)
+
+
+@pytest.mark.parametrize(
+    ("parameter_name", "setter_name", "default_value", "override_value", "expected"),
+    [
+        ("max_decoding_time", "setMaxDecodingTime", 1000, 2000, "2000"),
+        ("max_response_time", "setMaxResponseTime", 2000, 3000, "3000"),
+        ("max_decoding_rate", "setMaxDecodingRate", 1.25, 2.5, "2.5"),
+        ("target_response_time", "setTargetResponseTime", 3000, 4000, "4000"),
+        ("target_decoding_rate", "setTargetDecodingRate", -1.0, 0.75, "0.75"),
+    ],
+)
+def test_AmiVoiceClient_stream_processing_parameter_call_override_valid_passes_string(
+    parameter_name: str,
+    setter_name: str,
+    default_value: int | float,
+    override_value: int | float,
+    expected: str,
+) -> None:
+    """Stream の処理時間制御パラメータ override が既定値を上書きすることを確認する"""
+    # Given: 処理時間制御パラメータの既定値を設定した WebSocket クライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", **{parameter_name: default_value})
+
+    # When: 呼び出し時に処理時間制御パラメータを上書きして stream を開く
+    with (
+        patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
+        client.stream(**{parameter_name: override_value}) as session,
+    ):
+        session.end()
+
+    # Then: override の値が対応する setter に文字列で渡る
+    getattr(mock_wrp, setter_name).assert_called_once_with(expected)
+
+
+@pytest.mark.parametrize(
+    "setter_name",
+    [
+        "setMaxDecodingTime",
+        "setMaxResponseTime",
+        "setMaxDecodingRate",
+        "setTargetResponseTime",
+        "setTargetDecodingRate",
+    ],
+)
+def test_AmiVoiceClient_stream_processing_parameter_omitted_valid_not_set(setter_name: str) -> None:
+    """処理時間制御パラメータ未指定時に WRP setter が呼ばれないことを確認する"""
+    # Given: 処理時間制御パラメータを指定していない WebSocket クライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key")
+
+    # When: stream を開く
+    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream() as session:
+        session.end()
+
+    # Then: サーバー側のデフォルトに委ねるため setter は呼ばれない
+    getattr(mock_wrp, setter_name).assert_not_called()
+
+
 def test_AmiVoiceClient_transcribe_confidence_level_constructor_default_valid_passes_repr() -> None:
     """コンストラクタの confidence_level が repr 文字列で HRP に渡ることを確認する。"""
     # Given: confidence_level を設定した HRP クライアント

@@ -50,3 +50,70 @@ def test_recognition_params_confidence_level_string_invalid_raise_ConfigurationE
     # When / Then: RecognitionParams の生成で ConfigurationError が送出される
     with pytest.raises(ConfigurationError, match="confidence_level"):
         RecognitionParams(confidence_level="0.3")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("field_name", ["max_decoding_time", "max_response_time", "target_response_time"])
+def test_recognition_params_processing_time_negative_invalid_raise_ConfigurationError(field_name: str) -> None:
+    """処理時間パラメータに負値を指定した場合に ConfigurationError が送出されることを確認する"""
+    # Given: 負の処理時間パラメータ
+    # When / Then: RecognitionParams の生成で ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match=field_name):
+        RecognitionParams(**{field_name: -1})
+
+
+@pytest.mark.parametrize("field_name", ["max_decoding_time", "max_response_time", "target_response_time"])
+def test_recognition_params_processing_time_non_negative_valid_return_params(field_name: str) -> None:
+    """処理時間パラメータに非負整数を指定できることを確認する"""
+    # Given: 0 の処理時間パラメータ
+    # When: RecognitionParams を生成する
+    params = RecognitionParams(**{field_name: 0})
+
+    # Then: 指定した値が保持される
+    assert getattr(params, field_name) == 0
+
+
+@pytest.mark.parametrize("field_name", ["max_decoding_rate", "target_decoding_rate"])
+def test_recognition_params_processing_rate_negative_valid_return_params(field_name: str) -> None:
+    """処理レートパラメータの負値を無効指定として許容することを確認する"""
+    # Given: 無効指定を表す負の処理レート
+    # When: RecognitionParams を生成する
+    params = RecognitionParams(**{field_name: -1.0})
+
+    # Then: 指定した負値が保持される
+    assert getattr(params, field_name) == -1.0
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "max_decoding_time",
+        "max_response_time",
+        "max_decoding_rate",
+        "target_response_time",
+        "target_decoding_rate",
+    ],
+)
+def test_recognition_params_processing_parameter_bool_invalid_raise_ConfigurationError(field_name: str) -> None:
+    """処理時間制御パラメータに bool を指定した場合に ConfigurationError が送出されることを確認する"""
+    # Given: bool の処理時間制御パラメータ
+    # When / Then: RecognitionParams の生成で ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match=field_name):
+        RecognitionParams(**{field_name: True})  # type: ignore[arg-type]
+
+
+def test_recognition_params_processing_rate_non_numeric_invalid_raise_ConfigurationError() -> None:
+    """処理レートパラメータに数値以外を指定した場合に ConfigurationError が送出されることを確認する"""
+    # Given: 文字列の処理レートパラメータ
+    # When / Then: RecognitionParams の生成で ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match="max_decoding_rate"):
+        RecognitionParams(max_decoding_rate="1.0")  # type: ignore[arg-type]
+
+
+def test_merge_params_processing_time_override_negative_invalid_raise_ConfigurationError() -> None:
+    """処理時間パラメータの override に負値を指定した場合に ConfigurationError が送出されることを確認する"""
+    # Given: 既定値を持つ認識パラメータ
+    base = RecognitionParams(max_decoding_time=1000)
+
+    # When / Then: override に負値を指定すると ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match="max_decoding_time"):
+        merge_params(base, max_decoding_time=-1)

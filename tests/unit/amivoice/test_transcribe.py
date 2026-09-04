@@ -108,6 +108,31 @@ def test_transcribe_confidence_level_valid_passes_repr() -> None:
     mock_hrp.setConfidenceLevel.assert_called_once_with("0.3")
 
 
+def test_transcribe_processing_time_params_valid_passes_strings() -> None:
+    """モジュールレベル transcribe の処理時間制御パラメータが文字列で HRP に渡ることを確認する"""
+    # Given: 処理時間制御パラメータとモック HRP
+    mock_hrp = _make_mock_hrp()
+
+    # When: 処理時間制御パラメータを指定して transcribe を呼び出す
+    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
+        transcribe(
+            b"audio-data",
+            api_key="test-key",
+            max_decoding_time=1000,
+            max_response_time=2000,
+            max_decoding_rate=1.25,
+            target_response_time=3000,
+            target_decoding_rate=-1.0,
+        )
+
+    # Then: 各 setter に対応する文字列が渡る
+    mock_hrp.setMaxDecodingTime.assert_called_once_with("1000")
+    mock_hrp.setMaxResponseTime.assert_called_once_with("2000")
+    mock_hrp.setMaxDecodingRate.assert_called_once_with("1.25")
+    mock_hrp.setTargetResponseTime.assert_called_once_with("3000")
+    mock_hrp.setTargetDecodingRate.assert_called_once_with("-1.0")
+
+
 def test_transcribe_billing_key_valid_passes_extension() -> None:
     """モジュールレベル transcribe の billing_key が HRP の extension setter に渡ることを確認する"""
     # Given: billing_key とモック HRP

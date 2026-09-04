@@ -126,6 +126,11 @@ class AmiVoiceClient:
         extension: 使用量集計タグ。
         billing_key: 使用量集計タグを専用形式で指定する文字列。
         recognition_timeout: 認識タイムアウト（ミリ秒）。0 は無制限。
+        max_decoding_time: 認識処理時間の上限（ミリ秒）、0 は無効
+        max_response_time: 音声時間に加える応答時間の上限（ミリ秒）、リアルタイム録音時のみ有効、0 は無効
+        max_decoding_rate: 音声時間に対する認識処理時間倍率の上限、バッチ音声のみ有効、負値は無効
+        target_response_time: 暫定結果の目標応答時間（ミリ秒）、リアルタイム録音時のみ有効、0 は無効
+        target_decoding_rate: 暫定結果の目標認識処理時間倍率、バッチ音声のみ有効、負値は無効
         result_encoding: 認識結果の文字エンコーディング（HRP 専用）。
         voice_detection: 発話区間検出パラメータ。
         accept_topic: HTTP ``Accept-Topic`` ヘッダ（HRP 専用）。
@@ -200,6 +205,11 @@ class AmiVoiceClient:
         extension: str | None = None,
         billing_key: str | None = None,
         recognition_timeout: int | None = None,
+        max_decoding_time: int | None = None,
+        max_response_time: int | None = None,
+        max_decoding_rate: float | None = None,
+        target_response_time: int | None = None,
+        target_decoding_rate: float | None = None,
         result_encoding: str | None = None,
         voice_detection: str | None = None,
         accept_topic: str | None = None,
@@ -243,6 +253,11 @@ class AmiVoiceClient:
             accept=accept,
             domain_id=domain_id,
             confidence_level=confidence_level,
+            max_decoding_time=max_decoding_time,
+            max_response_time=max_response_time,
+            max_decoding_rate=max_decoding_rate,
+            target_response_time=target_response_time,
+            target_decoding_rate=target_decoding_rate,
             no_input_timeout=no_input_timeout,
         )
         self._http_api_url = http_api_url
@@ -277,6 +292,11 @@ class AmiVoiceClient:
         extension: str | None | _UnsetType = UNSET,
         billing_key: str | None | _UnsetType = UNSET,
         recognition_timeout: int | None | _UnsetType = UNSET,
+        max_decoding_time: int | None | _UnsetType = UNSET,
+        max_response_time: int | None | _UnsetType = UNSET,
+        max_decoding_rate: float | None | _UnsetType = UNSET,
+        target_response_time: int | None | _UnsetType = UNSET,
+        target_decoding_rate: float | None | _UnsetType = UNSET,
         result_encoding: str | None | _UnsetType = UNSET,
         voice_detection: str | None | _UnsetType = UNSET,
         accept_topic: str | None | _UnsetType = UNSET,
@@ -311,6 +331,11 @@ class AmiVoiceClient:
             extension: 使用量集計タグの呼び出し時 override。
             billing_key: 使用量集計タグの呼び出し時 override。
             recognition_timeout: 認識タイムアウト（ミリ秒）の呼び出し時 override。
+            max_decoding_time: 認識処理時間の上限（ミリ秒）の呼び出し時 override、0 は無効
+            max_response_time: 応答時間の上限（ミリ秒）の呼び出し時 override、リアルタイム録音時のみ有効、0 は無効
+            max_decoding_rate: 認識処理時間倍率の上限の呼び出し時 override、バッチ音声のみ有効、負値は無効
+            target_response_time: 目標応答時間（ミリ秒）の呼び出し時 override、リアルタイム録音時のみ有効、0 は無効
+            target_decoding_rate: 目標認識処理時間倍率の呼び出し時 override、バッチ音声のみ有効、負値は無効
             result_encoding: 認識結果エンコーディングの呼び出し時 override。
             voice_detection: 発話区間検出パラメータの呼び出し時 override。
             accept_topic: HTTP ``Accept-Topic`` ヘッダの呼び出し時 override。
@@ -356,6 +381,11 @@ class AmiVoiceClient:
             accept=accept,
             domain_id=domain_id,
             confidence_level=confidence_level,
+            max_decoding_time=max_decoding_time,
+            max_response_time=max_response_time,
+            max_decoding_rate=max_decoding_rate,
+            target_response_time=target_response_time,
+            target_decoding_rate=target_decoding_rate,
         )
         resolved_url = _resolve_url(api_url, self._http_api_url)
 
@@ -391,6 +421,11 @@ class AmiVoiceClient:
         keep_filler = None if params.keep_filler_token is None else bool_string(params.keep_filler_token)
         interval = None if params.result_updated_interval is None else str(params.result_updated_interval)
         recognition_timeout = None if params.recognition_timeout is None else str(params.recognition_timeout)
+        max_decoding_time = None if params.max_decoding_time is None else str(params.max_decoding_time)
+        max_response_time = None if params.max_response_time is None else str(params.max_response_time)
+        max_decoding_rate = None if params.max_decoding_rate is None else repr(params.max_decoding_rate)
+        target_response_time = None if params.target_response_time is None else str(params.target_response_time)
+        target_decoding_rate = None if params.target_decoding_rate is None else repr(params.target_decoding_rate)
         confidence_level = None if params.confidence_level is None else repr(params.confidence_level)
         extension = resolve_billing_extension(params.extension, params.billing_key)
         optional_setters: "tuple[tuple[Callable[[str | None], None], str | None], ...]" = (
@@ -414,6 +449,11 @@ class AmiVoiceClient:
             (hrp.setKeepFillerToken, keep_filler),
             (hrp.setResultUpdatedInterval, interval),
             (hrp.setRecognitionTimeout, recognition_timeout),
+            (hrp.setMaxDecodingTime, max_decoding_time),
+            (hrp.setMaxResponseTime, max_response_time),
+            (hrp.setMaxDecodingRate, max_decoding_rate),
+            (hrp.setTargetResponseTime, target_response_time),
+            (hrp.setTargetDecodingRate, target_decoding_rate),
         )
         for setter, value in optional_setters:
             if value is not None:
@@ -485,6 +525,11 @@ class AmiVoiceClient:
         extension: str | None | _UnsetType = UNSET,
         billing_key: str | None | _UnsetType = UNSET,
         recognition_timeout: int | None | _UnsetType = UNSET,
+        max_decoding_time: int | None | _UnsetType = UNSET,
+        max_response_time: int | None | _UnsetType = UNSET,
+        max_decoding_rate: float | None | _UnsetType = UNSET,
+        target_response_time: int | None | _UnsetType = UNSET,
+        target_decoding_rate: float | None | _UnsetType = UNSET,
         no_input_timeout: int | None | _UnsetType = UNSET,
         api_url: str | _UnsetType = UNSET,
     ) -> StreamConnectionManager:
@@ -512,6 +557,11 @@ class AmiVoiceClient:
             extension: 使用量集計タグの呼び出し時 override。
             billing_key: 使用量集計タグの呼び出し時 override。
             recognition_timeout: 認識タイムアウト（ミリ秒）の呼び出し時 override。
+            max_decoding_time: 認識処理時間の上限（ミリ秒）の呼び出し時 override、0 は無効
+            max_response_time: 応答時間の上限（ミリ秒）の呼び出し時 override、リアルタイム録音時のみ有効、0 は無効
+            max_decoding_rate: 認識処理時間倍率の上限の呼び出し時 override、バッチ音声のみ有効、負値は無効
+            target_response_time: 目標応答時間（ミリ秒）の呼び出し時 override、リアルタイム録音時のみ有効、0 は無効
+            target_decoding_rate: 目標認識処理時間倍率の呼び出し時 override、バッチ音声のみ有効、負値は無効
             confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）の呼び出し時 override。
             no_input_timeout: 無入力タイムアウトの呼び出し時 override。
             api_url: WRP API エンドポイント URL の呼び出し時 override。
@@ -553,6 +603,11 @@ class AmiVoiceClient:
             segmenter_type=segmenter_type,
             segmenter_properties=resolved_segmenter_properties,
             confidence_level=confidence_level,
+            max_decoding_time=max_decoding_time,
+            max_response_time=max_response_time,
+            max_decoding_rate=max_decoding_rate,
+            target_response_time=target_response_time,
+            target_decoding_rate=target_decoding_rate,
             keep_filler_token=keep_filler_token,
             result_updated_interval=result_updated_interval,
             extension=extension,
@@ -597,6 +652,11 @@ def transcribe(  # noqa: PLR0913
     extension: str | None = None,
     billing_key: str | None = None,
     recognition_timeout: int | None = None,
+    max_decoding_time: int | None = None,
+    max_response_time: int | None = None,
+    max_decoding_rate: float | None = None,
+    target_response_time: int | None = None,
+    target_decoding_rate: float | None = None,
     result_encoding: str | None = None,
     voice_detection: str | None = None,
     accept_topic: str | None = None,
@@ -632,6 +692,11 @@ def transcribe(  # noqa: PLR0913
         extension: 使用量集計タグ。
         billing_key: 使用量集計タグを専用形式で指定する文字列。
         recognition_timeout: 認識タイムアウト（ミリ秒）。0 は無制限。
+        max_decoding_time: 認識処理時間の上限（ミリ秒）、0 は無効
+        max_response_time: 音声時間に加える応答時間の上限（ミリ秒）、リアルタイム録音時のみ有効、0 は無効
+        max_decoding_rate: 音声時間に対する認識処理時間倍率の上限、バッチ音声のみ有効、負値は無効
+        target_response_time: 暫定結果の目標応答時間（ミリ秒）、リアルタイム録音時のみ有効、0 は無効
+        target_decoding_rate: 暫定結果の目標認識処理時間倍率、バッチ音声のみ有効、負値は無効
         result_encoding: 認識結果の文字エンコーディング。
         voice_detection: 発話区間検出パラメータ。
         accept_topic: HTTP ``Accept-Topic`` ヘッダ。
@@ -678,6 +743,11 @@ def transcribe(  # noqa: PLR0913
         accept=accept,
         domain_id=domain_id,
         confidence_level=confidence_level,
+        max_decoding_time=max_decoding_time,
+        max_response_time=max_response_time,
+        max_decoding_rate=max_decoding_rate,
+        target_response_time=target_response_time,
+        target_decoding_rate=target_decoding_rate,
         hrp_transport=_transport,
     )
     return client.transcribe(audio, raise_on_error=raise_on_error, api_url=api_url)

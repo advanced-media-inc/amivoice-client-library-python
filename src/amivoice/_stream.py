@@ -237,6 +237,11 @@ def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) 
     keep_filler = None if params.keep_filler_token is None else bool_string(params.keep_filler_token)
     interval = None if params.result_updated_interval is None else str(params.result_updated_interval)
     recognition_timeout = None if params.recognition_timeout is None else str(params.recognition_timeout)
+    max_decoding_time = None if params.max_decoding_time is None else str(params.max_decoding_time)
+    max_response_time = None if params.max_response_time is None else str(params.max_response_time)
+    max_decoding_rate = None if params.max_decoding_rate is None else repr(params.max_decoding_rate)
+    target_response_time = None if params.target_response_time is None else str(params.target_response_time)
+    target_decoding_rate = None if params.target_decoding_rate is None else repr(params.target_decoding_rate)
     confidence_level = None if params.confidence_level is None else repr(params.confidence_level)
     extension = resolve_billing_extension(params.extension, params.billing_key)
     no_input_timeout = None if params.no_input_timeout is None else str(params.no_input_timeout)
@@ -255,6 +260,11 @@ def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) 
         (wrp.setKeepFillerToken, keep_filler),
         (wrp.setResultUpdatedInterval, interval),
         (wrp.setRecognitionTimeout, recognition_timeout),
+        (wrp.setMaxDecodingTime, max_decoding_time),
+        (wrp.setMaxResponseTime, max_response_time),
+        (wrp.setMaxDecodingRate, max_decoding_rate),
+        (wrp.setTargetResponseTime, target_response_time),
+        (wrp.setTargetDecodingRate, target_decoding_rate),
         (wrp.setConfidenceLevel, confidence_level),
         (wrp.setNoInputTimeout, no_input_timeout),
     )

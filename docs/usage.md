@@ -99,6 +99,41 @@ result = client.transcribe("audio.wav")
 
 `confidence_level`を指定しない場合はパラメータを送信せず、サーバー側のデフォルト値に委ねます。公式仕様上のデフォルト値は`0.1`ですが、予告なく変更される可能性があります。
 
+### 処理時間とレスポンスの制御
+
+処理時間制御パラメータは、認識処理を途中で打ち切ったり、処理速度と認識率を調整したりする上級者向けの設定です。値を小さくしすぎると、認識結果が途中で終了する場合があります。コンストラクタ、`transcribe()`、`stream()`、モジュールレベルの`transcribe()`で指定できます。
+
+リアルタイム録音の WebSocket 認識では、次のように指定します。
+
+```python
+from amivoice import AmiVoiceClient
+
+client = AmiVoiceClient(
+    max_decoding_time=30_000,
+    max_response_time=5_000,
+    target_response_time=1_000,
+)
+
+with client.stream() as session:
+    session.write(audio_chunk)
+    session.end()
+```
+
+バッチ音声の HTTP 認識では、処理時間を音声時間に対する倍率で制御できます。
+
+```python
+client = AmiVoiceClient(
+    max_decoding_time=30_000,
+    max_decoding_rate=2.0,
+    target_decoding_rate=1.5,
+)
+result = client.transcribe("audio.wav")
+```
+
+`max_decoding_time`は認識処理時間の上限をミリ秒で指定します。`max_response_time`は音声時間に加える処理時間の上限をミリ秒で指定し、`target_response_time`は暫定結果の目標応答時間をミリ秒で指定します。後者 2 つはリアルタイム録音時のみ有効です。
+
+`max_decoding_rate`は音声時間に対する認識処理時間の上限倍率を指定し、`target_decoding_rate`は暫定結果の目標倍率を指定します。これらはバッチ音声のみ有効です。時間系の`0`は無効を表し、レート系の負値も無効指定として利用できます。公式仕様のデフォルト値は、時間系が`0`、レート系が`-1`です。未指定の場合はパラメータを送信せず、サーバー側のデフォルト値に委ねます。
+
 ### 使用量集計タグ
 
 使用量をユーザーやアプリケーション単位で集計する場合は、`billing_key`を指定します。同期 HTTP と WebSocket の両方で利用できます。
