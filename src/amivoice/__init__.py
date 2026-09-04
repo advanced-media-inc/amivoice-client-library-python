@@ -11,7 +11,7 @@ from .exceptions import (
     ConnectionFailedError,
     RecognitionError,
 )
-from .models import NotificationEvent, RecognitionResult, StreamEvent, StreamEventType, UtteranceEvent
+from .models import NotificationEvent, RecognitionResult, StreamEvent, StreamEventType, Token, UtteranceEvent, UtteranceResult
 
 try:
     __version__ = version("amivoice-api-client")
@@ -31,6 +31,8 @@ __all__ = [
     "StreamEvent",
     "StreamEventType",
     "StreamSession",
+    "Token",
     "UtteranceEvent",
+    "UtteranceResult",
     "transcribe",
 ]
