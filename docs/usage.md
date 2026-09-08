@@ -146,7 +146,7 @@ from pathlib import Path
 from amivoice import AmiVoiceClient, build_grammar_file_names, encode_grammar
 
 grammar_file_names = build_grammar_file_names(
-    encode_grammar(Path("Number.gram").read_text()),
+    encode_grammar(Path("Number.gram").read_text(encoding="utf-8")),
     "https://example.com/grammars/Burger.gram",
     fallback=True,
 )
