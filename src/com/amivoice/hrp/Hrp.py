@@ -483,6 +483,12 @@ class Hrp:
             domainId = ""
             if self.domainId_ is not None:
                 domainId += self.domainId_
+                if self.confidenceLevel_ is not None:
+                    if len(domainId) > 0:
+                        domainId += " "
+                    domainId += "confidenceLevel="
+                    with suppress(Exception):
+                        domainId += q(self.confidenceLevel_)
             else:
                 if self.grammarFileNames_ is not None:
                     domainId += "grammarFileNames="
