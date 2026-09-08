@@ -811,6 +811,7 @@ def test_set_result_encoding_stores_value() -> None:  # noqa: D103
 
 
 def test_feed_data_resume_builds_domain_id_from_rule_grammar_parameters() -> None:  # noqa: D103
+    # Given: ルールグラマ専用パラメータを設定した接続済みHRP
     hrp = MockHrp(connected=True)
     hrp.state_ = 0
     captured: dict[str, str] = {}
@@ -819,16 +820,22 @@ def test_feed_data_resume_builds_domain_id_from_rule_grammar_parameters() -> Non
     hrp.setCompleteTimeout("5000")
     hrp.setWildcardModelPenalty("4.0")
 
+    # When: データ受付を再開する
     result = hrp.feedDataResume()
 
+    # Then: domainIdへルールグラマ専用パラメータが設定される
     assert result is True
     assert captured["domainId"] == "completeTimeout=5000 wildcardModelPenalty=4.0"
 
 
 def test_set_rule_grammar_parameters_stores_values() -> None:  # noqa: D103
+    # Given: HRPトランスポート
     hrp = MockHrp()
+
+    # When: ルールグラマ専用パラメータを設定する
     hrp.setCompleteTimeout("5000")
     hrp.setWildcardModelPenalty("4.0")
 
+    # Then: 設定値がHRPに保持される
     assert hrp.completeTimeout_ == "5000"
     assert hrp.wildcardModelPenalty_ == "4.0"

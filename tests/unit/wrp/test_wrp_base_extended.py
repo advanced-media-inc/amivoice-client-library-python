@@ -613,6 +613,7 @@ def test_get_waiting_results_returns_current_count() -> None:  # noqa: D103
 
 
 def test_feed_data_resume_builds_command_from_rule_grammar_parameters() -> None:  # noqa: D103
+    # Given: ルールグラマ専用パラメータを設定した接続済みWRP
     wrp = MockWrp(connected=True)
     wrp.state_ = 0
     captured: dict[str, bytes] = {}
@@ -626,16 +627,22 @@ def test_feed_data_resume_builds_command_from_rule_grammar_parameters() -> None:
     wrp.setCompleteTimeout("5000")
     wrp.setWildcardModelPenalty("4.0")
 
+    # When: データ受付を再開する
     result = wrp.feedDataResume()
 
+    # Then: 開始コマンドへルールグラマ専用パラメータが設定される
     assert result is True
     assert captured["data"] == b"s 16K \x01 completeTimeout=5000 wildcardModelPenalty=4.0"
 
 
 def test_set_rule_grammar_parameters_stores_values() -> None:  # noqa: D103
+    # Given: WRPトランスポート
     wrp = MockWrp()
+
+    # When: ルールグラマ専用パラメータを設定する
     wrp.setCompleteTimeout("5000")
     wrp.setWildcardModelPenalty("4.0")
 
+    # Then: 設定値がWRPに保持される
     assert wrp.completeTimeout_ == "5000"
     assert wrp.wildcardModelPenalty_ == "4.0"

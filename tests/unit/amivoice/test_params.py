@@ -142,41 +142,66 @@ def test_merge_params_processing_time_override_negative_invalid_raise_Configurat
 @pytest.mark.parametrize("value", [0, 5000])
 def test_recognition_params_complete_timeout_non_negative_valid_return_params(value: int) -> None:
     """complete_timeout に非負整数を指定できることを確認する"""
+    # Given: 非負の complete_timeout
+    # When: RecognitionParams を生成する
     params = RecognitionParams(complete_timeout=value)
 
+    # Then: 指定した値が保持される
     assert params.complete_timeout == value
 
 
 def test_recognition_params_complete_timeout_negative_invalid_raise_ConfigurationError() -> None:
     """complete_timeout に負値を指定した場合に ConfigurationError が送出されることを確認する"""
+    # Given: 負の complete_timeout
+
+    # When: RecognitionParams を生成する
     with pytest.raises(ConfigurationError, match="complete_timeout"):
         RecognitionParams(complete_timeout=-1)
+
+    # Then: ConfigurationError が送出される
 
 
 @pytest.mark.parametrize("value", [0.0, 2.0, 6.0, 7.5])
 def test_recognition_params_wildcard_model_penalty_non_negative_valid_return_params(value: float) -> None:
     """wildcard_model_penalty は目安範囲外の非負値も保持できることを確認する"""
+    # Given: 非負の wildcard_model_penalty
+    # When: RecognitionParams を生成する
     params = RecognitionParams(wildcard_model_penalty=value)
 
+    # Then: 指定した値が保持される
     assert params.wildcard_model_penalty == value
 
 
 def test_recognition_params_wildcard_model_penalty_negative_invalid_raise_ConfigurationError() -> None:
     """wildcard_model_penalty に負値を指定した場合に ConfigurationError が送出されることを確認する"""
+    # Given: 負の wildcard_model_penalty
+
+    # When: RecognitionParams を生成する
     with pytest.raises(ConfigurationError, match="wildcard_model_penalty"):
         RecognitionParams(wildcard_model_penalty=-0.1)
+
+    # Then: ConfigurationError が送出される
 
 
 @pytest.mark.parametrize("field_name", ["complete_timeout", "wildcard_model_penalty"])
 def test_recognition_params_rule_grammar_parameter_bool_invalid_raise_ConfigurationError(field_name: str) -> None:
     """ルールグラマ専用パラメータに bool を指定した場合に ConfigurationError が送出されることを確認する"""
+    # Given: bool のルールグラマ専用パラメータ
+
+    # When: RecognitionParams を生成する
     with pytest.raises(ConfigurationError, match=field_name):
         RecognitionParams(**{field_name: True})  # type: ignore[arg-type]
+
+    # Then: ConfigurationError が送出される
 
 
 def test_merge_params_rule_grammar_parameter_override_invalid_raise_ConfigurationError() -> None:
     """ルールグラマ専用パラメータの override も検証されることを確認する"""
+    # Given: ルールグラマ専用パラメータを持つ既定値
     base = RecognitionParams(complete_timeout=1000, wildcard_model_penalty=2.5)
 
+    # When: 負値でパラメータを上書きする
     with pytest.raises(ConfigurationError, match="complete_timeout"):
         merge_params(base, complete_timeout=-1)
+
+    # Then: ConfigurationError が送出される

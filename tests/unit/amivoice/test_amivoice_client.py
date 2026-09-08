@@ -1206,11 +1206,14 @@ def test_AmiVoiceClient_transcribe_rule_grammar_parameter_constructor_default_pa
     expected: str,
 ) -> None:
     """コンストラクタのルールグラマ専用パラメータが HRP setter に渡ることを確認する"""
+    # Given: ルールグラマ専用パラメータを設定したHRPクライアント
     mock_hrp = _make_mock_hrp()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, **{parameter_name: value})
 
+    # When: 音声認識を実行する
     client.transcribe(b"audio-data")
 
+    # Then: 対応するHRP setterへ文字列値が渡る
     getattr(mock_hrp, setter_name).assert_called_once_with(expected)
 
 
@@ -1229,11 +1232,14 @@ def test_AmiVoiceClient_transcribe_rule_grammar_parameter_override_passes_string
     expected: str,
 ) -> None:
     """Transcribe のルールグラマ専用パラメータ override が既定値を上書きすることを確認する"""
+    # Given: 既定値を設定したHRPクライアント
     mock_hrp = _make_mock_hrp()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, **{parameter_name: default_value})
 
+    # When: 音声認識時にルールグラマ専用パラメータを上書きする
     client.transcribe(b"audio-data", **{parameter_name: override_value})
 
+    # Then: 上書きした文字列値が対応するHRP setterへ渡る
     getattr(mock_hrp, setter_name).assert_called_once_with(expected)
 
 
@@ -1251,12 +1257,15 @@ def test_AmiVoiceClient_stream_rule_grammar_parameter_constructor_default_passes
     expected: str,
 ) -> None:
     """コンストラクタのルールグラマ専用パラメータが WRP setter に渡ることを確認する"""
+    # Given: ルールグラマ専用パラメータを設定したクライアント
     mock_wrp = _make_mock_wrp()
     client = AmiVoiceClient(api_key="key", **{parameter_name: value})
 
+    # When: ストリーミングセッションを開始して終了する
     with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream() as session:
         session.end()
 
+    # Then: 対応するWRP setterへ文字列値が渡る
     getattr(mock_wrp, setter_name).assert_called_once_with(expected)
 
 
@@ -1275,13 +1284,16 @@ def test_AmiVoiceClient_stream_rule_grammar_parameter_override_passes_string(
     expected: str,
 ) -> None:
     """Stream のルールグラマ専用パラメータ override が既定値を上書きすることを確認する"""
+    # Given: 既定値を設定したクライアント
     mock_wrp = _make_mock_wrp()
     client = AmiVoiceClient(api_key="key", **{parameter_name: default_value})
 
+    # When: ストリーミング開始時にルールグラマ専用パラメータを上書きする
     with (
         patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
         client.stream(**{parameter_name: override_value}) as session,
     ):
         session.end()
 
+    # Then: 上書きした文字列値が対応するWRP setterへ渡る
     getattr(mock_wrp, setter_name).assert_called_once_with(expected)
