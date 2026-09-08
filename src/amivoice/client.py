@@ -17,7 +17,7 @@ from ._billing import resolve_billing_extension
 from ._params import UNSET, RecognitionParams, _UnsetType, merge_params
 from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager
-from ._transport import HrpTransport, WrpTransport, bool_string
+from ._transport import HrpTransport, WrpTransport, _set_optional_transport_parameter, bool_string
 from ._types import AudioSource
 from .exceptions import AuthenticationError, ConfigurationError, ConnectionFailedError, RecognitionError
 from .models import RecognitionResult, parse_result
@@ -442,10 +442,10 @@ class AmiVoiceClient:
         extension = resolve_billing_extension(params.extension, params.billing_key)
         complete_timeout = None if params.complete_timeout is None else str(params.complete_timeout)
         wildcard_model_penalty = None if params.wildcard_model_penalty is None else repr(params.wildcard_model_penalty)
+        _set_optional_transport_parameter(hrp, "setCompleteTimeout", complete_timeout)
+        _set_optional_transport_parameter(hrp, "setWildcardModelPenalty", wildcard_model_penalty)
         optional_setters: "tuple[tuple[Callable[[str | None], None], str | None], ...]" = (
             (hrp.setGrammarFileNames, params.grammar_file_names),
-            (hrp.setCompleteTimeout, complete_timeout),
-            (hrp.setWildcardModelPenalty, wildcard_model_penalty),
             (hrp.setCodec, params.codec),
             (hrp.setResultType, params.result_type),
             (hrp.setProxyServerName, params.proxy_server_name),

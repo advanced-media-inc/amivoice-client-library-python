@@ -8,7 +8,7 @@ from com.amivoice.wrp.WrpListener import WrpListener
 
 from ._billing import resolve_billing_extension
 from ._params import RecognitionParams
-from ._transport import WrpTransport, bool_string
+from ._transport import WrpTransport, _set_optional_transport_parameter, bool_string
 from .exceptions import ConnectionFailedError, RecognitionError
 from .models import NotificationEvent, RecognitionResult, StreamEvent, UtteranceEvent, parse_result
 
@@ -247,10 +247,10 @@ def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) 
     confidence_level = None if params.confidence_level is None else repr(params.confidence_level)
     extension = resolve_billing_extension(params.extension, params.billing_key)
     no_input_timeout = None if params.no_input_timeout is None else str(params.no_input_timeout)
+    _set_optional_transport_parameter(wrp, "setCompleteTimeout", complete_timeout)
+    _set_optional_transport_parameter(wrp, "setWildcardModelPenalty", wildcard_model_penalty)
     optional_setters: tuple[tuple[Callable[[str | None], None], str | None], ...] = (
         (wrp.setGrammarFileNames, params.grammar_file_names),
-        (wrp.setCompleteTimeout, complete_timeout),
-        (wrp.setWildcardModelPenalty, wildcard_model_penalty),
         (wrp.setCodec, params.codec),
         (wrp.setResultType, params.result_type),
         (wrp.setProxyServerName, params.proxy_server_name),

@@ -9,6 +9,7 @@ import pytest
 
 from amivoice._segmenter import SegmenterProperties
 from amivoice._stream import StreamConnectionManager, StreamSession
+from amivoice._transport import HrpTransport
 from amivoice.client import _DEFAULT_HRP_URL, _DEFAULT_WRP_URL, AmiVoiceClient
 from amivoice.exceptions import (
     AuthenticationError,
@@ -23,13 +24,13 @@ from amivoice.models import RecognitionResult
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_hrp(result_json: str = '{"text": "hello"}', *, connect_ok: bool = True) -> MagicMock:
+def _make_mock_hrp(result_json: str = '{"text": "hello"}', *, connect_ok: bool = True, legacy: bool = False) -> MagicMock:
     """テスト用のモック HRP トランスポートを生成する。
 
     ``feedDataPause`` を呼び出すと ``setListener`` で登録されたリスナーに
     ``resultFinalized`` を送信してから True を返す。
     """
-    mock_hrp = MagicMock()
+    mock_hrp = MagicMock(spec=HrpTransport) if legacy else MagicMock()
     mock_hrp.connect.return_value = connect_ok
     mock_hrp.feedDataResume.return_value = True
     mock_hrp.feedData.return_value = True
@@ -126,6 +127,19 @@ def test_AmiVoiceClient_construction_segmenter_and_raw_properties_invalid_raise_
 # ---------------------------------------------------------------------------
 # transcribe() — HRP 経路
 # ---------------------------------------------------------------------------
+
+
+def test_AmiVoiceClient_transcribe_legacy_hrp_transport_without_rule_grammar_setters_succeeds() -> None:
+    """新setterを持たない従来の hrp_transport でも通常の認識が成功することを確認する。"""
+    # Given: ルールグラマ用の新setterを持たない従来のHRPトランスポート
+    mock_hrp = _make_mock_hrp(legacy=True)
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
+
+    # When: ルールグラマ専用パラメータを指定せずに認識を実行する
+    result = client.transcribe(b"audio-data")
+
+    # Then: 新setterの属性解決を行わず認識結果を返す
+    assert result.data == {"text": "hello"}
 
 
 def test_AmiVoiceClient_transcribe_success_returns_result() -> None:
