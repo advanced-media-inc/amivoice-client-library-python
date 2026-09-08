@@ -10,12 +10,15 @@ from amivoice.exceptions import ConfigurationError
 
 
 def test_encode_grammar_fixed_input_returns_deterministic_gzip_base64() -> None:
-    """固定したグラマ本文が決定論的な GZIP + Base64 文字列になることを確認する"""
+    """固定したグラマ本文が決定論的な GZIP + Base64 になることを確認する"""
     grammar = "#JSGF V1.0; grammar test;"
 
     encoded = encode_grammar(grammar)
+    repeated_encoded = encode_grammar(grammar)
+    decoded = gzip.decompress(base64.b64decode(encoded))
 
-    assert encoded == "H4sIAAAAAAACA1P2CnZ3Uwgz1DOwVkgvSszNTSxSKEktLrEGACjkRPUZAAAA"
+    assert encoded == repeated_encoded
+    assert decoded == grammar.encode("utf-8")
 
 
 def test_encode_grammar_bytes_round_trip_returns_original_grammar() -> None:

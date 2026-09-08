@@ -62,4 +62,6 @@ jobs:
         run: uv sync --locked --dev --python "$PYTHON_VERSION"
 
       - name: Run unit tests
-        run: uv run --locked pytest tests/unit
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: uv run --locked --python "$PYTHON_VERSION" pytest tests/unit
