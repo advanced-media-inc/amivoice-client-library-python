@@ -90,6 +90,44 @@ def test_segmenter_properties_speaker_diarization_false_valid_return_disabled_fl
     assert parameter == "useDiarizer=0"
 
 
+@pytest.mark.parametrize(
+    ("field", "parameter_name"),
+    [("diarizer_alpha", "diarizerAlpha"), ("diarizer_transition_bias", "diarizerTransitionBias")],
+)
+@pytest.mark.parametrize("value", ["1", "-1", "1.5", "1e-20"])
+def test_segmenter_properties_numeric_string_diarizer_value_valid_return_parameter(
+    field: str,
+    parameter_name: str,
+    value: str,
+) -> None:
+    """整数、小数、指数表記の数値文字列を調整値に指定できることを確認する。"""
+    # Given: 数値表記の話者ダイアライゼーション調整値
+    properties = SegmenterProperties(speaker_diarization=True, **{field: value})
+
+    # When: to_parameter を呼び出す
+    parameter = properties.to_parameter()
+
+    # Then: 数値文字列を保持したパラメータが返る
+    assert parameter == f"useDiarizer=1 {parameter_name}={value}"
+
+
+@pytest.mark.parametrize("field", ["diarizer_alpha", "diarizer_transition_bias"])
+@pytest.mark.parametrize(
+    "value",
+    ["abc", "1 useLid=de", "", "NaN", "Infinity", "-Infinity", float("nan"), float("inf"), float("-inf")],
+)
+def test_segmenter_properties_non_numeric_or_non_finite_diarizer_value_invalid_raise_ConfigurationError(
+    field: str,
+    value: float | str,
+) -> None:
+    """不正な文字列または非有限値を調整値に指定すると ConfigurationError が送出されることを確認する。"""
+    # Given: 数値として扱えない、または有限でない調整値
+    # When / Then: SegmenterProperties を生成すると ConfigurationError が送出される
+    message = f"Invalid segmenter {field}: must be a finite numeric value"
+    with pytest.raises(ConfigurationError, match=message):
+        SegmenterProperties(speaker_diarization=True, **{field: value})
+
+
 def test_segmenter_properties_languages_valid_return_use_lid_parameter() -> None:
     """指定した言語の順序で useLid パラメータが生成されることを確認する。"""
     # Given: 日本語と英語を指定した言語識別設定

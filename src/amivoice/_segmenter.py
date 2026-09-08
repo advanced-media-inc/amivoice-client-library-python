@@ -1,5 +1,6 @@
 """segmenterProperties を型付き設定へ変換するモデル。"""
 
+import math
 from dataclasses import dataclass
 from typing import Final
 
@@ -113,19 +114,28 @@ def _validate_non_negative_integer(field_name: str, value: int | None) -> None:
 
 
 def _validate_diarizer_value(field_name: str, value: int | float | str | None) -> None:
-    """話者ダイアライゼーション調整値の型を検証する。
+    """話者ダイアライゼーション調整値が有限の数値であることを検証する。
 
     Args:
         field_name: 検証対象フィールド名
         value: 検証対象の値
 
     Raises:
-        ConfigurationError: 値が整数、浮動小数点数、文字列、None のいずれでもない場合
+        ConfigurationError: 値が整数、有限な浮動小数点数、有限な数値文字列のいずれでもない場合
     """
     if value is None:
         return
     if isinstance(value, bool) or not isinstance(value, (int, float, str)):
-        raise ConfigurationError(f"Invalid segmenter {field_name}: must be an integer, float, or string")
+        raise ConfigurationError(f"Invalid segmenter {field_name}: must be an integer, float, or numeric string")
+
+    if isinstance(value, str):
+        try:
+            value = float(value)
+        except (OverflowError, ValueError):
+            raise ConfigurationError(f"Invalid segmenter {field_name}: must be a finite numeric value") from None
+
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ConfigurationError(f"Invalid segmenter {field_name}: must be a finite numeric value")
 
 
 def _format_diarizer_value(value: int | float | str) -> str:
