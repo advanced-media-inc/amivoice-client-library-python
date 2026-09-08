@@ -195,6 +195,18 @@ def test_dictionary_api_network_failure_invalid_raise_ConnectionFailedError() ->
     assert isinstance(exc_info.value.__cause__, OSError)
 
 
+def test_user_dictionary_client_http_base_url_invalid_raise_ConfigurationError() -> None:
+    """HTTP のベース URL を指定した場合に ConfigurationError が送出されることを確認する"""
+    # Given: 平文通信を使用するベース URL
+    # When / Then: カスタムトランスポートを使用してもクライアント生成が拒否される
+    with pytest.raises(ConfigurationError, match="HTTPS"):
+        UserDictionaryClient(
+            api_key="test-key",
+            base_url="http://example.test",
+            transport=FakeDictionaryTransport(),
+        )
+
+
 def test_user_dictionary_client_api_key_missing_invalid_raise_AuthenticationError(monkeypatch: pytest.MonkeyPatch) -> None:
     """API キーと環境変数がない場合に AuthenticationError が送出されることを確認する"""
     # Given: API キーの環境変数を削除する

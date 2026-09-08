@@ -108,13 +108,13 @@ class _HttpDictionaryTransport:
             tuple[int, bytes]: HTTP ステータスコードとレスポンス本文
 
         Raises:
-            ConfigurationError: URL が絶対 HTTP(S) URL でない場合
+            ConfigurationError: URL が絶対 HTTPS URL でない場合
         """
         parsed = urlsplit(url)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ConfigurationError("base_url must be an absolute HTTP or HTTPS URL")
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise ConfigurationError("base_url must be an absolute HTTPS URL")
 
-        connection_class = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+        connection_class = http.client.HTTPSConnection
         connection = connection_class(parsed.netloc, timeout=self._timeout)
         target = parsed.path or "/"
         if parsed.query:
@@ -268,6 +268,7 @@ class UserDictionaryClient:
 
     Raises:
         AuthenticationError: API キーが引数にも環境変数にもない場合
+        ConfigurationError: ベース URL が絶対 HTTPS URL でない場合
     """
 
     def __init__(
@@ -288,10 +289,14 @@ class UserDictionaryClient:
 
         Raises:
             AuthenticationError: API キーが引数にも環境変数にもない場合
+            ConfigurationError: ベース URL が絶対 HTTPS URL でない場合
         """
         resolved_api_key = api_key if api_key is not None else os.environ.get("AMIVOICE_API_KEY")
         if resolved_api_key is None:
             raise AuthenticationError("AMIVOICE_API_KEY is not set")
+        parsed_base_url = urlsplit(base_url)
+        if parsed_base_url.scheme != "https" or not parsed_base_url.netloc:
+            raise ConfigurationError("base_url must be an absolute HTTPS URL")
         self._api_key = resolved_api_key
         self._base_url = base_url.rstrip("/")
         self._transport = transport if transport is not None else _HttpDictionaryTransport(timeout)
