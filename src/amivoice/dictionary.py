@@ -414,7 +414,7 @@ class UserDictionaryClient:
             headers["Content-Type"] = "application/json"
         try:
             status_code, response_body = self._transport.request(method, url, headers, body)
-        except OSError as exc:
+        except (OSError, http.client.HTTPException) as exc:
             raise ConnectionFailedError(f"Dictionary API connection failed: {exc}") from exc
         if not 200 <= status_code < 300:
             body_text = _response_body_text(response_body)

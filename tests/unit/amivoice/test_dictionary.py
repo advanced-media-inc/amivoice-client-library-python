@@ -4,6 +4,7 @@
 
 import json
 from dataclasses import dataclass, field
+from http.client import IncompleteRead
 
 import pytest
 
@@ -16,7 +17,7 @@ class FakeDictionaryTransport:
     """テスト用の辞書 API トランスポート"""
 
     responses: list[tuple[int, bytes]] = field(default_factory=list)
-    error: OSError | None = None
+    error: Exception | None = None
     requests: list[tuple[str, str, dict[str, str], bytes | None]] = field(default_factory=list)
 
     def request(
@@ -193,6 +194,19 @@ def test_dictionary_api_network_failure_invalid_raise_ConnectionFailedError() ->
         client.get_words("-a-general", "profile")
 
     assert isinstance(exc_info.value.__cause__, OSError)
+
+
+def test_dictionary_api_http_protocol_failure_invalid_raise_ConnectionFailedError() -> None:
+    """HTTP プロトコル障害時に ConnectionFailedError が送出されることを確認する"""
+    # Given: 切断された Content-Length 応答を表す HTTP プロトコル例外
+    transport = FakeDictionaryTransport(error=IncompleteRead(b"partial", 10))
+    client = UserDictionaryClient(api_key="test-key", transport=transport)
+
+    # When / Then: API 呼び出しで ConnectionFailedError が送出される
+    with pytest.raises(ConnectionFailedError, match="Dictionary API connection failed") as exc_info:
+        client.get_words("-a-general", "profile")
+
+    assert isinstance(exc_info.value.__cause__, IncompleteRead)
 
 
 def test_user_dictionary_client_http_base_url_invalid_raise_ConfigurationError() -> None:
