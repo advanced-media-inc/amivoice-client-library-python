@@ -72,6 +72,16 @@ def test_recognition_params_processing_time_non_negative_valid_return_params(fie
     assert getattr(params, field_name) == 0
 
 
+@pytest.mark.parametrize("field_name", ["max_decoding_time", "max_response_time", "target_response_time"])
+@pytest.mark.parametrize("value", [0.5, "1"], ids=["fractional", "string"])
+def test_recognition_params_processing_time_non_integer_invalid_raise_ConfigurationError(field_name: str, value: object) -> None:
+    """処理時間パラメータに整数以外を指定した場合に ConfigurationError が送出されることを確認する"""
+    # Given: 整数以外の処理時間パラメータ
+    # When / Then: RecognitionParams の生成で ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match=field_name):
+        RecognitionParams(**{field_name: value})  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize("field_name", ["max_decoding_rate", "target_decoding_rate"])
 def test_recognition_params_processing_rate_negative_valid_return_params(field_name: str) -> None:
     """処理レートパラメータの負値を無効指定として許容することを確認する"""
