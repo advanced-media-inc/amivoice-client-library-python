@@ -101,6 +101,16 @@ def test_recognition_params_processing_parameter_bool_invalid_raise_Configuratio
         RecognitionParams(**{field_name: True})  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize("field_name", ["max_decoding_rate", "target_decoding_rate"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")], ids=["nan", "positive_inf", "negative_inf"])
+def test_recognition_params_processing_rate_non_finite_invalid_raise_ConfigurationError(field_name: str, value: float) -> None:
+    """処理レートパラメータに非有限値を指定した場合に ConfigurationError が送出されることを確認する"""
+    # Given: 非有限の処理レートパラメータ
+    # When / Then: RecognitionParams の生成で ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match=field_name):
+        RecognitionParams(**{field_name: value})
+
+
 def test_recognition_params_processing_rate_non_numeric_invalid_raise_ConfigurationError() -> None:
     """処理レートパラメータに数値以外を指定した場合に ConfigurationError が送出されることを確認する"""
     # Given: 文字列の処理レートパラメータ
