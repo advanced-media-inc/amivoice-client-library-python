@@ -8,9 +8,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from amivoice._segmenter import SegmenterProperties
 from amivoice.client import _DEFAULT_HRP_URL, transcribe
 from amivoice.exceptions import (
     AuthenticationError,
+    ConfigurationError,
     ConnectionFailedError,
     RecognitionError,
 )
@@ -77,6 +79,103 @@ def test_transcribe_custom_api_url_valid_uses_given_url() -> None:
 
     # Then: カスタム URL が setServerURL に渡される
     mock_hrp.setServerURL.assert_called_once_with(custom_url)
+
+
+def test_transcribe_segmenter_valid_passes_generated_parameter() -> None:
+    """モジュールレベル transcribe の型付き設定が HRP に渡されることを確認する。"""
+    # Given: 型付きセグメンター設定とモック HRP
+    mock_hrp = _make_mock_hrp()
+    properties = SegmenterProperties(speaker_diarization=True)
+
+    # When: 型付き設定を指定して transcribe を呼び出す
+    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
+        transcribe(b"audio-data", api_key="test-key", segmenter=properties)
+
+    # Then: 生成された segmenterProperties 文字列が HRP に渡される
+    mock_hrp.setSegmenterProperties.assert_called_once_with("useDiarizer=1")
+
+
+def test_transcribe_confidence_level_valid_passes_repr() -> None:
+    """モジュールレベル transcribe の confidence_level が repr 文字列で HRP に渡ることを確認する。"""
+    # Given: confidence_level とモック HRP
+    mock_hrp = _make_mock_hrp()
+
+    # When: confidence_level を指定して transcribe を呼び出す
+    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
+        transcribe(b"audio-data", api_key="test-key", confidence_level=0.3)
+
+    # Then: 小数表記を維持した文字列が setter に渡される
+    mock_hrp.setConfidenceLevel.assert_called_once_with("0.3")
+
+
+def test_transcribe_processing_time_params_valid_passes_strings() -> None:
+    """モジュールレベル transcribe の処理時間制御パラメータが文字列で HRP に渡ることを確認する"""
+    # Given: 処理時間制御パラメータとモック HRP
+    mock_hrp = _make_mock_hrp()
+
+    # When: 処理時間制御パラメータを指定して transcribe を呼び出す
+    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
+        transcribe(
+            b"audio-data",
+            api_key="test-key",
+            complete_timeout=5000,
+            wildcard_model_penalty=4.0,
+            max_decoding_time=1000,
+            max_response_time=2000,
+            max_decoding_rate=1.25,
+            target_response_time=3000,
+            target_decoding_rate=-1.0,
+        )
+
+    # Then: 各 setter に対応する文字列が渡る
+    mock_hrp.setCompleteTimeout.assert_called_once_with("5000")
+    mock_hrp.setWildcardModelPenalty.assert_called_once_with("4.0")
+    mock_hrp.setMaxDecodingTime.assert_called_once_with("1000")
+    mock_hrp.setMaxResponseTime.assert_called_once_with("2000")
+    mock_hrp.setMaxDecodingRate.assert_called_once_with("1.25")
+    mock_hrp.setTargetResponseTime.assert_called_once_with("3000")
+    mock_hrp.setTargetDecodingRate.assert_called_once_with("-1.0")
+
+
+def test_transcribe_billing_key_valid_passes_extension() -> None:
+    """モジュールレベル transcribe の billing_key が HRP の extension setter に渡ることを確認する"""
+    # Given: billing_key とモック HRP
+    mock_hrp = _make_mock_hrp()
+
+    # When: billing_key を指定して transcribe を呼び出す
+    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
+        transcribe(b"audio-data", api_key="test-key", billing_key="user01")
+
+    # Then: billing_key 用のコンパクト JSON が extension setter に渡る
+    mock_hrp.setExtension.assert_called_once_with('{"client_info":{"billing_key":"user01"}}')
+
+
+def test_transcribe_extension_and_billing_key_invalid_raise_ConfigurationError() -> None:
+    """モジュールレベル transcribe で extension と billing_key を同時指定すると ConfigurationError が送出されることを確認する"""
+    # Given: 既存 extension と billing_key
+    # When / Then: transcribe の設定で ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match="extension and billing_key"):
+        transcribe(
+            b"audio-data",
+            api_key="test-key",
+            extension="legacy-extension",
+            billing_key="user01",
+        )
+
+
+def test_transcribe_segmenter_and_raw_properties_invalid_raise_ConfigurationError() -> None:
+    """モジュールレベル transcribe で設定を同時指定すると ConfigurationError が送出されることを確認する。"""
+    # Given: 型付きセグメンター設定
+    properties = SegmenterProperties(threshold=5000)
+
+    # When / Then: 型付き設定と生文字列を同時指定すると ConfigurationError が送出される
+    with pytest.raises(ConfigurationError, match="segmenter and segmenter_properties"):
+        transcribe(
+            b"audio-data",
+            api_key="test-key",
+            segmenter=properties,
+            segmenter_properties="threshold=1000",
+        )
 
 
 def test_transcribe_connection_fails_invalid_raise_ConnectionFailedError() -> None:

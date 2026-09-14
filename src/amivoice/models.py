@@ -11,7 +11,9 @@ __all__ = [
     "RecognitionResult",
     "StreamEvent",
     "StreamEventType",
+    "Token",
     "UtteranceEvent",
+    "UtteranceResult",
 ]
 
 StreamEventType = Literal["partial", "final", "utterance_started", "utterance_ended", "notification"]
@@ -28,6 +30,32 @@ _R_COMMAND_PREFIX = "\x01\x01\x01\x01\x01"
 
 
 @dataclass(frozen=True)
+class Token:
+    """単語単位の認識結果。"""
+
+    written: str
+    spoken: str | None = None
+    confidence: float | None = None
+    starttime: int | None = None
+    endtime: int | None = None
+    label: str | None = None
+    language: str | None = None
+
+
+@dataclass(frozen=True)
+class UtteranceResult:
+    """発話区間の認識結果。"""
+
+    text: str
+    tokens: tuple[Token, ...] = ()
+    confidence: float | None = None
+    starttime: int | None = None
+    endtime: int | None = None
+    tags: tuple[str, ...] = ()
+    rulename: str | None = None
+
+
+@dataclass(frozen=True)
 class RecognitionResult:
     """AmiVoice クライアントが返す正規化された認識結果。"""
 
@@ -35,6 +63,7 @@ class RecognitionResult:
     data: dict[str, object]
     is_error: bool = False
     session_id: str | None = None
+    results: tuple[UtteranceResult, ...] = ()
 
     @property
     def text(self) -> str:
@@ -44,6 +73,12 @@ class RecognitionResult:
         """
         val = self.data.get("text")
         return str(val) if val is not None else ""
+
+    @property
+    def utterance_id(self) -> str | None:
+        """発話 ID：``data["utteranceid"]`` のショートカット。"""
+        val = self.data.get("utteranceid")
+        return str(val) if val is not None else None
 
 
 @dataclass(frozen=True)
@@ -91,6 +126,157 @@ class StreamEvent:
         return self.type == "partial"
 
 
+def _opt_str(value: object) -> str | None:
+    """任意の文字列フィールドをパースする。
+
+    Args:
+        value: パース対象の値
+
+    Returns:
+        文字列または ``None``
+
+    Raises:
+        RecognitionError: 値が文字列でも ``None`` でもない場合
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise RecognitionError("Recognition result optional string field must be a string")
+    return value
+
+
+def _opt_float(value: object) -> float | None:
+    """任意の数値フィールドを浮動小数点数へパースする。
+
+    Args:
+        value: パース対象の値
+
+    Returns:
+        浮動小数点数または ``None``
+
+    Raises:
+        RecognitionError: 値が数値でも ``None`` でもない場合、または bool の場合
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise RecognitionError("Recognition result optional float field must be a number")
+    return float(value)
+
+
+def _opt_int(value: object) -> int | None:
+    """任意の数値フィールドを整数へパースする。
+
+    Args:
+        value: パース対象の値
+
+    Returns:
+        整数または ``None``
+
+    Raises:
+        RecognitionError: 値が数値でも ``None`` でもない場合、または bool の場合
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise RecognitionError("Recognition result optional integer field must be a number")
+    return int(value)
+
+
+def _parse_token(item: dict[str, object]) -> Token:
+    """単語結果の JSON オブジェクトを ``Token`` へ変換する。
+
+    Args:
+        item: 単語結果の JSON オブジェクト
+
+    Returns:
+        型付きの単語結果
+
+    Raises:
+        RecognitionError: ``written`` が文字列でない場合、または任意フィールドの型が不正な場合
+    """
+    written = item.get("written")
+    if not isinstance(written, str):
+        raise RecognitionError("Recognition result token field 'written' must be a string")
+    return Token(
+        written=written,
+        spoken=_opt_str(item.get("spoken")),
+        confidence=_opt_float(item.get("confidence")),
+        starttime=_opt_int(item.get("starttime")),
+        endtime=_opt_int(item.get("endtime")),
+        label=_opt_str(item.get("label")),
+        language=_opt_str(item.get("language")),
+    )
+
+
+def _parse_utterance(item: dict[str, object]) -> UtteranceResult:
+    """発話区間の JSON オブジェクトを ``UtteranceResult`` へ変換する。
+
+    Args:
+        item: 発話区間の JSON オブジェクト
+
+    Returns:
+        型付きの発話区間結果
+
+    Raises:
+        RecognitionError: 必須フィールドや任意フィールドの型が不正な場合
+    """
+    text = item.get("text")
+    if not isinstance(text, str):
+        raise RecognitionError("Recognition result utterance field 'text' must be a string")
+
+    tokens_value = item.get("tokens", [])
+    if not isinstance(tokens_value, list):
+        raise RecognitionError("Recognition result utterance field 'tokens' must be an array")
+    tokens: list[Token] = []
+    for token_value in tokens_value:
+        if not isinstance(token_value, dict):
+            raise RecognitionError("Recognition result token must be a JSON object")
+        tokens.append(_parse_token(token_value))
+
+    tags_value = item.get("tags", [])
+    if not isinstance(tags_value, list):
+        raise RecognitionError("Recognition result utterance field 'tags' must be an array")
+    tags: list[str] = []
+    for tag_value in tags_value:
+        if not isinstance(tag_value, str):
+            raise RecognitionError("Recognition result utterance field 'tags' must contain strings")
+        tags.append(tag_value)
+
+    return UtteranceResult(
+        text=text,
+        tokens=tuple(tokens),
+        confidence=_opt_float(item.get("confidence")),
+        starttime=_opt_int(item.get("starttime")),
+        endtime=_opt_int(item.get("endtime")),
+        tags=tuple(tags),
+        rulename=_opt_str(item.get("rulename")),
+    )
+
+
+def _parse_utterances(value: object) -> tuple[UtteranceResult, ...]:
+    """認識結果の発話区間配列を型付きタプルへ変換する。
+
+    Args:
+        value: ``results`` フィールドの値
+
+    Returns:
+        型付き発話区間結果のタプル
+
+    Raises:
+        RecognitionError: ``results`` が配列でない場合、または要素の型が不正な場合
+    """
+    if not isinstance(value, list):
+        raise RecognitionError("Recognition result field 'results' must be an array")
+
+    utterances: list[UtteranceResult] = []
+    for utterance_value in value:
+        if not isinstance(utterance_value, dict):
+            raise RecognitionError("Recognition result utterance must be a JSON object")
+        utterances.append(_parse_utterance(utterance_value))
+    return tuple(utterances)
+
+
 def parse_result(raw: str, raise_on_error: bool = True) -> RecognitionResult:
     """AmiVoice の生レスポンスを ``RecognitionResult`` に変換する。
 
@@ -119,7 +305,8 @@ def parse_result(raw: str, raise_on_error: bool = True) -> RecognitionResult:
         code = data.get("code")
         if isinstance(code, str) and code not in ("", "o"):
             is_error = True
-    result = RecognitionResult(raw=parsed_raw, data=data, is_error=is_error)
+    results = _parse_utterances(data.get("results", []))
+    result = RecognitionResult(raw=parsed_raw, data=data, is_error=is_error, results=results)
     if is_error and raise_on_error:
         message_val = data.get("message")
         message = str(message_val if message_val is not None else (data.get("code") or data))

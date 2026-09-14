@@ -169,3 +169,19 @@ def test_feed_data_resume_builds_domain_id(configurer: Callable[[MockHrp], None]
     assert result is True
     assert captured["domainId"] == expected_domain_id
     assert captured["type"] == "mc"
+
+
+def test_feed_data_resume_explicit_domain_id_with_confidence_level_appends_confidence_level() -> None:
+    """明示的なドメイン ID と信頼度しきい値を併用した場合に両方を送信する"""
+    # Given: 明示的な domain_id と confidence_level を設定した HRP
+    hrp = MockHrp(connected=True)
+    hrp.state_ = 0
+    hrp.setDomainId("custom=ready")
+    hrp.setConfidenceLevel("0.3")
+
+    # When: 音声データ送信を開始する
+    result, captured = _capture_feed_data_resume_request(hrp, "mc", 0)
+
+    # Then: 明示的な domain_id に confidenceLevel が追加される
+    assert result is True
+    assert captured["domainId"] == "custom=ready confidenceLevel=0.3"

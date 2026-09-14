@@ -2,6 +2,7 @@
 
 """models モジュールのユニットテスト。"""
 
+import json
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -10,7 +11,9 @@ from amivoice.exceptions import RecognitionError
 from amivoice.models import (
     NotificationEvent,
     RecognitionResult,
+    Token,
     UtteranceEvent,
+    UtteranceResult,
 )
 from amivoice.models import (
     parse_result as _parse_result,
@@ -36,6 +39,208 @@ def test_RecognitionResult_defaults_valid_return_is_error_false() -> None:
     # Then: is_error が False、session_id が None
     assert result.is_error is False
     assert result.session_id is None
+    assert result.results == ()
+
+
+def test_parse_result_full_utterance_valid_return_typed_result() -> None:
+    """フル仕様の発話結果を型付きモデルへ変換できることを確認する。"""
+    # Given: 発話区間、単語、信頼度、時刻、話者、言語を含む認識結果
+    raw = json.dumps(
+        {
+            "results": [
+                {
+                    "text": "こんにちは世界",
+                    "tokens": [
+                        {
+                            "written": "こんにちは",
+                            "spoken": "コンニチハ",
+                            "confidence": 1,
+                            "starttime": 100,
+                            "endtime": 500,
+                            "label": "speaker0",
+                            "language": "ja",
+                        }
+                    ],
+                    "confidence": 0.98,
+                    "starttime": 100,
+                    "endtime": 1000,
+                    "tags": ["greeting"],
+                    "rulename": "general",
+                }
+            ],
+            "utteranceid": "utterance-1",
+            "text": "こんにちは世界",
+            "code": "",
+        }
+    )
+
+    # When: parse_result を呼び出す
+    result = _parse_result(raw)
+
+    # Then: 発話区間と単語の各フィールドが型付きで返る
+    assert result.utterance_id == "utterance-1"
+    assert result.results == (
+        UtteranceResult(
+            text="こんにちは世界",
+            tokens=(
+                Token(
+                    written="こんにちは",
+                    spoken="コンニチハ",
+                    confidence=1.0,
+                    starttime=100,
+                    endtime=500,
+                    label="speaker0",
+                    language="ja",
+                ),
+            ),
+            confidence=0.98,
+            starttime=100,
+            endtime=1000,
+            tags=("greeting",),
+            rulename="general",
+        ),
+    )
+
+
+def test_parse_result_e2e_token_without_spoken_valid_return_none() -> None:
+    """Spoken がない E2E エンジンの結果をパースできることを確認する。"""
+    # Given: spoken を含まない単語結果
+    raw = json.dumps({"results": [{"text": "hello", "tokens": [{"written": "hello"}]}]})
+
+    # When: parse_result を呼び出す
+    result = _parse_result(raw)
+
+    # Then: spoken と省略可能なフィールドが None になる
+    token = result.results[0].tokens[0]
+    assert token.written == "hello"
+    assert token.spoken is None
+    assert token.confidence is None
+    assert token.starttime is None
+    assert token.endtime is None
+    assert token.label is None
+    assert token.language is None
+
+
+def test_parse_result_speaker_label_valid_return_label() -> None:
+    """話者ダイアライゼーションのラベルをパースできることを確認する。"""
+    # Given: 話者ラベルを含む単語結果
+    raw = '{"results":[{"text":"hello","tokens":[{"written":"hello","label":"speaker1"}]}]}'
+
+    # When: parse_result を呼び出す
+    result = _parse_result(raw)
+
+    # Then: 話者ラベルが単語モデルに設定される
+    assert result.results[0].tokens[0].label == "speaker1"
+
+
+def test_parse_result_multilingual_token_valid_return_language() -> None:
+    """多言語認識の言語ラベルをパースできることを確認する。"""
+    # Given: 言語ラベルを含む単語結果
+    raw = '{"results":[{"text":"hello","tokens":[{"written":"hello","language":"en"}]}]}'
+
+    # When: parse_result を呼び出す
+    result = _parse_result(raw)
+
+    # Then: 言語ラベルが単語モデルに設定される
+    assert result.results[0].tokens[0].language == "en"
+
+
+def test_parse_result_punctuation_token_without_timing_valid_return_none() -> None:
+    """時刻と信頼度がない句読点トークンをパースできることを確認する。"""
+    # Given: written と spoken のみを持つトークン結果
+    raw = '{"results":[{"text":"、","tokens":[{"written":"、","spoken":"、"}]}]}'
+
+    # When: parse_result を呼び出す
+    result = _parse_result(raw)
+
+    # Then: 時刻と信頼度が None になる
+    token = result.results[0].tokens[0]
+    assert token.written == "、"
+    assert token.spoken == "、"
+    assert token.starttime is None
+    assert token.endtime is None
+    assert token.confidence is None
+
+
+def test_parse_result_without_results_key_valid_return_empty_results() -> None:
+    """Results キーがない結果では空のタプルを返すことを確認する。"""
+    # Given: results キーがない認識結果
+    raw = '{"text":"hello","code":""}'
+
+    # When: parse_result を呼び出す
+    result = _parse_result(raw)
+
+    # Then: results が空のタプルになる
+    assert result.results == ()
+
+
+def test_parse_result_partial_result_valid_return_typed_result() -> None:
+    """途中結果相当のテキストと written のみの結果をパースできることを確認する。"""
+    # Given: text と tokens[].written のみを含む結果
+    raw = '{"text":"hello","results":[{"text":"hello","tokens":[{"written":"hello"}]}]}'
+
+    # When: parse_result を呼び出す
+    result = _parse_result(raw)
+
+    # Then: 必須フィールドだけの発話結果が返る
+    assert result.results == (UtteranceResult(text="hello", tokens=(Token(written="hello"),)),)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"results":{}}',
+        '{"results":["invalid"]}',
+        '{"results":[{"text":"hello","tokens":["invalid"]}]}',
+    ],
+)
+def test_parse_result_invalid_structure_invalid_raise_RecognitionError(raw: str) -> None:
+    """認識結果の配列や要素が不正な場合に RecognitionError が送出されることを確認する。"""
+    # Given: results または tokens の構造が不正な JSON
+    # When / Then: parse_result を呼び出すと RecognitionError が送出される
+    with pytest.raises(RecognitionError):
+        _parse_result(raw)
+
+
+@pytest.mark.parametrize("field", ["confidence", "starttime", "endtime"])
+def test_parse_result_bool_numeric_field_invalid_raise_RecognitionError(field: str) -> None:
+    """数値フィールドに bool を指定した場合に RecognitionError が送出されることを確認する。"""
+    # Given: 発話結果の数値フィールドに bool を指定した JSON
+    raw_data = {"results": [{"text": "hello", "tokens": [{"written": "hello"}], field: True}]}
+    raw = json.dumps(raw_data)
+
+    # When / Then: parse_result を呼び出すと RecognitionError が送出される
+    with pytest.raises(RecognitionError):
+        _parse_result(raw)
+
+
+def test_RecognitionResult_utterance_id_without_key_valid_return_none() -> None:
+    """Utteranceid キーがない場合に utterance_id が None を返すことを確認する。"""
+    # Given: utteranceid キーを持たない RecognitionResult
+    result = RecognitionResult(raw='{"text":"hello"}', data={"text": "hello"})
+
+    # When / Then: utterance_id プロパティを参照する
+    assert result.utterance_id is None
+
+
+def test_Token_frozen_field_invalid_raise_FrozenInstanceError() -> None:
+    """Token がイミュータブルで、フィールドへの代入が禁止されることを確認する。"""
+    # Given: Token インスタンス
+    token = Token(written="hello")
+
+    # When / Then: フィールドに代入すると FrozenInstanceError が送出される
+    with pytest.raises(FrozenInstanceError):
+        token.written = "updated"  # type: ignore[misc]
+
+
+def test_UtteranceResult_frozen_field_invalid_raise_FrozenInstanceError() -> None:
+    """UtteranceResult がイミュータブルで、フィールドへの代入が禁止されることを確認する。"""
+    # Given: UtteranceResult インスタンス
+    utterance = UtteranceResult(text="hello")
+
+    # When / Then: フィールドに代入すると FrozenInstanceError が送出される
+    with pytest.raises(FrozenInstanceError):
+        utterance.text = "updated"  # type: ignore[misc]
 
 
 def test_RecognitionResult_text_with_text_key_valid_return_text() -> None:

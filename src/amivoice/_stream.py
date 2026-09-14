@@ -6,8 +6,9 @@ from collections.abc import Callable, Iterator
 from com.amivoice.wrp.Wrp import Wrp as _Wrp
 from com.amivoice.wrp.WrpListener import WrpListener
 
+from ._billing import resolve_billing_extension
 from ._params import RecognitionParams
-from ._transport import WrpTransport, bool_string
+from ._transport import WrpTransport, _set_optional_transport_parameter, bool_string
 from .exceptions import ConnectionFailedError, RecognitionError
 from .models import NotificationEvent, RecognitionResult, StreamEvent, UtteranceEvent, parse_result
 
@@ -236,7 +237,18 @@ def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) 
     keep_filler = None if params.keep_filler_token is None else bool_string(params.keep_filler_token)
     interval = None if params.result_updated_interval is None else str(params.result_updated_interval)
     recognition_timeout = None if params.recognition_timeout is None else str(params.recognition_timeout)
+    complete_timeout = None if params.complete_timeout is None else str(params.complete_timeout)
+    wildcard_model_penalty = None if params.wildcard_model_penalty is None else repr(params.wildcard_model_penalty)
+    max_decoding_time = None if params.max_decoding_time is None else str(params.max_decoding_time)
+    max_response_time = None if params.max_response_time is None else str(params.max_response_time)
+    max_decoding_rate = None if params.max_decoding_rate is None else repr(params.max_decoding_rate)
+    target_response_time = None if params.target_response_time is None else str(params.target_response_time)
+    target_decoding_rate = None if params.target_decoding_rate is None else repr(params.target_decoding_rate)
+    confidence_level = None if params.confidence_level is None else repr(params.confidence_level)
+    extension = resolve_billing_extension(params.extension, params.billing_key)
     no_input_timeout = None if params.no_input_timeout is None else str(params.no_input_timeout)
+    _set_optional_transport_parameter(wrp, "setCompleteTimeout", complete_timeout)
+    _set_optional_transport_parameter(wrp, "setWildcardModelPenalty", wildcard_model_penalty)
     optional_setters: tuple[tuple[Callable[[str | None], None], str | None], ...] = (
         (wrp.setGrammarFileNames, params.grammar_file_names),
         (wrp.setCodec, params.codec),
@@ -248,10 +260,16 @@ def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) 
         (wrp.setProfileWords, params.profile_words),
         (wrp.setSegmenterType, params.segmenter_type),
         (wrp.setSegmenterProperties, params.segmenter_properties),
-        (wrp.setExtension, params.extension),
+        (wrp.setExtension, extension),
         (wrp.setKeepFillerToken, keep_filler),
         (wrp.setResultUpdatedInterval, interval),
         (wrp.setRecognitionTimeout, recognition_timeout),
+        (wrp.setMaxDecodingTime, max_decoding_time),
+        (wrp.setMaxResponseTime, max_response_time),
+        (wrp.setMaxDecodingRate, max_decoding_rate),
+        (wrp.setTargetResponseTime, target_response_time),
+        (wrp.setTargetDecodingRate, target_decoding_rate),
+        (wrp.setConfidenceLevel, confidence_level),
         (wrp.setNoInputTimeout, no_input_timeout),
     )
     for setter, value in optional_setters:

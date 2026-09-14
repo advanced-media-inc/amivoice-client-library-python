@@ -44,7 +44,19 @@ class HrpTransport(Protocol):
 
     def setResultUpdatedInterval(self, result_updated_interval: str | None, /) -> None: ...
 
+    def setMaxDecodingTime(self, max_decoding_time: str | None, /) -> None: ...
+
+    def setMaxResponseTime(self, max_response_time: str | None, /) -> None: ...
+
+    def setMaxDecodingRate(self, max_decoding_rate: str | None, /) -> None: ...
+
+    def setTargetResponseTime(self, target_response_time: str | None, /) -> None: ...
+
+    def setTargetDecodingRate(self, target_decoding_rate: str | None, /) -> None: ...
+
     def setRecognitionTimeout(self, recognition_timeout: str | None, /) -> None: ...
+
+    def setConfidenceLevel(self, confidence_level: str | None, /) -> None: ...
 
     def setExtension(self, extension: str | None, /) -> None: ...
 
@@ -108,7 +120,19 @@ class WrpTransport(Protocol):
 
     def setResultUpdatedInterval(self, result_updated_interval: str | None, /) -> None: ...
 
+    def setMaxDecodingTime(self, max_decoding_time: str | None, /) -> None: ...
+
+    def setMaxResponseTime(self, max_response_time: str | None, /) -> None: ...
+
+    def setMaxDecodingRate(self, max_decoding_rate: str | None, /) -> None: ...
+
+    def setTargetResponseTime(self, target_response_time: str | None, /) -> None: ...
+
+    def setTargetDecodingRate(self, target_decoding_rate: str | None, /) -> None: ...
+
     def setRecognitionTimeout(self, recognition_timeout: str | None, /) -> None: ...
+
+    def setConfidenceLevel(self, confidence_level: str | None, /) -> None: ...
 
     def setNoInputTimeout(self, no_input_timeout: str | None, /) -> None: ...
 
@@ -137,6 +161,28 @@ class WrpTransport(Protocol):
     def getWaitingResults(self) -> int: ...
 
     def sleep(self, timeout: float, /) -> None: ...
+
+
+def _set_optional_transport_parameter(transport: object, setter_name: str, value: str | None) -> None:
+    """設定値がある場合だけ任意の transport setter を呼び出す
+
+    Args:
+        transport: setter を持つ transport
+        setter_name: 呼び出す setter 名
+        value: setter に渡す値
+
+    Raises:
+        AttributeError: 設定値があるが setter が存在しない場合
+    """
+    if value is None:
+        return
+
+    setter = getattr(transport, setter_name, None)
+    if setter is None:
+        raise AttributeError(f"Transport does not support {setter_name}")
+    if not callable(setter):
+        raise TypeError(f"Transport setter is not callable: {setter_name}")
+    setter(value)
 
 
 def bool_string(value: bool) -> str:

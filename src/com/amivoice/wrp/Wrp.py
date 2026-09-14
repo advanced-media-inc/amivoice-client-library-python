@@ -62,6 +62,8 @@ class Wrp:
         self.connectTimeout_ = 0
         self.receiveTimeout_ = 0
         self.grammarFileNames_ = None
+        self.completeTimeout_: str | None = None
+        self.wildcardModelPenalty_: str | None = None
         self.mode_ = None
         self.profileId_ = None
         self.profileWords_ = None
@@ -76,6 +78,7 @@ class Wrp:
         self.targetDecodingRate_ = None
         self.noInputTimeout_ = None
         self.recognitionTimeout_ = None
+        self.confidenceLevel_: str | None = None
         self.extension_ = None
         self.authorization_ = None
         self.codec_ = None
@@ -140,6 +143,22 @@ class Wrp:
             grammarFileNames: グラマファイル名の文字列
         """
         self.grammarFileNames_ = grammarFileNames
+
+    def setCompleteTimeout(self, completeTimeout: str | None) -> None:
+        """ルールグラマの確定待ちタイムアウトを設定する
+
+        Args:
+            completeTimeout: 確定待ちタイムアウト（ミリ秒）の文字列
+        """
+        self.completeTimeout_ = completeTimeout
+
+    def setWildcardModelPenalty(self, wildcardModelPenalty: str | None) -> None:
+        """ルールグラマのワイルドカードモデルペナルティを設定する
+
+        Args:
+            wildcardModelPenalty: ワイルドカードモデルペナルティの文字列
+        """
+        self.wildcardModelPenalty_ = wildcardModelPenalty
 
     def setMode(self, mode: str | None) -> None:
         """認識モードを設定する
@@ -252,6 +271,14 @@ class Wrp:
             recognitionTimeout: 認識処理タイムアウトの文字列（ミリ秒）
         """
         self.recognitionTimeout_ = recognitionTimeout
+
+    def setConfidenceLevel(self, confidenceLevel: str | None) -> None:
+        """信頼度しきい値を設定する
+
+        Args:
+            confidenceLevel: 信頼度しきい値の文字列
+        """
+        self.confidenceLevel_ = confidenceLevel
 
     def setExtension(self, extension: str | None) -> None:
         """使用量集計タグを設定する
@@ -437,6 +464,22 @@ class Wrp:
                     command += "\001"
             else:
                 command += " \001"
+            if self.completeTimeout_ is not None:
+                command += " completeTimeout="
+                if self.completeTimeout_.find(" ") != -1:
+                    command += '"'
+                    command += self.completeTimeout_
+                    command += '"'
+                else:
+                    command += self.completeTimeout_
+            if self.wildcardModelPenalty_ is not None:
+                command += " wildcardModelPenalty="
+                if self.wildcardModelPenalty_.find(" ") != -1:
+                    command += '"'
+                    command += self.wildcardModelPenalty_
+                    command += '"'
+                else:
+                    command += self.wildcardModelPenalty_
             if self.mode_ is not None:
                 command += " mode="
                 if self.mode_.find(" ") != -1:
@@ -549,6 +592,14 @@ class Wrp:
                     command += '"'
                 else:
                     command += self.recognitionTimeout_
+            if self.confidenceLevel_ is not None:
+                command += " confidenceLevel="
+                if self.confidenceLevel_.find(" ") != -1:
+                    command += '"'
+                    command += self.confidenceLevel_
+                    command += '"'
+                else:
+                    command += self.confidenceLevel_
             if self.extension_ is not None:
                 command += " extension="
                 if self.extension_.find(" ") != -1 or self.extension_.find('"') != -1:
