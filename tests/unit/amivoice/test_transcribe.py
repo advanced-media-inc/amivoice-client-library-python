@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from amivoice import ProfileWord
 from amivoice._segmenter import SegmenterProperties
 from amivoice.client import _DEFAULT_HRP_URL, transcribe
 from amivoice.exceptions import (
@@ -106,6 +107,23 @@ def test_transcribe_confidence_level_valid_passes_repr() -> None:
 
     # Then: 小数表記を維持した文字列が setter に渡される
     mock_hrp.setConfidenceLevel.assert_called_once_with("0.3")
+
+
+def test_transcribe_profile_words_sequence_valid_passes_serialized_string() -> None:
+    """モジュールレベルtranscribeのProfileWordシーケンスがHRPへシリアライズされることを確認する"""
+    # Given: ProfileWordシーケンスとモックHRP
+    mock_hrp = _make_mock_hrp()
+
+    # When: ProfileWordシーケンスを指定してtranscribeを呼び出す
+    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
+        transcribe(
+            b"audio-data",
+            api_key="test-key",
+            profile_words=(ProfileWord(written="AmiVoice", spoken="あみぼいす"),),
+        )
+
+    # Then: profileWordsのワイヤー形式がHRP setterへ渡る
+    mock_hrp.setProfileWords.assert_called_once_with("AmiVoice あみぼいす")
 
 
 def test_transcribe_processing_time_params_valid_passes_strings() -> None:

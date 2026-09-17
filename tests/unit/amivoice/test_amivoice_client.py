@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from amivoice import ProfileWord
 from amivoice._segmenter import SegmenterProperties
 from amivoice._stream import StreamConnectionManager, StreamSession
 from amivoice._transport import HrpTransport
@@ -1297,3 +1298,57 @@ def test_AmiVoiceClient_stream_rule_grammar_parameter_override_passes_string(
 
     # Then: 上書きした文字列値が対応するWRP setterへ渡る
     getattr(mock_wrp, setter_name).assert_called_once_with(expected)
+
+
+def test_AmiVoiceClient_transcribe_profile_words_sequence_valid_passes_serialized_string() -> None:
+    """コンストラクタのProfileWordシーケンスがHRPへシリアライズされることを確認する"""
+    # Given: ProfileWordシーケンスを設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(
+        api_key="key",
+        hrp_transport=mock_hrp,
+        profile_words=(ProfileWord(written="AmiVoice", spoken="あみぼいす"),),
+    )
+
+    # When: HTTP認識を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: profileWordsのワイヤー形式がHRP setterへ渡る
+    mock_hrp.setProfileWords.assert_called_once_with("AmiVoice あみぼいす")
+
+
+def test_AmiVoiceClient_transcribe_profile_words_override_valid_passes_serialized_string() -> None:
+    """transcribeのProfileWordシーケンスoverrideがHRPへシリアライズされることを確認する"""
+    # Given: 既定のprofile_wordsを持つHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(
+        api_key="key",
+        hrp_transport=mock_hrp,
+        profile_words="default word",
+    )
+
+    # When: ProfileWordシーケンスでHTTP認識時の設定を上書きする
+    client.transcribe(
+        b"audio-data",
+        profile_words=(ProfileWord(written="WWW", spoken="とりぷるだぶる"),),
+    )
+
+    # Then: overrideのワイヤー形式がHRP setterへ渡る
+    mock_hrp.setProfileWords.assert_called_once_with("WWW とりぷるだぶる")
+
+
+def test_AmiVoiceClient_stream_profile_words_sequence_valid_passes_serialized_string() -> None:
+    """streamのProfileWordシーケンスがWRPへシリアライズされることを確認する"""
+    # Given: ProfileWordシーケンスを指定するクライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key")
+
+    # When: ProfileWordシーケンスでストリーミングセッションを開始する
+    with (
+        patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
+        client.stream(profile_words=(ProfileWord(written="AmiVoice", spoken="あみぼいす"),)) as session,
+    ):
+        session.end()
+
+    # Then: profileWordsのワイヤー形式がWRP setterへ渡る
+    mock_wrp.setProfileWords.assert_called_once_with("AmiVoice あみぼいす")

@@ -65,6 +65,25 @@ for utterance in result.results:
 
 `spoken`、`confidence`、`starttime`、`endtime`、`label`、`language`など、エンジンや設定により省略されるフィールドは`None`になります。`RecognitionResult.raw`、`data`、`text`、`is_error`、`session_id`も引き続き利用できます。
 
+### セッション単語登録
+
+認識セッションだけで有効にする単語は、`ProfileWord`のシーケンスで指定できます。ハイブリッドエンジンでは`spoken`を必須とし、クラスを指定する場合は`classname`を追加します。End to End エンジンでは`alternative_written`と`biasing`を指定します。従来どおり、ワイヤー形式の文字列も指定できます。
+
+```python
+from amivoice import AmiVoiceClient, ProfileWord
+
+client = AmiVoiceClient(
+    grammar_file_names="-a-general",
+    profile_words=(
+        ProfileWord(written="AmiVoice", spoken="あみぼいす", classname="固有名詞"),
+        ProfileWord(written="WWW", spoken="とりぷるだぶる"),
+    ),
+)
+result = client.transcribe("audio.wav")
+```
+
+`ProfileWord`の値には空白や`|`を含めないでください。複数の単語はライブラリが`|`で連結して API 送信用の形式に変換します。
+
 ### セグメンター設定
 
 発話検出、話者ダイアライゼーション、言語識別は`SegmenterProperties`で指定できます。次の設定は同期 HTTP と WebSocket で利用できます。
