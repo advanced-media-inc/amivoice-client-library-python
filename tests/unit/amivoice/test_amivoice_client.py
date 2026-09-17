@@ -11,7 +11,13 @@ from amivoice import ProfileWord
 from amivoice._segmenter import SegmenterProperties
 from amivoice._stream import StreamConnectionManager, StreamSession
 from amivoice._transport import HrpTransport
-from amivoice.client import _DEFAULT_HRP_URL, _DEFAULT_WRP_URL, AmiVoiceClient
+from amivoice.client import (
+    _DEFAULT_HRP_URL,
+    _DEFAULT_NOLOG_HRP_URL,
+    _DEFAULT_NOLOG_WRP_URL,
+    _DEFAULT_WRP_URL,
+    AmiVoiceClient,
+)
 from amivoice.exceptions import (
     AuthenticationError,
     ConfigurationError,
@@ -212,6 +218,114 @@ def test_AmiVoiceClient_transcribe_uses_constructor_http_api_url() -> None:
 
     # Then: コンストラクタの http_api_url が使われる
     mock_hrp.setServerURL.assert_called_once_with(custom)
+
+
+def test_AmiVoiceClient_transcribe_logging_opt_out_constructor_valid_uses_nolog_url() -> None:
+    """コンストラクタのlogging_opt_outで既定HRP URLがnolog URLへ切り替わることを確認する。"""
+    # Given: ログ保存なしを指定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, logging_opt_out=True)
+
+    # When: HTTP認識を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: nologエンドポイントがHRPへ渡る
+    mock_hrp.setServerURL.assert_called_once_with(_DEFAULT_NOLOG_HRP_URL)
+
+
+def test_AmiVoiceClient_transcribe_logging_opt_out_custom_url_valid_keeps_custom_url() -> None:
+    """カスタムHRP URLをlogging_opt_outで書き換えないことを確認する。"""
+    # Given: カスタムURLとログ保存なしを指定したクライアント
+    custom = "https://custom.example.com/recognize"
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, http_api_url=custom, logging_opt_out=True)
+
+    # When: HTTP認識を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: カスタムURLがそのままHRPへ渡る
+    mock_hrp.setServerURL.assert_called_once_with(custom)
+
+
+@pytest.mark.parametrize(
+    ("constructor_value", "override_value", "expected_url"),
+    [
+        (False, True, _DEFAULT_NOLOG_HRP_URL),
+        (True, False, _DEFAULT_HRP_URL),
+    ],
+)
+def test_AmiVoiceClient_transcribe_logging_opt_out_override_valid_uses_expected_url(
+    constructor_value: bool,
+    override_value: bool,
+    expected_url: str,
+) -> None:
+    """transcribeのlogging_opt_out overrideがコンストラクタ設定を上書きすることを確認する。"""
+    # Given: logging_opt_outの既定値を設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, logging_opt_out=constructor_value)
+
+    # When: 呼び出し時にlogging_opt_outを上書きしてHTTP認識を実行する
+    client.transcribe(b"audio-data", logging_opt_out=override_value)
+
+    # Then: overrideに対応するエンドポイントがHRPへ渡る
+    mock_hrp.setServerURL.assert_called_once_with(expected_url)
+
+
+def test_AmiVoiceClient_stream_logging_opt_out_constructor_valid_uses_nolog_url() -> None:
+    """コンストラクタのlogging_opt_outで既定WRP URLがnolog URLへ切り替わることを確認する。"""
+    # Given: ログ保存なしを指定したWebSocketクライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", logging_opt_out=True)
+
+    # When: ストリーミングセッションを開始する
+    with patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build, client.stream() as session:
+        session.end()
+
+    # Then: nologエンドポイントがWRPへ渡る
+    assert mock_build.call_args.args[1] == _DEFAULT_NOLOG_WRP_URL
+
+
+def test_AmiVoiceClient_stream_logging_opt_out_custom_url_valid_keeps_custom_url() -> None:
+    """カスタムWRP URLをlogging_opt_outで書き換えないことを確認する。"""
+    # Given: カスタムURLとログ保存なしを指定したクライアント
+    custom = "wss://custom.example.com/v1/"
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", ws_api_url=custom, logging_opt_out=True)
+
+    # When: ストリーミングセッションを開始する
+    with patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build, client.stream() as session:
+        session.end()
+
+    # Then: カスタムURLがそのままWRPへ渡る
+    assert mock_build.call_args.args[1] == custom
+
+
+@pytest.mark.parametrize(
+    ("constructor_value", "override_value", "expected_url"),
+    [
+        (False, True, _DEFAULT_NOLOG_WRP_URL),
+        (True, False, _DEFAULT_WRP_URL),
+    ],
+)
+def test_AmiVoiceClient_stream_logging_opt_out_override_valid_uses_expected_url(
+    constructor_value: bool,
+    override_value: bool,
+    expected_url: str,
+) -> None:
+    """streamのlogging_opt_out overrideがコンストラクタ設定を上書きすることを確認する。"""
+    # Given: logging_opt_outの既定値を設定したWebSocketクライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", logging_opt_out=constructor_value)
+
+    # When: 呼び出し時にlogging_opt_outを上書きしてストリーミングを開始する
+    with (
+        patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build,
+        client.stream(logging_opt_out=override_value) as session,
+    ):
+        session.end()
+
+    # Then: overrideに対応するエンドポイントがWRPへ渡る
+    assert mock_build.call_args.args[1] == expected_url
 
 
 def test_AmiVoiceClient_transcribe_recognition_timeout_passed_to_setter() -> None:

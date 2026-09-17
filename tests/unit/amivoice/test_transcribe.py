@@ -10,7 +10,7 @@ import pytest
 
 from amivoice import ProfileWord
 from amivoice._segmenter import SegmenterProperties
-from amivoice.client import _DEFAULT_HRP_URL, transcribe
+from amivoice.client import _DEFAULT_HRP_URL, _DEFAULT_NOLOG_HRP_URL, transcribe
 from amivoice.exceptions import (
     AuthenticationError,
     ConfigurationError,
@@ -79,6 +79,33 @@ def test_transcribe_custom_api_url_valid_uses_given_url() -> None:
         transcribe(b"audio-data", api_key="test-key", api_url=custom_url)
 
     # Then: カスタム URL が setServerURL に渡される
+    mock_hrp.setServerURL.assert_called_once_with(custom_url)
+
+
+def test_transcribe_logging_opt_out_valid_uses_nolog_url() -> None:
+    """logging_opt_out=Trueで既定URLがnolog URLへ切り替わることを確認する。"""
+    # Given: モックHRP
+    mock_hrp = _make_mock_hrp()
+
+    # When: logging_opt_out=Trueでtranscribeを呼び出す
+    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
+        transcribe(b"audio-data", api_key="test-key", logging_opt_out=True)
+
+    # Then: nologエンドポイントがsetServerURLへ渡される
+    mock_hrp.setServerURL.assert_called_once_with(_DEFAULT_NOLOG_HRP_URL)
+
+
+def test_transcribe_logging_opt_out_custom_url_valid_keeps_custom_url() -> None:
+    """カスタムURLをlogging_opt_outで書き換えないことを確認する。"""
+    # Given: カスタムURLとモックHRP
+    custom_url = "https://custom.example.com/v1/recognize"
+    mock_hrp = _make_mock_hrp()
+
+    # When: カスタムURLとlogging_opt_out=Trueでtranscribeを呼び出す
+    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
+        transcribe(b"audio-data", api_key="test-key", api_url=custom_url, logging_opt_out=True)
+
+    # Then: カスタムURLがsetServerURLへ渡される
     mock_hrp.setServerURL.assert_called_once_with(custom_url)
 
 

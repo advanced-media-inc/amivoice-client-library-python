@@ -43,6 +43,23 @@ print(result.text)
 
 `transcribe()`には、ファイルパス、`pathlib.Path`、`bytes`、バイナリファイルオブジェクトを渡せます。
 
+### ログ保存なしの認識
+
+ログを保存せずに認識する場合は、`logging_opt_out=True`を指定します。同期 HTTP と WebSocket の既定エンドポイントが、それぞれログ保存なしのエンドポイントへ切り替わります。
+
+```python
+from amivoice import AmiVoiceClient
+
+client = AmiVoiceClient(logging_opt_out=True)
+result = client.transcribe("audio.wav")
+
+with client.stream() as session:
+    session.write(audio_chunk)
+    session.end()
+```
+
+`transcribe()`や`stream()`の呼び出し時にも`logging_opt_out`を指定できます。`http_api_url`、`ws_api_url`、`api_url`でカスタム URL を指定した場合、その URL は`logging_opt_out`で変更されません。カスタム URL でログ保存なしのエンドポイントを使う場合は、URL を直接指定してください。
+
 ### 型付き認識結果
 
 `RecognitionResult.results`から発話区間、単語、信頼度、時刻、話者ラベル、言語ラベルを型付きで参照できます。

@@ -26,6 +26,8 @@ from .models import RecognitionResult, parse_result
 
 _DEFAULT_HRP_URL: str = "https://acp-api.amivoice.com/v1/recognize"
 _DEFAULT_WRP_URL: str = "wss://acp-api.amivoice.com/v1/"
+_DEFAULT_NOLOG_HRP_URL: str = "https://acp-api.amivoice.com/v1/nolog/recognize"
+_DEFAULT_NOLOG_WRP_URL: str = "wss://acp-api.amivoice.com/v1/nolog/"
 
 
 def _construct_hrp_transport() -> HrpTransport:
@@ -33,9 +35,26 @@ def _construct_hrp_transport() -> HrpTransport:
     return _Hrp.construct()
 
 
-def _resolve_url(override: str | _UnsetType, default: str) -> str:
-    """呼び出し時 URL override が未指定ならインスタンス既定値を返す。"""
-    return override if isinstance(override, str) else default
+def _resolve_endpoint_url(  # noqa: PLR0913
+    override: str | _UnsetType,
+    configured_url: str,
+    configured_url_is_default: bool,
+    default_url: str,
+    nolog_url: str,
+    logging_opt_out: bool,
+) -> str:
+    """URL overrideとログ保存なし設定から最終エンドポイントを解決する
+
+    カスタムURLは ``logging_opt_out`` が有効でも変更しない。コンストラクタと
+    呼び出し時のどちらでも、既定URLだけをnologエンドポイントへ切り替える。
+    """
+    if not isinstance(override, _UnsetType):
+        return override
+    if logging_opt_out and configured_url_is_default:
+        return nolog_url
+    if configured_url == default_url:
+        return default_url
+    return configured_url
 
 
 def _resolve_profile_words(profile_words: str | Sequence[ProfileWord] | None) -> str | None:
@@ -166,6 +185,7 @@ class AmiVoiceClient:
         no_input_timeout: 無入力タイムアウト（ミリ秒）（WRP 専用）。
         complete_timeout: ルールグラマの確定待ちタイムアウト（ミリ秒） 0 以上
         wildcard_model_penalty: ルールグラマのワイルドカードモデルペナルティ 負値は無効
+        logging_opt_out: ログを保存しないエンドポイントを使用するか。カスタムURLは変更しない。
         http_api_url: HRP（HTTP）API エンドポイント URL の既定値。
         ws_api_url: WRP（WebSocket）API エンドポイント URL の既定値。
         hrp_transport: テスト用 HRP トランスポート注入口。
@@ -223,6 +243,7 @@ class AmiVoiceClient:
         mode: str | None = None,
         profile_id: str | None = None,
         profile_words: str | Sequence[ProfileWord] | None = None,
+        logging_opt_out: bool = False,
         segmenter_type: str | None = None,
         segmenter: SegmenterProperties | None = None,
         segmenter_properties: str | None = None,
@@ -246,8 +267,8 @@ class AmiVoiceClient:
         accept: str | None = None,
         domain_id: str | None = None,
         no_input_timeout: int | None = None,
-        http_api_url: str = _DEFAULT_HRP_URL,
-        ws_api_url: str = _DEFAULT_WRP_URL,
+        http_api_url: str | _UnsetType = UNSET,
+        ws_api_url: str | _UnsetType = UNSET,
         hrp_transport: HrpTransport | None = None,
         wrp_transport: WrpTransport | None = None,
     ) -> None:
@@ -292,8 +313,11 @@ class AmiVoiceClient:
             target_decoding_rate=target_decoding_rate,
             no_input_timeout=no_input_timeout,
         )
-        self._http_api_url = http_api_url
-        self._ws_api_url = ws_api_url
+        self._http_api_url = _DEFAULT_HRP_URL if isinstance(http_api_url, _UnsetType) else http_api_url
+        self._ws_api_url = _DEFAULT_WRP_URL if isinstance(ws_api_url, _UnsetType) else ws_api_url
+        self._http_api_url_is_default = isinstance(http_api_url, _UnsetType)
+        self._ws_api_url_is_default = isinstance(ws_api_url, _UnsetType)
+        self._logging_opt_out = logging_opt_out
         # テスト注入口
         self._hrp_transport = hrp_transport
         self._wrp_transport = wrp_transport
@@ -339,6 +363,7 @@ class AmiVoiceClient:
         domain_id: str | None | _UnsetType = UNSET,
         raise_on_error: bool = True,
         api_url: str | _UnsetType = UNSET,
+        logging_opt_out: bool | _UnsetType = UNSET,
     ) -> RecognitionResult:
         """音声を HTTP API に送信し、認識結果を返す。
 
@@ -380,7 +405,8 @@ class AmiVoiceClient:
             domain_id: ドメイン ID の呼び出し時 override。
             confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）の呼び出し時 override。
             raise_on_error: エラー結果の場合に ``RecognitionError`` を送出するか否か。
-            api_url: HRP API エンドポイント URL の呼び出し時 override。
+            api_url: HRP API エンドポイント URL の呼び出し時 override。指定時はカスタムURLとして扱う。
+            logging_opt_out: 既定URLをログ保存なしエンドポイントへ切り替える呼び出し時 override。カスタムURLは変更しない。
 
         Returns:
             認識結果。
@@ -426,7 +452,15 @@ class AmiVoiceClient:
             target_response_time=target_response_time,
             target_decoding_rate=target_decoding_rate,
         )
-        resolved_url = _resolve_url(api_url, self._http_api_url)
+        resolved_logging_opt_out = self._logging_opt_out if isinstance(logging_opt_out, _UnsetType) else logging_opt_out
+        resolved_url = _resolve_endpoint_url(
+            api_url,
+            self._http_api_url,
+            self._http_api_url_is_default,
+            _DEFAULT_HRP_URL,
+            _DEFAULT_NOLOG_HRP_URL,
+            resolved_logging_opt_out,
+        )
 
         # 注入されたトランスポートでは connect/disconnect を呼ばない
         injected = self._hrp_transport is not None
@@ -577,6 +611,7 @@ class AmiVoiceClient:
         target_decoding_rate: float | None | _UnsetType = UNSET,
         no_input_timeout: int | None | _UnsetType = UNSET,
         api_url: str | _UnsetType = UNSET,
+        logging_opt_out: bool | _UnsetType = UNSET,
     ) -> StreamConnectionManager:
         """WebSocket ストリーミング認識セッションのコンテキストマネージャを返す。
 
@@ -611,7 +646,8 @@ class AmiVoiceClient:
             target_decoding_rate: 目標認識処理時間倍率の呼び出し時 override、バッチ音声のみ有効、負値は無効
             confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）の呼び出し時 override。
             no_input_timeout: 無入力タイムアウトの呼び出し時 override。
-            api_url: WRP API エンドポイント URL の呼び出し時 override。
+            api_url: WRP API エンドポイント URL の呼び出し時 override。指定時はカスタムURLとして扱う。
+            logging_opt_out: 既定URLをログ保存なしエンドポイントへ切り替える呼び出し時 override。カスタムURLは変更しない。
 
         Returns:
             ``StreamConnectionManager``。``__enter__`` で ``StreamSession`` を返す。
@@ -665,7 +701,15 @@ class AmiVoiceClient:
             wildcard_model_penalty=wildcard_model_penalty,
             no_input_timeout=no_input_timeout,
         )
-        resolved_url = _resolve_url(api_url, self._ws_api_url)
+        resolved_logging_opt_out = self._logging_opt_out if isinstance(logging_opt_out, _UnsetType) else logging_opt_out
+        resolved_url = _resolve_endpoint_url(
+            api_url,
+            self._ws_api_url,
+            self._ws_api_url_is_default,
+            _DEFAULT_WRP_URL,
+            _DEFAULT_NOLOG_WRP_URL,
+            resolved_logging_opt_out,
+        )
         return StreamConnectionManager(
             api_key=self._api_key,
             api_url=resolved_url,
@@ -683,7 +727,8 @@ def transcribe(  # noqa: PLR0913
     audio: AudioSource,
     *,
     api_key: str | None = None,
-    api_url: str = _DEFAULT_HRP_URL,
+    api_url: str | _UnsetType = UNSET,
+    logging_opt_out: bool = False,
     grammar_file_names: str | None = None,
     codec: str | None = None,
     result_type: str | None = None,
@@ -726,7 +771,8 @@ def transcribe(  # noqa: PLR0913
     Args:
         audio: 音声ソース（bytes・バイナリストリーム・ファイルパス）。
         api_key: 認証情報。省略時は環境変数 ``AMIVOICE_API_KEY`` を使用する。
-        api_url: AmiVoice API の接続先 URL。
+        api_url: AmiVoice API の接続先 URL。カスタムURLは ``logging_opt_out`` で変更しない。
+        logging_opt_out: ログを保存しない既定エンドポイントを使用するか。
         grammar_file_names: 接続エンジン名。
         codec: 音声コーデック（例: ``"16K"``, ``"8K"``）。
         result_type: 認識結果タイプ。
@@ -773,6 +819,8 @@ def transcribe(  # noqa: PLR0913
     """
     client = AmiVoiceClient(
         api_key=api_key,
+        http_api_url=api_url,
+        logging_opt_out=logging_opt_out,
         grammar_file_names=grammar_file_names,
         codec=codec,
         result_type=result_type,
@@ -806,4 +854,4 @@ def transcribe(  # noqa: PLR0913
         target_decoding_rate=target_decoding_rate,
         hrp_transport=_transport,
     )
-    return client.transcribe(audio, raise_on_error=raise_on_error, api_url=api_url)
+    return client.transcribe(audio, raise_on_error=raise_on_error)
