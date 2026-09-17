@@ -70,6 +70,7 @@ class RecognitionParams:
     content_type: str | None = None
     accept: str | None = None
     domain_id: str | None = None
+    audio_filter_properties: str | None = None
     # WRP 専用
     no_input_timeout: int | None = None
 

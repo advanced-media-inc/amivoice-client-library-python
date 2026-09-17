@@ -79,6 +79,19 @@ client = AmiVoiceClient(
 )
 ```
 
+### マルチチャネル音声のチャネル選択
+
+複数チャネルの音声を同期 HTTP で認識する場合は、`selected_channel`で認識対象を指定できます。単一チャネルは整数、複数チャネルの混合平均は`(開始チャネル, 終了チャネル)`のタプルで指定します。チャネル番号は`0`から始まります。
+
+```python
+from amivoice import AmiVoiceClient
+
+client = AmiVoiceClient(selected_channel=(0, 1))
+result = client.transcribe("stereo.wav")
+```
+
+API の`audioFilterProperties`を直接指定する場合は、`audio_filter_properties`を使用します。`selected_channel`と同時には指定できません。チャネル選択は同期 HTTP の`transcribe()`専用で、WebSocket の`stream()`では利用できません。
+
 ### 型付き認識結果
 
 `RecognitionResult.results`から発話区間、単語、信頼度、時刻、話者ラベル、言語ラベルを型付きで参照できます。

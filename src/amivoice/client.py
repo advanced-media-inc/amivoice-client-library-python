@@ -181,6 +181,86 @@ def _resolve_profile_words_override(
     return _resolve_profile_words(profile_words)
 
 
+def _build_selected_channel_properties(selected_channel: int | tuple[int, int]) -> str:
+    """チャネル指定をaudioFilterPropertiesのselectedChannel形式へ変換する
+
+    Args:
+        selected_channel: 単一チャネル番号または混合する開始・終了チャネル番号
+
+    Returns:
+        ``audioFilterProperties``へ渡すselectedChannel文字列
+
+    Raises:
+        ConfigurationError: チャネル番号または範囲が不正な場合
+    """
+    if isinstance(selected_channel, bool):
+        raise ConfigurationError("selected_channel must be a non-negative integer or a pair of integers")
+    if isinstance(selected_channel, int):
+        if selected_channel < 0:
+            raise ConfigurationError("selected_channel must be non-negative")
+        return f"selectedChannel={selected_channel}"
+    if not isinstance(selected_channel, tuple) or len(selected_channel) != 2:
+        raise ConfigurationError("selected_channel must be a non-negative integer or a pair of integers")
+
+    start_channel, end_channel = selected_channel
+    if (
+        isinstance(start_channel, bool)
+        or isinstance(end_channel, bool)
+        or not isinstance(start_channel, int)
+        or not isinstance(end_channel, int)
+        or start_channel < 0
+        or end_channel < 0
+    ):
+        raise ConfigurationError("selected_channel range must contain non-negative integers")
+    if start_channel > end_channel:
+        raise ConfigurationError("selected_channel range start must not be greater than end")
+    return f"selectedChannel={start_channel}-{end_channel}"
+
+
+def _resolve_audio_filter_properties(
+    selected_channel: int | tuple[int, int] | None,
+    audio_filter_properties: str | None,
+) -> str | None:
+    """型付きチャネル指定またはraw音声フィルタプロパティを解決する
+
+    Args:
+        selected_channel: 型付きの単一チャネルまたは混合チャネル範囲
+        audio_filter_properties: 既存の音声フィルタプロパティ文字列
+
+    Returns:
+        トランスポートへ渡す音声フィルタプロパティ文字列
+
+    Raises:
+        ConfigurationError: 型付き指定とraw文字列を同時指定した場合
+    """
+    if selected_channel is not None and audio_filter_properties is not None:
+        raise ConfigurationError("selected_channel and audio_filter_properties cannot be specified together")
+    return _build_selected_channel_properties(selected_channel) if selected_channel is not None else audio_filter_properties
+
+
+def _resolve_audio_filter_properties_override(
+    selected_channel: int | tuple[int, int] | None | _UnsetType,
+    audio_filter_properties: str | None | _UnsetType,
+) -> str | None | _UnsetType:
+    """呼び出し時の音声フィルタプロパティoverrideを解決する
+
+    Args:
+        selected_channel: 型付きチャネル指定または未指定sentinel
+        audio_filter_properties: raw文字列指定または未指定sentinel
+
+    Returns:
+        トランスポートへ渡す音声フィルタプロパティまたは未指定sentinel
+
+    Raises:
+        ConfigurationError: 型付き指定とraw文字列を同時指定した場合
+    """
+    if not isinstance(selected_channel, _UnsetType) and not isinstance(audio_filter_properties, _UnsetType):
+        raise ConfigurationError("selected_channel and audio_filter_properties cannot be specified together")
+    if isinstance(selected_channel, _UnsetType):
+        return audio_filter_properties
+    return _build_selected_channel_properties(selected_channel) if selected_channel is not None else None
+
+
 def _resolve_segmenter_properties(
     segmenter: SegmenterProperties | None,
     segmenter_properties: str | None,
@@ -282,6 +362,8 @@ class AmiVoiceClient:
         content_type: HTTP ``Content-Type`` ヘッダ（HRP 専用）。
         accept: HTTP ``Accept`` ヘッダ（HRP 専用）。
         domain_id: ドメイン ID（HRP 専用）。
+        selected_channel: 認識対象チャネル番号または混合するチャネル範囲（HRP 専用）。
+        audio_filter_properties: 音声フィルタプロパティのraw文字列（HRP 専用）。
         confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）。
         no_input_timeout: 無入力タイムアウト（ミリ秒）（WRP 専用）。
         complete_timeout: ルールグラマの確定待ちタイムアウト（ミリ秒） 0 以上
@@ -352,6 +434,8 @@ class AmiVoiceClient:
         segmenter_type: str | None = None,
         segmenter: SegmenterProperties | None = None,
         segmenter_properties: str | None = None,
+        selected_channel: int | tuple[int, int] | None = None,
+        audio_filter_properties: str | None = None,
         confidence_level: float | None = None,
         keep_filler_token: bool | None = None,
         result_updated_interval: int | None = None,
@@ -433,6 +517,7 @@ class AmiVoiceClient:
 
         resolved_segmenter_properties = _resolve_segmenter_properties(segmenter, segmenter_properties)
         resolved_profile_words = _resolve_profile_words(profile_words)
+        resolved_audio_filter_properties = _resolve_audio_filter_properties(selected_channel, audio_filter_properties)
         self._api_key: str = resolved_key
         self._params = RecognitionParams(
             grammar_file_names=grammar_file_names,
@@ -446,6 +531,7 @@ class AmiVoiceClient:
             profile_words=resolved_profile_words,
             segmenter_type=segmenter_type,
             segmenter_properties=resolved_segmenter_properties,
+            audio_filter_properties=resolved_audio_filter_properties,
             keep_filler_token=keep_filler_token,
             result_updated_interval=result_updated_interval,
             extension=extension,
@@ -503,6 +589,8 @@ class AmiVoiceClient:
         segmenter_type: str | None | _UnsetType = UNSET,
         segmenter: SegmenterProperties | None | _UnsetType = UNSET,
         segmenter_properties: str | None | _UnsetType = UNSET,
+        selected_channel: int | tuple[int, int] | None | _UnsetType = UNSET,
+        audio_filter_properties: str | None | _UnsetType = UNSET,
         confidence_level: float | None | _UnsetType = UNSET,
         keep_filler_token: bool | None | _UnsetType = UNSET,
         result_updated_interval: int | None | _UnsetType = UNSET,
@@ -564,6 +652,8 @@ class AmiVoiceClient:
             content_type: HTTP ``Content-Type`` ヘッダの呼び出し時 override。
             accept: HTTP ``Accept`` ヘッダの呼び出し時 override。
             domain_id: ドメイン ID の呼び出し時 override。
+            selected_channel: 認識対象チャネル番号または混合するチャネル範囲の呼び出し時 override。
+            audio_filter_properties: 音声フィルタプロパティraw文字列の呼び出し時 override。
             confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）の呼び出し時 override。
             raise_on_error: エラー結果の場合に ``RecognitionError`` を送出するか否か。
             api_url: HRP API エンドポイント URL の呼び出し時 override。指定時はカスタムURLとして扱う。
@@ -584,6 +674,10 @@ class AmiVoiceClient:
         """
         resolved_segmenter_properties = _resolve_segmenter_override(segmenter, segmenter_properties)
         resolved_profile_words = _resolve_profile_words_override(profile_words)
+        resolved_audio_filter_properties = _resolve_audio_filter_properties_override(
+            selected_channel,
+            audio_filter_properties,
+        )
         params = merge_params(
             self._params,
             grammar_file_names=grammar_file_names,
@@ -597,6 +691,7 @@ class AmiVoiceClient:
             profile_words=resolved_profile_words,
             segmenter_type=segmenter_type,
             segmenter_properties=resolved_segmenter_properties,
+            audio_filter_properties=resolved_audio_filter_properties,
             keep_filler_token=keep_filler_token,
             result_updated_interval=result_updated_interval,
             extension=extension,
@@ -678,6 +773,7 @@ class AmiVoiceClient:
         wildcard_model_penalty = None if params.wildcard_model_penalty is None else repr(params.wildcard_model_penalty)
         _set_optional_transport_parameter(hrp, "setCompleteTimeout", complete_timeout)
         _set_optional_transport_parameter(hrp, "setWildcardModelPenalty", wildcard_model_penalty)
+        _set_optional_transport_parameter(hrp, "setAudioFilterProperties", params.audio_filter_properties)
         optional_setters: "tuple[tuple[Callable[[str | None], None], str | None], ...]" = (
             (hrp.setGrammarFileNames, params.grammar_file_names),
             (hrp.setCodec, params.codec),
@@ -931,6 +1027,8 @@ def transcribe(  # noqa: PLR0913
     segmenter_type: str | None = None,
     segmenter: SegmenterProperties | None = None,
     segmenter_properties: str | None = None,
+    selected_channel: int | tuple[int, int] | None = None,
+    audio_filter_properties: str | None = None,
     confidence_level: float | None = None,
     keep_filler_token: bool | None = None,
     result_updated_interval: int | None = None,
@@ -993,6 +1091,8 @@ def transcribe(  # noqa: PLR0913
         content_type: HTTP ``Content-Type`` ヘッダ。
         accept: HTTP ``Accept`` ヘッダ。
         domain_id: ドメイン ID。
+        selected_channel: 認識対象チャネル番号または混合するチャネル範囲。
+        audio_filter_properties: 音声フィルタプロパティraw文字列。
         confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）。
         raise_on_error: エラー結果の場合に ``RecognitionError`` を送出するか否か。
         _transport: テスト用 HRP トランスポート注入口（非公開）。
@@ -1027,6 +1127,8 @@ def transcribe(  # noqa: PLR0913
         segmenter_type=segmenter_type,
         segmenter=segmenter,
         segmenter_properties=segmenter_properties,
+        selected_channel=selected_channel,
+        audio_filter_properties=audio_filter_properties,
         keep_filler_token=keep_filler_token,
         result_updated_interval=result_updated_interval,
         extension=extension,

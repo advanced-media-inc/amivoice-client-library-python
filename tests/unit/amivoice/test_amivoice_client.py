@@ -1554,6 +1554,86 @@ def test_AmiVoiceClient_stream_rule_grammar_parameter_override_passes_string(
     getattr(mock_wrp, setter_name).assert_called_once_with(expected)
 
 
+@pytest.mark.parametrize(
+    ("selected_channel", "expected"),
+    [(0, "selectedChannel=0"), ((0, 1), "selectedChannel=0-1")],
+)
+def test_AmiVoiceClient_transcribe_selected_channel_valid_passes_audio_filter_properties(
+    selected_channel: int | tuple[int, int],
+    expected: str,
+) -> None:
+    """selected_channelの単一・範囲指定がHRPへ渡ることを確認する"""
+    # Given: 型付きチャネル指定を設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, selected_channel=selected_channel)
+
+    # When: HTTP認識を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: audioFilterPropertiesのselectedChannel形式がHRP setterへ渡る
+    mock_hrp.setAudioFilterProperties.assert_called_once_with(expected)
+
+
+def test_AmiVoiceClient_transcribe_audio_filter_properties_raw_valid_passes_unchanged() -> None:
+    """rawのaudio_filter_propertiesがHRPへそのまま渡ることを確認する"""
+    # Given: raw音声フィルタプロパティを設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(
+        api_key="key",
+        hrp_transport=mock_hrp,
+        audio_filter_properties="selectedChannel=0-1",
+    )
+
+    # When: HTTP認識を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: raw文字列がHRP setterへ渡る
+    mock_hrp.setAudioFilterProperties.assert_called_once_with("selectedChannel=0-1")
+
+
+def test_AmiVoiceClient_transcribe_selected_channel_override_valid_passes_audio_filter_properties() -> None:
+    """transcribeのselected_channel overrideがHRPへ渡ることを確認する"""
+    # Given: 音声フィルタプロパティを指定していないHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
+
+    # When: 呼び出し時にチャネル範囲を指定してHTTP認識を実行する
+    client.transcribe(b"audio-data", selected_channel=(1, 2))
+
+    # Then: overrideのselectedChannel形式がHRP setterへ渡る
+    mock_hrp.setAudioFilterProperties.assert_called_once_with("selectedChannel=1-2")
+
+
+@pytest.mark.parametrize(
+    "selected_channel",
+    [-1, (-1, 0), (1, 0), (0, 1, 2), True],
+)
+def test_AmiVoiceClient_selected_channel_invalid_raise_ConfigurationError(selected_channel: object) -> None:
+    """不正なselected_channelでConfigurationErrorが送出されることを確認する"""
+    # Given: 不正なチャネル番号または範囲
+    # When / Then: クライアント生成でConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match="selected_channel"):
+        AmiVoiceClient(api_key="key", selected_channel=selected_channel)  # type: ignore[arg-type]
+
+
+def test_AmiVoiceClient_selected_channel_and_raw_properties_invalid_raise_ConfigurationError() -> None:
+    """selected_channelとraw文字列の同時指定でConfigurationErrorが送出されることを確認する"""
+    # Given: 型付き指定とraw指定を同時に指定したクライアント設定
+    # When / Then: クライアント生成でConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match="selected_channel and audio_filter_properties"):
+        AmiVoiceClient(api_key="key", selected_channel=0, audio_filter_properties="selectedChannel=1")
+
+
+def test_AmiVoiceClient_transcribe_selected_channel_and_raw_override_invalid_raise_ConfigurationError() -> None:
+    """transcribeの型付き指定とraw指定の同時指定でConfigurationErrorが送出されることを確認する"""
+    # Given: 音声フィルタ指定を持たないクライアント
+    client = AmiVoiceClient(api_key="key")
+
+    # When / Then: 呼び出し時に型付き指定とraw指定を同時に指定するとエラーになる
+    with pytest.raises(ConfigurationError, match="selected_channel and audio_filter_properties"):
+        client.transcribe(b"audio-data", selected_channel=0, audio_filter_properties="selectedChannel=1")
+
+
 def test_AmiVoiceClient_transcribe_profile_words_sequence_valid_passes_serialized_string() -> None:
     """コンストラクタのProfileWordシーケンスがHRPへシリアライズされることを確認する"""
     # Given: ProfileWordシーケンスを設定したHRPクライアント
