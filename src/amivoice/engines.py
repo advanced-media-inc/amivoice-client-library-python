@@ -3,7 +3,7 @@
 from enum import StrEnum
 from typing import Self
 
-__all__ = ["Codec"]
+__all__ = ["Codec", "Engines"]
 
 
 class Codec(StrEnum):
@@ -38,3 +38,57 @@ class Codec(StrEnum):
                 if member.value == normalized_value:
                     return member
         return None
+
+
+class Engines:
+    """AmiVoice APIで指定できる接続エンジン名。"""
+
+    # End to End エンジン
+    A2_JA_GENERAL = "-a2-ja-general"
+    A2_ZH_GENERAL = "-a2-zh-general"
+    A2_MULTI_GENERAL = "-a2-multi-general"
+    A2B_JA_GENERAL = "-a2b-ja-general"
+    A2B_ZH_GENERAL = "-a2b-zh-general"
+    A2B_MULTI_GENERAL = "-a2b-multi-general"
+
+    # ハイブリッド（会話）エンジン
+    A_GENERAL = "-a-general"
+    A_MEDICAL = "-a-medical"
+    A_BIZFINANCE = "-a-bizfinance"
+    A_BIZINSURANCE = "-a-bizinsurance"
+    A_GENERAL_EN = "-a-general-en"
+    A_GENERAL_ZH = "-a-general-zh"
+    A_GENERAL_KO = "-a-general-ko"
+
+    # ハイブリッド（音声入力）エンジン
+    A_GENERAL_INPUT = "-a-general-input"
+    A_MEDICAL_INPUT = "-a-medical-input"
+    A_BIZINSURANCE_INPUT = "-a-bizinsurance-input"
+    A_BIZFINANCE_INPUT = "-a-bizfinance-input"
+
+    # AmiVoice API Private エンジン
+    A_NAME_INPUT_PRIVATE = "-a-name-input-private"
+    A_ADDRESS_INPUT_PRIVATE = "-a-address-input-private"
+    A_RULE_INPUT_PRIVATE = "-a-rule-input-private"
+
+    # 読みやすさのためのカテゴリ別別名
+    E2E_JA_GENERAL = A2_JA_GENERAL
+    E2E_ZH_GENERAL = A2_ZH_GENERAL
+    E2E_MULTI_GENERAL = A2_MULTI_GENERAL
+    E2E_B_JA_GENERAL = A2B_JA_GENERAL
+    E2E_B_ZH_GENERAL = A2B_ZH_GENERAL
+    E2E_B_MULTI_GENERAL = A2B_MULTI_GENERAL
+    HYBRID_GENERAL = A_GENERAL
+    HYBRID_MEDICAL = A_MEDICAL
+    HYBRID_BIZFINANCE = A_BIZFINANCE
+    HYBRID_BIZINSURANCE = A_BIZINSURANCE
+    HYBRID_GENERAL_EN = A_GENERAL_EN
+    HYBRID_GENERAL_ZH = A_GENERAL_ZH
+    HYBRID_GENERAL_KO = A_GENERAL_KO
+    HYBRID_GENERAL_INPUT = A_GENERAL_INPUT
+    HYBRID_MEDICAL_INPUT = A_MEDICAL_INPUT
+    HYBRID_BIZINSURANCE_INPUT = A_BIZINSURANCE_INPUT
+    HYBRID_BIZFINANCE_INPUT = A_BIZFINANCE_INPUT
+    PRIVATE_NAME_INPUT = A_NAME_INPUT_PRIVATE
+    PRIVATE_ADDRESS_INPUT = A_ADDRESS_INPUT_PRIVATE
+    PRIVATE_RULE_INPUT = A_RULE_INPUT_PRIVATE

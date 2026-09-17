@@ -2,7 +2,7 @@
 
 import pytest
 
-from amivoice import Codec
+from amivoice import Codec, Engines
 
 
 @pytest.mark.parametrize(
@@ -65,3 +65,39 @@ def test_codec_invalid_value_raise_ValueError() -> None:
     # When / Then: Codecの生成が拒否される
     with pytest.raises(ValueError):
         Codec("unknown")
+
+
+def test_engines_values_valid_match_supported_engine_names() -> None:
+    """Enginesの公式エンジン名定数が正しい値を持つことを確認する。"""
+    # Given: 公式ドキュメントに記載された接続エンジン名
+    expected_values = {
+        "A2_JA_GENERAL": "-a2-ja-general",
+        "A2_ZH_GENERAL": "-a2-zh-general",
+        "A2_MULTI_GENERAL": "-a2-multi-general",
+        "A2B_JA_GENERAL": "-a2b-ja-general",
+        "A2B_ZH_GENERAL": "-a2b-zh-general",
+        "A2B_MULTI_GENERAL": "-a2b-multi-general",
+        "A_GENERAL": "-a-general",
+        "A_MEDICAL": "-a-medical",
+        "A_BIZFINANCE": "-a-bizfinance",
+        "A_BIZINSURANCE": "-a-bizinsurance",
+        "A_GENERAL_EN": "-a-general-en",
+        "A_GENERAL_ZH": "-a-general-zh",
+        "A_GENERAL_KO": "-a-general-ko",
+        "A_GENERAL_INPUT": "-a-general-input",
+        "A_MEDICAL_INPUT": "-a-medical-input",
+        "A_BIZINSURANCE_INPUT": "-a-bizinsurance-input",
+        "A_BIZFINANCE_INPUT": "-a-bizfinance-input",
+        "A_NAME_INPUT_PRIVATE": "-a-name-input-private",
+        "A_ADDRESS_INPUT_PRIVATE": "-a-address-input-private",
+        "A_RULE_INPUT_PRIVATE": "-a-rule-input-private",
+    }
+
+    # When: Enginesの各定数を参照する
+    actual_values = {name: getattr(Engines, name) for name in expected_values}
+
+    # Then: 公式エンジン名と一致する
+    assert actual_values == expected_values
+    assert Engines.E2E_JA_GENERAL == Engines.A2_JA_GENERAL
+    assert Engines.HYBRID_GENERAL == Engines.A_GENERAL
+    assert Engines.PRIVATE_RULE_INPUT == Engines.A_RULE_INPUT_PRIVATE

@@ -50,15 +50,19 @@ API キーをコンストラクタへ渡さない場合は、`AMIVOICE_ISSUER_AP
 ## HTTP音声認識
 
 ```python
-from amivoice import AmiVoiceClient
+from amivoice import AmiVoiceClient, Codec, Engines
 
 client = AmiVoiceClient(
-    grammar_file_names="-a-general",
-    codec="16K",
+    grammar_file_names=Engines.A_GENERAL,
+    codec=Codec.CODEC_16K,
 )
 result = client.transcribe("audio.wav")
 print(result.text)
 ```
+
+`Codec`は音声フォーマット名の定数です。`Codec.CODEC_16K`は`"16K"`と同じ値として扱われ、`Codec("lsb16k")`のように大文字小文字を区別せずに解決できます。ヘッダなし PCM では`Codec.LSB16K`や`Codec.MSB16K`など、音声形式に合った定数を指定します。
+
+`Engines`は接続エンジン名の定数です。会話用の汎用エンジンは`Engines.A_GENERAL`、音声入力用は`Engines.A_GENERAL_INPUT`、AmiVoice API Private のルールエンジンは`Engines.A_RULE_INPUT_PRIVATE`で指定できます。ルールグラマを使う場合も、これらの定数とグラマファイルを`build_grammar_file_names()`で組み合わせられます。
 
 `transcribe()`には、ファイルパス、`pathlib.Path`、`bytes`、バイナリファイルオブジェクトを渡せます。
 
@@ -331,11 +335,11 @@ user_dictionary.register_words(
 登録した単語を音声認識で利用する場合は、登録時と同じ接続エンジン名を指定し、`profile_id` の先頭に `:` を付けます。`:` 付きのプロファイル ID は、プロファイルを参照だけする指定です。`:` を付けないと、セッション終了時にプロファイルを上書きする場合があります（[プロファイルの利用](https://docs.amivoice.com/amivoice-api/manual/user-dictionary-use-profile)）。ライブラリは値を書き換えず、先頭に `:` がない場合は `UserWarning` を出します。
 
 ```python
-from amivoice import AmiVoiceClient
+from amivoice import AmiVoiceClient, Codec, Engines
 
 recognition_client = AmiVoiceClient(
-    grammar_file_names="-a-general",
-    codec="16K",
+    grammar_file_names=Engines.A_GENERAL,
+    codec=Codec.CODEC_16K,
     profile_id=":user01",
 )
 result = recognition_client.transcribe("audio.wav")
@@ -344,9 +348,9 @@ result = recognition_client.transcribe("audio.wav")
 ## WebSocketストリーミング認識
 
 ```python
-from amivoice import AmiVoiceClient
+from amivoice import AmiVoiceClient, Codec, Engines
 
-client = AmiVoiceClient(grammar_file_names="-a-general", codec="16K")
+client = AmiVoiceClient(grammar_file_names=Engines.A_GENERAL, codec=Codec.CODEC_16K)
 
 with client.stream() as session:
     session.write(audio_chunk)
