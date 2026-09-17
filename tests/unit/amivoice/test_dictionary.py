@@ -9,6 +9,7 @@ from http.client import IncompleteRead
 import pytest
 
 from amivoice import ConnectionFailedError, DictionaryApiError, ProfileWord, UserDictionaryClient
+from amivoice.dictionary import build_profile_words
 from amivoice.exceptions import AuthenticationError, ConfigurationError
 
 
@@ -229,3 +230,103 @@ def test_user_dictionary_client_api_key_missing_invalid_raise_AuthenticationErro
     # When / Then: API キーなしでクライアントを生成すると AuthenticationError が送出される
     with pytest.raises(AuthenticationError):
         UserDictionaryClient()
+
+
+@pytest.mark.parametrize(
+    ("word", "expected"),
+    [
+        (ProfileWord(written="AmiVoice", spoken="あみぼいす", classname="固有名詞"), "AmiVoice あみぼいす 固有名詞"),
+        (ProfileWord(written="WWW", spoken="とりぷるだぶる"), "WWW とりぷるだぶる"),
+        (ProfileWord(written="AmiVoice", alternative_written="あみぼいす", biasing=0.75), "AmiVoice あみぼいす 0.75"),
+        (ProfileWord(written="AmiVoice"), "AmiVoice"),
+    ],
+)
+def test_build_profile_words_valid_serializes_word_forms(word: ProfileWord, expected: str) -> None:
+    """ハイブリッド形式とE2E形式のProfileWordをシリアライズすることを確認する"""
+    # Given: ワイヤー形式に変換可能なProfileWord
+    # When: profileWords文字列を構築する
+    serialized = build_profile_words((word,))
+
+    # Then: 期待する単語形式の文字列が返る
+    assert serialized == expected
+
+
+def test_build_profile_words_e2e_without_alternative_valid_keeps_empty_field() -> None:
+    """E2E形式で代替表記を省略した場合に連続スペースを保持することを確認する"""
+    # Given: 代替表記を省略して単語強調度だけ指定したProfileWord
+    word = ProfileWord(written="AmiVoice", biasing=0.75)
+
+    # When: profileWords文字列を構築する
+    serialized = build_profile_words((word,))
+
+    # Then: 代替表記の空フィールドが連続スペースとして保持される
+    assert serialized == "AmiVoice  0.75"
+
+
+@pytest.mark.parametrize(
+    ("biasing", "expected"),
+    [
+        (0.00001, "AmiVoice  0.00001"),
+        (1.5e-10, "AmiVoice  0.00000000015"),
+        (0.0001, "AmiVoice  0.0001"),
+        (1, "AmiVoice  1.0"),
+        (0.0, "AmiVoice  0.0"),
+    ],
+)
+def test_build_profile_words_biasing_valid_serialize_decimal_notation(biasing: float, expected: str) -> None:
+    """単語強調度を指数表記ではなく小数表記で出力することを確認する"""
+    # Given: str(float)では指数表記になる値を含む単語強調度
+    word = ProfileWord(written="AmiVoice", biasing=biasing)
+
+    # When: profileWords文字列を構築する
+    serialized = build_profile_words((word,))
+
+    # Then: 公式ドキュメントに記載のない指数表記を使わず小数表記で出力される
+    assert serialized == expected
+
+
+def test_build_profile_words_multiple_valid_joins_with_pipe() -> None:
+    """複数のProfileWordをパイプ区切りで連結することを確認する"""
+    # Given: 2件のProfileWord
+    words = (
+        ProfileWord(written="AmiVoice", spoken="あみぼいす"),
+        ProfileWord(written="WWW", spoken="とりぷるだぶる"),
+    )
+
+    # When: profileWords文字列を構築する
+    serialized = build_profile_words(words)
+
+    # Then: 単語がパイプ区切りで連結される
+    assert serialized == "AmiVoice あみぼいす|WWW とりぷるだぶる"
+
+
+@pytest.mark.parametrize(
+    "word",
+    [
+        ProfileWord(written="AmiVoice", spoken="あみぼいす", alternative_written="あみボイス"),
+        ProfileWord(written="AmiVoice", spoken="あみぼいす", biasing=0.75),
+    ],
+)
+def test_build_profile_words_mixed_fields_invalid_raise_ConfigurationError(word: ProfileWord) -> None:
+    """ハイブリッド形式とE2E形式のフィールド混在でConfigurationErrorが送出されることを確認する"""
+    # Given: ハイブリッドとE2Eのフィールドを混在させたProfileWord
+    # When / Then: profileWords文字列の構築でConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match="mixed"):
+        build_profile_words((word,))
+
+
+@pytest.mark.parametrize("field_name", ["written", "spoken", "classname", "alternative_written"])
+def test_build_profile_words_forbidden_character_invalid_raise_ConfigurationError(field_name: str) -> None:
+    """単語フィールドに空白またはパイプが含まれる場合にConfigurationErrorが送出されることを確認する"""
+    # Given: ワイヤー形式の区切り文字を含むフィールド値
+    word_value = "bad value" if field_name.endswith("written") else "bad|value"
+    word = ProfileWord(
+        written=word_value if field_name == "written" else "valid",
+        spoken=word_value if field_name == "spoken" else "valid",
+        classname=word_value if field_name == "classname" else None,
+        alternative_written=word_value if field_name == "alternative_written" else None,
+    )
+
+    # When / Then: profileWords文字列の構築でConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match="spaces or"):
+        build_profile_words((word,))
