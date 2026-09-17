@@ -1824,3 +1824,50 @@ def test_AmiVoiceClient_stream_profile_words_sequence_valid_passes_serialized_st
 
     # Then: profileWordsのワイヤー形式がWRP setterへ渡る
     mock_wrp.setProfileWords.assert_called_once_with("AmiVoice あみぼいす")
+
+
+def test_AmiVoiceClient_transcribe_profile_id_without_colon_warns_and_passes_as_is() -> None:
+    """コロンなしのprofile_idで警告し、値を書き換えずに送ることを確認する"""
+    # Given: コロンなしのprofile_idを設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    with pytest.warns(UserWarning, match="profile_id"):
+        client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, profile_id="myprofile")
+
+    # When: HTTP認識を実行する
+    with pytest.warns(UserWarning, match="profile_id"):
+        client.transcribe(b"audio-data")
+
+    # Then: profileIdはコロンを付与せずHRP setterへ渡る
+    mock_hrp.setProfileId.assert_called_once_with("myprofile")
+
+
+def test_AmiVoiceClient_transcribe_profile_id_override_without_colon_warns() -> None:
+    """transcribeのコロンなしprofile_id overrideで警告することを確認する"""
+    # Given: コロン付きの既定profile_idを持つHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, profile_id=":default-profile")
+
+    # When: コロンなしのprofile_idでHTTP認識時の設定を上書きする
+    with pytest.warns(UserWarning, match="profile_id"):
+        client.transcribe(b"audio-data", profile_id="override-profile")
+
+    # Then: override値は書き換えられずHRP setterへ渡る
+    mock_hrp.setProfileId.assert_called_once_with("override-profile")
+
+
+@pytest.mark.filterwarnings("error")
+def test_AmiVoiceClient_stream_profile_id_with_colon_no_warning_passes_as_is() -> None:
+    """streamのコロン付きprofile_idが警告なしでWRPへ渡ることを確認する"""
+    # Given: コロン付きのprofile_idを設定したクライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", profile_id=":myprofile")
+
+    # When: ストリーミングセッションを開始する
+    with (
+        patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
+        client.stream() as session,
+    ):
+        session.end()
+
+    # Then: profileIdがそのままWRP setterへ渡る
+    mock_wrp.setProfileId.assert_called_once_with(":myprofile")

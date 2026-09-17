@@ -345,7 +345,7 @@ class AmiVoiceClient:
         connect_timeout: 接続タイムアウト（ミリ秒）。0 は無制限。
         receive_timeout: 受信タイムアウト（ミリ秒）。0 は無制限。
         mode: 認識モード。
-        profile_id: プロファイル ID。
+        profile_id: プロファイル ID。先頭に ``:`` がなければ警告する。
         profile_words: ワイヤー形式文字列または ``ProfileWord`` シーケンスのセッション単語登録リスト。
         segmenter_type: セグメンタータイプ。
         segmenter: 発話検出、話者ダイアライゼーション、言語識別の型付き設定。
@@ -479,7 +479,7 @@ class AmiVoiceClient:
             connect_timeout (int): 接続タイムアウト（ミリ秒）。0 は無制限
             receive_timeout (int): 受信タイムアウト（ミリ秒）。0 は無制限
             mode (str | None): 認識モード
-            profile_id (str | None): プロファイル ID
+            profile_id (str | None): プロファイル ID。先頭に ``:`` がなければ警告する
             profile_words (str | Sequence[ProfileWord] | None): セッション単語登録リスト
             logging_opt_out (bool): ログを保存しないエンドポイントを使用するか。カスタム URL は書き換えず、
                 ログ保存なしのパスでなければエラーにする
@@ -638,7 +638,7 @@ class AmiVoiceClient:
             connect_timeout: 接続タイムアウト（ミリ秒）の呼び出し時 override。
             receive_timeout: 受信タイムアウト（ミリ秒）の呼び出し時 override。
             mode: 認識モードの呼び出し時 override。
-            profile_id: プロファイル ID の呼び出し時 override。
+            profile_id: プロファイル ID の呼び出し時 override。先頭に ``:`` がなければ警告する。
             profile_words: ワイヤー形式文字列または ``ProfileWord`` シーケンスの呼び出し時 override。
             segmenter_type: セグメンタータイプの呼び出し時 override。
             segmenter: 型付きセグメンター設定の呼び出し時 override。
@@ -919,7 +919,7 @@ class AmiVoiceClient:
             connect_timeout: 接続タイムアウト（ミリ秒）の呼び出し時 override。
             receive_timeout: 受信タイムアウト（ミリ秒）の呼び出し時 override。
             mode: 認識モードの呼び出し時 override。
-            profile_id: プロファイル ID の呼び出し時 override。
+            profile_id: プロファイル ID の呼び出し時 override。先頭に ``:`` がなければ警告する。
             profile_words: ワイヤー形式文字列または ``ProfileWord`` シーケンスの呼び出し時 override。
             segmenter_type: セグメンタータイプの呼び出し時 override。
             segmenter: 型付きセグメンター設定の呼び出し時 override。
@@ -1084,7 +1084,7 @@ def transcribe(  # noqa: PLR0913
         connect_timeout: 接続タイムアウト（ミリ秒）。0 は無制限。
         receive_timeout: 受信タイムアウト（ミリ秒）。0 は無制限。
         mode: 認識モード。
-        profile_id: プロファイル ID。
+        profile_id: プロファイル ID。先頭に ``:`` がなければ警告する。
         profile_words: ワイヤー形式文字列または ``ProfileWord`` シーケンスのセッション単語登録リスト。
         segmenter_type: セグメンタータイプ。
         segmenter: 発話検出、話者ダイアライゼーション、言語識別の型付き設定。
