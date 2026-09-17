@@ -2,12 +2,9 @@
 
 import base64
 import gzip
-from typing import Final
 
+from .engines import Engines
 from .exceptions import ConfigurationError
-
-RULE_GRAMMAR_ENGINE: Final = "-a-rule-input-private"
-"""AmiVoice API Private の音声入力_ルールエンジン名"""
 
 
 def encode_grammar(grammar: str | bytes) -> str:
@@ -25,7 +22,7 @@ def encode_grammar(grammar: str | bytes) -> str:
 
 def build_grammar_file_names(
     *grammars: str,
-    engine: str = RULE_GRAMMAR_ENGINE,
+    engine: str = Engines.A_RULE_INPUT_PRIVATE,
     fallback: bool = False,
 ) -> str:
     """GrammarFileNames に渡すルールグラマ指定文字列を構築する
