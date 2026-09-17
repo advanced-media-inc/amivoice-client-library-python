@@ -71,6 +71,7 @@ class Hrp:
         self.profileWords_: str | None = None
         self.segmenterType_: str | None = None
         self.segmenterProperties_: str | None = None
+        self.audioFilterProperties_: str | None = None
         self.keepFillerToken_: str | None = None
         self.resultUpdatedInterval_: str | None = None
         self.maxDecodingTime_: str | None = None
@@ -197,6 +198,14 @@ class Hrp:
             segmenterProperties: セグメンタプロパティの文字列
         """
         self.segmenterProperties_ = segmenterProperties
+
+    def setAudioFilterProperties(self, audioFilterProperties: str | None) -> None:
+        """音声フィルタプロパティを設定する
+
+        Args:
+            audioFilterProperties: 音声フィルタプロパティの文字列
+        """
+        self.audioFilterProperties_ = audioFilterProperties
 
     def setKeepFillerToken(self, keepFillerToken: str | None) -> None:
         """フィラー単語を保持するかどうかを設定する
@@ -554,6 +563,12 @@ class Hrp:
                     domainId += "segmenterProperties="
                     with suppress(Exception):
                         domainId += q(self.segmenterProperties_)
+                if self.audioFilterProperties_ is not None:
+                    if len(domainId) > 0:
+                        domainId += " "
+                    domainId += "audioFilterProperties="
+                    with suppress(Exception):
+                        domainId += q(self.audioFilterProperties_)
                 if self.keepFillerToken_ is not None:
                     if len(domainId) > 0:
                         domainId += " "

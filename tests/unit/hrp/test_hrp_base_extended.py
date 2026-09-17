@@ -327,6 +327,19 @@ def test_feed_data_resume_builds_domain_id_from_segmenter_properties() -> None: 
     assert "segmenterProperties=" in captured["domainId"]
 
 
+def test_feed_data_resume_builds_domain_id_from_audio_filter_properties() -> None:  # noqa: D103
+    hrp = MockHrp(connected=True)
+    hrp.state_ = 0
+    captured = {}
+
+    hrp.sendRequestHeader_ = _capture_header(captured, hrp)
+    hrp.setAudioFilterProperties("selectedChannel=0-1")
+
+    hrp.feedDataResume()
+
+    assert "audioFilterProperties=selectedChannel%3D0-1" in captured["domainId"]
+
+
 def test_feed_data_resume_builds_domain_id_from_confidence_level() -> None:  # noqa: D103
     hrp = MockHrp(connected=True)
     hrp.state_ = 0
