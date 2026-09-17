@@ -85,6 +85,32 @@ class ConfigurationError(AmiVoiceError):
     """設定が不正な場合に送出される例外。"""
 
 
+class ApiKeyApiError(AmiVoiceError):
+    """API キー発行 API がエラーを返した場合に送出される例外"""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        body: str | None = None,
+        raw_body: bytes | None = None,
+    ) -> None:
+        """API エラーの詳細を保持して例外を初期化する
+
+        Args:
+            message: 例外メッセージ
+            status_code: HTTP ステータスコード
+            body: UTF-8 としてデコードしたレスポンス本文
+            raw_body: デコード前のレスポンス本文
+        """
+        super().__init__(message)
+        self.status_code: int | None = status_code
+        self.body: str | None = body
+        self.raw_body: bytes | None = raw_body
+        self.response_body: str | None = body
+
+
 class DictionaryApiError(AmiVoiceError):
     """ユーザー辞書登録 API がエラーを返した場合に送出される例外"""
 

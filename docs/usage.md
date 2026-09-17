@@ -28,6 +28,24 @@ from amivoice import AmiVoiceClient
 client = AmiVoiceClient(api_key="your-api-key")
 ```
 
+### APIキーの発行
+
+`ApiKeyClient`を使うと、有効期限や接続元 IP アドレス制限を付けた API キーを発行できます。API キー発行機能付きの API キーを Bearer 認証で使用します。発行用の API キーはサーバー側で管理してください。
+
+```python
+from datetime import timedelta
+
+from amivoice import ApiKeyClient
+
+api_key_client = ApiKeyClient(api_key="api-key-with-issuance-permission")
+issued_api_key = api_key_client.issue(
+    expires_in=timedelta(hours=2),
+    allowed_ip_addresses=("203.0.113.0/24",),
+)
+```
+
+API キーをコンストラクタへ渡さない場合は、`AMIVOICE_API_KEY`の環境変数を使用します。`expires_in`にはミリ秒の整数、`2h`などの API 形式の文字列、`timedelta`を指定できます。
+
 ## HTTP音声認識
 
 ```python
