@@ -2,6 +2,7 @@
 
 import os
 import threading
+from collections.abc import Sequence
 from contextlib import suppress
 from dataclasses import replace
 from typing import TYPE_CHECKING
@@ -19,6 +20,7 @@ from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager
 from ._transport import HrpTransport, WrpTransport, _set_optional_transport_parameter, bool_string
 from ._types import AudioSource
+from .dictionary import ProfileWord, build_profile_words
 from .exceptions import AuthenticationError, ConfigurationError, ConnectionFailedError, RecognitionError
 from .models import RecognitionResult, parse_result
 
@@ -34,6 +36,29 @@ def _construct_hrp_transport() -> HrpTransport:
 def _resolve_url(override: str | _UnsetType, default: str) -> str:
     """呼び出し時 URL override が未指定ならインスタンス既定値を返す。"""
     return override if isinstance(override, str) else default
+
+
+def _resolve_profile_words(profile_words: str | Sequence[ProfileWord] | None) -> str | None:
+    """ProfileWord シーケンスまたは既存の文字列を profileWords 文字列へ解決する
+
+    Args:
+        profile_words: 既存の wire format 文字列またはシリアライズする ProfileWord シーケンス
+
+    Returns:
+        トランスポートへ渡す profileWords 文字列
+    """
+    if profile_words is None or isinstance(profile_words, str):
+        return profile_words
+    return build_profile_words(profile_words)
+
+
+def _resolve_profile_words_override(
+    profile_words: str | Sequence[ProfileWord] | None | _UnsetType,
+) -> str | None | _UnsetType:
+    """呼び出し時 profile_words override を解決し、未指定 sentinel を保持する"""
+    if isinstance(profile_words, _UnsetType):
+        return profile_words
+    return _resolve_profile_words(profile_words)
 
 
 def _resolve_segmenter_properties(
@@ -117,7 +142,7 @@ class AmiVoiceClient:
         receive_timeout: 受信タイムアウト（ミリ秒）。0 は無制限。
         mode: 認識モード。
         profile_id: プロファイル ID。
-        profile_words: セッション単語登録リスト。
+        profile_words: ワイヤー形式文字列または ``ProfileWord`` シーケンスのセッション単語登録リスト。
         segmenter_type: セグメンタータイプ。
         segmenter: 発話検出、話者ダイアライゼーション、言語識別の型付き設定。
         segmenter_properties: セグメンター設定。
@@ -197,7 +222,7 @@ class AmiVoiceClient:
         receive_timeout: int = 0,
         mode: str | None = None,
         profile_id: str | None = None,
-        profile_words: str | None = None,
+        profile_words: str | Sequence[ProfileWord] | None = None,
         segmenter_type: str | None = None,
         segmenter: SegmenterProperties | None = None,
         segmenter_properties: str | None = None,
@@ -232,6 +257,7 @@ class AmiVoiceClient:
             raise AuthenticationError("AMIVOICE_API_KEY is not set")
 
         resolved_segmenter_properties = _resolve_segmenter_properties(segmenter, segmenter_properties)
+        resolved_profile_words = _resolve_profile_words(profile_words)
         self._api_key: str = resolved_key
         self._params = RecognitionParams(
             grammar_file_names=grammar_file_names,
@@ -242,7 +268,7 @@ class AmiVoiceClient:
             receive_timeout=receive_timeout,
             mode=mode,
             profile_id=profile_id,
-            profile_words=profile_words,
+            profile_words=resolved_profile_words,
             segmenter_type=segmenter_type,
             segmenter_properties=resolved_segmenter_properties,
             keep_filler_token=keep_filler_token,
@@ -288,7 +314,7 @@ class AmiVoiceClient:
         receive_timeout: int | _UnsetType = UNSET,
         mode: str | None | _UnsetType = UNSET,
         profile_id: str | None | _UnsetType = UNSET,
-        profile_words: str | None | _UnsetType = UNSET,
+        profile_words: str | Sequence[ProfileWord] | None | _UnsetType = UNSET,
         segmenter_type: str | None | _UnsetType = UNSET,
         segmenter: SegmenterProperties | None | _UnsetType = UNSET,
         segmenter_properties: str | None | _UnsetType = UNSET,
@@ -330,7 +356,7 @@ class AmiVoiceClient:
             receive_timeout: 受信タイムアウト（ミリ秒）の呼び出し時 override。
             mode: 認識モードの呼び出し時 override。
             profile_id: プロファイル ID の呼び出し時 override。
-            profile_words: セッション単語登録リストの呼び出し時 override。
+            profile_words: ワイヤー形式文字列または ``ProfileWord`` シーケンスの呼び出し時 override。
             segmenter_type: セグメンタータイプの呼び出し時 override。
             segmenter: 型付きセグメンター設定の呼び出し時 override。
             segmenter_properties: セグメンター設定の呼び出し時 override。
@@ -366,6 +392,7 @@ class AmiVoiceClient:
             RecognitionError: 音声認識処理中にエラーが発生した場合。
         """
         resolved_segmenter_properties = _resolve_segmenter_override(segmenter, segmenter_properties)
+        resolved_profile_words = _resolve_profile_words_override(profile_words)
         params = merge_params(
             self._params,
             grammar_file_names=grammar_file_names,
@@ -376,7 +403,7 @@ class AmiVoiceClient:
             receive_timeout=receive_timeout,
             mode=mode,
             profile_id=profile_id,
-            profile_words=profile_words,
+            profile_words=resolved_profile_words,
             segmenter_type=segmenter_type,
             segmenter_properties=resolved_segmenter_properties,
             keep_filler_token=keep_filler_token,
@@ -531,7 +558,7 @@ class AmiVoiceClient:
         receive_timeout: int | _UnsetType = UNSET,
         mode: str | None | _UnsetType = UNSET,
         profile_id: str | None | _UnsetType = UNSET,
-        profile_words: str | None | _UnsetType = UNSET,
+        profile_words: str | Sequence[ProfileWord] | None | _UnsetType = UNSET,
         segmenter_type: str | None | _UnsetType = UNSET,
         segmenter: SegmenterProperties | None | _UnsetType = UNSET,
         segmenter_properties: str | None | _UnsetType = UNSET,
@@ -566,7 +593,7 @@ class AmiVoiceClient:
             receive_timeout: 受信タイムアウト（ミリ秒）の呼び出し時 override。
             mode: 認識モードの呼び出し時 override。
             profile_id: プロファイル ID の呼び出し時 override。
-            profile_words: セッション単語登録リストの呼び出し時 override。
+            profile_words: ワイヤー形式文字列または ``ProfileWord`` シーケンスの呼び出し時 override。
             segmenter_type: セグメンタータイプの呼び出し時 override。
             segmenter: 型付きセグメンター設定の呼び出し時 override。
             segmenter_properties: セグメンター設定の呼び出し時 override。
@@ -609,6 +636,7 @@ class AmiVoiceClient:
                 session.end()
         """
         resolved_segmenter_properties = _resolve_segmenter_override(segmenter, segmenter_properties)
+        resolved_profile_words = _resolve_profile_words_override(profile_words)
         params = merge_params(
             self._params,
             grammar_file_names=grammar_file_names,
@@ -619,7 +647,7 @@ class AmiVoiceClient:
             receive_timeout=receive_timeout,
             mode=mode,
             profile_id=profile_id,
-            profile_words=profile_words,
+            profile_words=resolved_profile_words,
             segmenter_type=segmenter_type,
             segmenter_properties=resolved_segmenter_properties,
             confidence_level=confidence_level,
@@ -664,7 +692,7 @@ def transcribe(  # noqa: PLR0913
     receive_timeout: int = 0,
     mode: str | None = None,
     profile_id: str | None = None,
-    profile_words: str | None = None,
+    profile_words: str | Sequence[ProfileWord] | None = None,
     segmenter_type: str | None = None,
     segmenter: SegmenterProperties | None = None,
     segmenter_properties: str | None = None,
@@ -707,7 +735,7 @@ def transcribe(  # noqa: PLR0913
         receive_timeout: 受信タイムアウト（ミリ秒）。0 は無制限。
         mode: 認識モード。
         profile_id: プロファイル ID。
-        profile_words: セッション単語登録リスト。
+        profile_words: ワイヤー形式文字列または ``ProfileWord`` シーケンスのセッション単語登録リスト。
         segmenter_type: セグメンタータイプ。
         segmenter: 発話検出、話者ダイアライゼーション、言語識別の型付き設定。
         segmenter_properties: セグメンター設定。
