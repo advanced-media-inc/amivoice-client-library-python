@@ -11,7 +11,7 @@ from urllib.parse import quote, urlsplit
 
 from .exceptions import AuthenticationError, ConfigurationError, ConnectionFailedError, DictionaryApiError
 
-__all__ = ["DictionaryTransport", "ProfileWord", "UserDictionaryClient"]
+__all__ = ["DictionaryTransport", "ProfileWord", "UserDictionaryClient", "build_profile_words"]
 
 _DEFAULT_BASE_URL = "https://acp-api.amivoice.com"
 SamplingRate = Literal["8k", "16k"]
@@ -76,6 +76,46 @@ class ProfileWord:
             "biasing": self.biasing,
         }
         return {key: value for key, value in values.items() if value is not None}
+
+
+def build_profile_words(words: Sequence[ProfileWord]) -> str:
+    """ProfileWord シーケンスを profileWords のワイヤー形式へ変換する
+
+    Args:
+        words: セッション単語登録に使用する単語一覧
+
+    Returns:
+        ``profileWords`` リクエストパラメータへ渡す文字列
+
+    Raises:
+        ConfigurationError: 単語のフィールドが混在している場合、または値に空白や ``|`` が含まれる場合
+    """
+    serialized_words: list[str] = []
+    for word in words:
+        _validate_profile_word_wire_values(word)
+        if word.spoken is not None or word.classname is not None:
+            if word.spoken is None:
+                raise ConfigurationError("spoken must be specified when classname is specified")
+            if word.alternative_written is not None or word.biasing is not None:
+                raise ConfigurationError("Hybrid and E2E profile word fields cannot be mixed")
+            fields = [word.written, word.spoken]
+            if word.classname is not None:
+                fields.append(word.classname)
+        else:
+            fields = [word.written]
+            if word.alternative_written is not None or word.biasing is not None:
+                fields.append(word.alternative_written or "")
+            if word.biasing is not None:
+                fields.append(str(word.biasing))
+        serialized_words.append(" ".join(fields))
+    return "|".join(serialized_words)
+
+
+def _validate_profile_word_wire_values(word: ProfileWord) -> None:
+    """ProfileWord のワイヤー形式で禁止される文字を検証する"""
+    values = (word.written, word.spoken, word.classname, word.alternative_written)
+    if any(value is not None and (" " in value or "|" in value) for value in values):
+        raise ConfigurationError("ProfileWord values cannot contain spaces or '|' characters")
 
 
 class _HttpDictionaryTransport:
