@@ -31,6 +31,17 @@ class FakeApiKeyTransport:
         return self.responses.pop(0)
 
 
+@pytest.mark.parametrize("base_url", ["https://example.test/api?tenant=1", "https://example.test/api#fragment"])
+def test_api_key_client_base_url_with_query_or_fragment_invalid_raise_ConfigurationError(
+    base_url: str,
+) -> None:
+    """クエリまたはフラグメントを含むベースURLでConfigurationErrorが送出されることを確認する。"""
+    # Given: クエリまたはフラグメントを含むベースURL
+    # When / Then: クライアント生成が拒否される
+    with pytest.raises(ConfigurationError, match="query or fragment"):
+        ApiKeyClient(api_key="issuer-key", base_url=base_url)
+
+
 def test_api_key_client_issue_bearer_valid_sends_authorization_and_returns_key() -> None:
     """Bearer認証でAPIキーを発行し、レスポンス本文を返すことを確認する。"""
     # Given: Bearer認証とAPIキーを返すフェイクトランスポート

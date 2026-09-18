@@ -198,6 +198,8 @@ class ApiKeyClient:
         parsed_base_url = urlsplit(base_url)
         if parsed_base_url.scheme != "https" or not parsed_base_url.netloc:
             raise ConfigurationError("base_url must be an absolute HTTPS URL")
+        if parsed_base_url.query or parsed_base_url.fragment:
+            raise ConfigurationError("base_url must not contain a query or fragment")
 
         self._api_key = resolved_api_key
         self._endpoint_url = f"{base_url.rstrip('/')}{_ISSUE_API_PATH}"
