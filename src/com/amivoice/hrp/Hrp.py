@@ -516,6 +516,12 @@ class Hrp:
                     domainId += "confidenceLevel="
                     with suppress(Exception):
                         domainId += q(self.confidenceLevel_)
+                if self.audioFilterProperties_ is not None:
+                    if len(domainId) > 0:
+                        domainId += " "
+                    domainId += "audioFilterProperties="
+                    with suppress(Exception):
+                        domainId += q(self.audioFilterProperties_)
             else:
                 if self.grammarFileNames_ is not None:
                     domainId += "grammarFileNames="

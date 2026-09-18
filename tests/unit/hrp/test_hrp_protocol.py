@@ -185,3 +185,19 @@ def test_feed_data_resume_explicit_domain_id_with_confidence_level_appends_confi
     # Then: 明示的な domain_id に confidenceLevel が追加される
     assert result is True
     assert captured["domainId"] == "custom=ready confidenceLevel=0.3"
+
+
+def test_feed_data_resume_explicit_domain_id_with_audio_filter_properties_appends_audio_filter_properties() -> None:
+    """明示的なドメイン ID と音声フィルタプロパティを併用した場合に両方を送信する"""
+    # Given: 明示的な domain_id と audio_filter_properties を設定した HRP
+    hrp = MockHrp(connected=True)
+    hrp.state_ = 0
+    hrp.setDomainId("custom=ready")
+    hrp.setAudioFilterProperties("selectedChannel=0-1")
+
+    # When: 音声データ送信を開始する
+    result, captured = _capture_feed_data_resume_request(hrp, "mc", 0)
+
+    # Then: 明示的な domain_id に audioFilterProperties が追加される
+    assert result is True
+    assert captured["domainId"] == "custom=ready audioFilterProperties=selectedChannel%3D0-1"
