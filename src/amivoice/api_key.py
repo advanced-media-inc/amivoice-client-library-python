@@ -98,6 +98,30 @@ def _response_body_text(body: bytes) -> str:
     return body.decode("utf-8", errors="replace")
 
 
+def _decode_api_key_response_body(body: bytes, status_code: int) -> str:
+    """API キー発行 API の成功本文を厳密な UTF-8 としてデコードする。
+
+    Args:
+        body: API キー発行 API のレスポンス本文
+        status_code: HTTP ステータスコード
+
+    Returns:
+        UTF-8 としてデコードしたレスポンス本文
+
+    Raises:
+        ApiKeyApiError: レスポンス本文が UTF-8 として不正な場合
+    """
+    try:
+        return body.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ApiKeyApiError(
+            f"API key API returned invalid UTF-8 response: {exc}",
+            status_code=status_code,
+            body=_response_body_text(body),
+            raw_body=body,
+        ) from exc
+
+
 def _raise_invalid_api_key_response(message: str, status_code: int, body: bytes) -> NoReturn:
     """不正な API キー発行 API レスポンスを例外として送出する。
 
@@ -254,7 +278,7 @@ class ApiKeyClient:
                 raw_body=response_body,
             )
 
-        api_key_text = _response_body_text(response_body).strip()
+        api_key_text = _decode_api_key_response_body(response_body, status_code).strip()
         if not api_key_text:
             _raise_invalid_api_key_response("response body must contain an API key", status_code, response_body)
         return api_key_text

@@ -147,6 +147,20 @@ def test_api_key_client_api_error_invalid_raise_ApiKeyApiError_with_status_and_b
     assert exc_info.value.body == "forbidden"
 
 
+def test_api_key_client_invalid_utf8_success_response_invalid_raise_ApiKeyApiError_with_raw_body() -> None:
+    """不正なUTF-8の成功本文でApiKeyApiErrorが送出され生本文を保持することを確認する。"""
+    # Given: 不正なUTF-8本文を返すフェイクトランスポート
+    transport = FakeApiKeyTransport(responses=[(200, b"\xff")])
+    client = ApiKeyClient(api_key="issuer-key", transport=transport)
+
+    # When / Then: APIキー発行でApiKeyApiErrorが送出される
+    with pytest.raises(ApiKeyApiError, match="invalid UTF-8") as exc_info:
+        client.issue()
+
+    assert exc_info.value.status_code == 200
+    assert exc_info.value.raw_body == b"\xff"
+
+
 def test_api_key_client_empty_response_invalid_raise_ApiKeyApiError() -> None:
     """空の成功レスポンスでApiKeyApiErrorが送出されることを確認する。"""
     # Given: 空本文の成功レスポンスを返すフェイクトランスポート
