@@ -31,6 +31,12 @@ class FakeApiKeyTransport:
         return self.responses.pop(0)
 
 
+@pytest.fixture(autouse=True)
+def clear_api_key_authentication_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """APIキー発行の認証環境変数を各テスト前に削除する。"""
+    monkeypatch.delenv("AMIVOICE_API_KEY", raising=False)
+
+
 @pytest.mark.parametrize("base_url", ["https://example.test/api?tenant=1", "https://example.test/api#fragment"])
 def test_api_key_client_base_url_with_query_or_fragment_invalid_raise_ConfigurationError(
     base_url: str,
