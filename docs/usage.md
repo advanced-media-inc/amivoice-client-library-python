@@ -60,7 +60,7 @@ result = client.transcribe("audio.wav")
 print(result.text)
 ```
 
-`Codec`は音声フォーマット名の定数です。`Codec.CODEC_16K`は`"16K"`と同じ値として扱われ、`Codec("lsb16k")`のように大文字小文字を区別せずに解決できます。ヘッダなし PCM では`Codec.LSB16K`や`Codec.MSB16K`など、音声形式に合った定数を指定します。
+`Codec`は音声フォーマット名の定数です。`Codec.CODEC_16K`は`"16K"`と同じ値として扱われ、`Codec("lsb16k")`のように大文字小文字を区別せずに解決できます。音声ファイルのヘッダにフォーマット情報がある場合は、HTTP 音声認識では`codec`の指定を省略できます。ヘッダ付き音声で明示的に指定する場合は、8kHz または 11.025kHz なら`Codec.CODEC_8K`、16kHz 以上なら`Codec.CODEC_16K`を使用してください。ヘッダなし PCM では`Codec.LSB16K`や`Codec.MSB16K`など、エンディアンとサンプリングレートに合った定数を指定します。詳細は[AmiVoice APIの音声フォーマット](https://docs.amivoice.com/amivoice-api/manual/audio-format)を参照してください。
 
 `Engines`は接続エンジン名の定数です。会話用の汎用エンジンは`Engines.A_GENERAL`、音声入力用は`Engines.A_GENERAL_INPUT`、AmiVoice API Private のルールエンジンは`Engines.A_RULE_INPUT_PRIVATE`で指定できます。ルールグラマを使う場合も、これらの定数とグラマファイルを`build_grammar_file_names()`で組み合わせられます。
 
