@@ -479,6 +479,8 @@ class AmiVoiceClient:
             segmenter_type (str | None): セグメンタータイプ
             segmenter (SegmenterProperties | None): 型付きセグメンター設定
             segmenter_properties (str | None): セグメンター設定
+            selected_channel (int | tuple[int, int] | None): 認識対象チャネル番号または混合するチャネル範囲
+            audio_filter_properties (str | None): 音声フィルタプロパティの raw 文字列
             confidence_level (float | None): 発話区間の信頼度しきい値
             keep_filler_token (bool | None): フィラー単語を出力するか
             result_updated_interval (int | None): 途中結果の発行間隔（ミリ秒）
