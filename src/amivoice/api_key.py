@@ -225,6 +225,9 @@ class ApiKeyClient:
             ConnectionFailedError: 通信に失敗した場合
             ConfigurationError: 有効期限の型が対応していない場合
         """
+        if isinstance(allowed_ip_addresses, str):
+            raise ConfigurationError("allowed_ip_addresses must be a sequence of strings, not a string")
+
         form: dict[str, str] = {}
         serialized_expires_in = _serialize_expires_in(expires_in)
         if serialized_expires_in is not None:

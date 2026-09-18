@@ -83,6 +83,19 @@ def test_api_key_client_issue_expires_in_valid_serializes_value(expires_in: int 
     assert parse_qs(transport.requests[0][3].decode("utf-8")) == {"epi": [expected]}
 
 
+def test_api_key_client_issue_allowed_ip_addresses_string_invalid_raise_ConfigurationError() -> None:
+    """IPアドレス制限に単一文字列を指定するとConfigurationErrorが送出されることを確認する。"""
+    # Given: APIキーを返すフェイクトランスポート
+    transport = FakeApiKeyTransport(responses=[(200, b"issued-key")])
+    client = ApiKeyClient(api_key="issuer-key", transport=transport)
+
+    # When / Then: 単一文字列のIPアドレス制限が拒否される
+    with pytest.raises(ConfigurationError, match="allowed_ip_addresses"):
+        client.issue(allowed_ip_addresses="203.0.113.1")
+
+    assert transport.requests == []
+
+
 def test_api_key_client_issue_without_optional_parameters_valid_omits_form_values() -> None:
     """任意パラメータを省略した場合にフォームへ追加しないことを確認する。"""
     # Given: APIキーを返すフェイクトランスポート
