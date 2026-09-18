@@ -64,6 +64,13 @@ print(result.text)
 
 `Engines`は接続エンジン名の定数です。会話用の汎用エンジンは`Engines.A_GENERAL`、音声入力用は`Engines.A_GENERAL_INPUT`、AmiVoice API Private のルールエンジンは`Engines.A_RULE_INPUT_PRIVATE`で指定できます。ルールグラマを使う場合も、これらの定数とグラマファイルを`build_grammar_file_names()`で組み合わせられます。
 
+エンジンごとに対応するサンプリングレートとインタフェースが異なるため、`Engines`と`Codec`を組み合わせるときは[AmiVoice APIの音声認識エンジン一覧](https://docs.amivoice.com/amivoice-api/manual/engines#list)を確認してください。特に次の制約があります。
+
+- すべてのエンジンは 16kHz に対応するが、8kHz または 11.025kHz に対応するのは一部のエンジンだけである。例えば、`Engines.A_GENERAL`は 8kHz と 16kHz に対応し、`Engines.A_MEDICAL`と`Engines.A_RULE_INPUT_PRIVATE`は 16kHz に対応する。
+- `Engines.A_NAME_INPUT_PRIVATE`、`Engines.A_ADDRESS_INPUT_PRIVATE`、`Engines.A_RULE_INPUT_PRIVATE`は AmiVoice API Private 向けのエンジンで、非同期 HTTP インタフェースでは利用できない。
+
+`Engines`と`Codec`のすべての組み合わせが有効とは限らないため、利用するインタフェース、エンジン、音声のサンプリングレートの対応を公式一覧で確認してください。
+
 `transcribe()`には、ファイルパス、`pathlib.Path`、`bytes`、バイナリファイルオブジェクトを渡せます。
 
 ### ログ保存なしの認識
