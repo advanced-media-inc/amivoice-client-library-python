@@ -228,7 +228,19 @@ class StreamSession:
 
 
 def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) -> WrpTransport:
-    """WRP トランスポートオブジェクトを生成して接続する。"""
+    """WRP トランスポートオブジェクトを生成して接続する。
+
+    Args:
+        api_key (str): AmiVoice API の認証キー
+        api_url (str): 接続先の WRP API エンドポイント URL
+        params (RecognitionParams): WRP に適用する認識パラメータ
+
+    Returns:
+        WrpTransport: 接続済みの WRP トランスポート
+
+    Raises:
+        ConnectionFailedError: WRP API への接続に失敗した場合
+    """
     wrp: WrpTransport = _Wrp.construct()
 
     wrp.setServerURL(api_url)
@@ -345,7 +357,15 @@ class StreamConnectionManager:
         self._session: StreamSession | None = None
 
     def __enter__(self) -> StreamSession:
-        """WebSocket 接続を確立し ``StreamSession`` を返す。"""
+        """WebSocket 接続を確立し ``StreamSession`` を返す。
+
+        Returns:
+            StreamSession: 接続済みのストリーミング認識セッション
+
+        Raises:
+            ConnectionFailedError: WRP API への接続に失敗した場合
+            RecognitionError: 音声送信の開始に失敗した場合
+        """
         if self._wrp_transport is not None:
             wrp = self._wrp_transport
         else:
@@ -375,7 +395,13 @@ class StreamConnectionManager:
         exc_val: BaseException | None,
         exc_tb: object | None,
     ) -> None:
-        """WebSocket 接続を切断する。"""
+        """WebSocket 接続を切断する。
+
+        Args:
+            exc_type (type[BaseException] | None): コンテキスト内で送出された例外の型
+            exc_val (BaseException | None): コンテキスト内で送出された例外
+            exc_tb (object | None): コンテキスト内で送出されたトレースバック
+        """
         if self._wrp is not None:
             try:
                 self._wrp.disconnect()

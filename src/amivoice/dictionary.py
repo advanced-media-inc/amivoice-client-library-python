@@ -112,7 +112,11 @@ def build_profile_words(words: Sequence[ProfileWord]) -> str:
 
 
 def _validate_profile_word_wire_values(word: ProfileWord) -> None:
-    """ProfileWord のワイヤー形式で禁止される文字を検証する"""
+    """ProfileWord のワイヤー形式で禁止される文字を検証する。
+
+    Args:
+        word (ProfileWord): 検証する単語
+    """
     values = (word.written, word.spoken, word.classname, word.alternative_written)
     if any(value is not None and (" " in value or "|" in value) for value in values):
         raise ConfigurationError("ProfileWord values cannot contain spaces or '|' characters")
@@ -168,7 +172,14 @@ class _HttpDictionaryTransport:
 
 
 def _response_body_text(body: bytes) -> str:
-    """レスポンス本文を表示用の文字列へ変換する"""
+    """レスポンス本文を表示用の文字列へ変換する。
+
+    Args:
+        body (bytes): UTF-8 としてデコードするレスポンス本文
+
+    Returns:
+        str: デコードしたレスポンス本文。無効なバイト列は置換する
+    """
     return body.decode("utf-8", errors="replace")
 
 
@@ -222,7 +233,20 @@ def _parse_optional_string(
     status_code: int,
     body: bytes,
 ) -> str | None:
-    """レスポンス内の任意文字列フィールドを検証する"""
+    """レスポンス内の任意文字列フィールドを検証する。
+
+    Args:
+        item (dict[str, object]): 検証する JSON オブジェクト
+        key (str): 検証対象のフィールド名
+        status_code (int): HTTP ステータスコード
+        body (bytes): 元のレスポンス本文
+
+    Returns:
+        str | None: フィールドの文字列値、または未指定時の ``None``
+
+    Raises:
+        DictionaryApiError: フィールドが文字列でない場合
+    """
     value = item.get(key)
     if value is None:
         return None
@@ -232,7 +256,20 @@ def _parse_optional_string(
 
 
 def _parse_profile_word(item: dict[str, object], status_code: int, body: bytes, index: int) -> ProfileWord:
-    """JSON オブジェクトを ProfileWord へ変換する"""
+    """JSON オブジェクトを ProfileWord へ変換する。
+
+    Args:
+        item (dict[str, object]): 変換する JSON オブジェクト
+        status_code (int): HTTP ステータスコード
+        body (bytes): 元のレスポンス本文
+        index (int): レスポンス内の単語のインデックス
+
+    Returns:
+        ProfileWord: 変換したユーザー辞書単語
+
+    Raises:
+        DictionaryApiError: 単語の必須フィールドまたは任意フィールドが不正な場合
+    """
     written = item.get("written")
     if not isinstance(written, str):
         _raise_invalid_response(f"profilewords[{index}].written must be a string", status_code, body)
@@ -263,7 +300,18 @@ def _parse_profile_word(item: dict[str, object], status_code: int, body: bytes, 
 
 
 def _parse_profile_words_response(body: bytes, status_code: int) -> tuple[ProfileWord, ...]:
-    """単語一覧レスポンスを ProfileWord のタプルへ変換する"""
+    """単語一覧レスポンスを ProfileWord のタプルへ変換する。
+
+    Args:
+        body (bytes): JSON 形式のレスポンス本文
+        status_code (int): HTTP ステータスコード
+
+    Returns:
+        tuple[ProfileWord, ...]: 変換したユーザー辞書単語のタプル
+
+    Raises:
+        DictionaryApiError: レスポンスの構造またはフィールドが不正な場合
+    """
     parsed = _load_json_response(body, status_code)
     if not isinstance(parsed, dict):
         _raise_invalid_response("response must be a JSON object", status_code, body)
@@ -281,7 +329,18 @@ def _parse_profile_words_response(body: bytes, status_code: int) -> tuple[Profil
 
 
 def _parse_classnames_response(body: bytes, status_code: int) -> tuple[str, ...]:
-    """クラス名一覧レスポンスを文字列のタプルへ変換する"""
+    """クラス名一覧レスポンスを文字列のタプルへ変換する。
+
+    Args:
+        body (bytes): JSON 形式のレスポンス本文
+        status_code (int): HTTP ステータスコード
+
+    Returns:
+        tuple[str, ...]: 変換した単語クラス名のタプル
+
+    Raises:
+        DictionaryApiError: レスポンスの構造またはクラス名が不正な場合
+    """
     parsed = _load_json_response(body, status_code)
     if not isinstance(parsed, dict):
         _raise_invalid_response("response must be a JSON object", status_code, body)
@@ -443,7 +502,15 @@ class UserDictionaryClient:
         return _parse_classnames_response(response_body, status_code)
 
     def _request(self, method: str, url: str, body: bytes | None) -> tuple[int, bytes]:
-        """認証ヘッダー付きで辞書 API にリクエストする
+        """認証ヘッダー付きで辞書 API にリクエストする。
+
+        Args:
+            method (str): HTTP メソッド
+            url (str): リクエスト URL
+            body (bytes | None): HTTP リクエスト本文
+
+        Returns:
+            tuple[int, bytes]: HTTP ステータスコードとレスポンス本文
 
         Raises:
             ConnectionFailedError: 通信に失敗した場合
@@ -467,18 +534,41 @@ class UserDictionaryClient:
         return status_code, response_body
 
     def _profilewords_url(self, engine: str, profile_id: str, sampling_rate: SamplingRate | None) -> str:
-        """プロファイル単語 API の URL を構築する"""
+        """プロファイル単語 API の URL を構築する。
+
+        Args:
+            engine (str): 接続エンジン名
+            profile_id (str): プロファイル ID
+            sampling_rate (SamplingRate | None): 対象サンプリングレート
+
+        Returns:
+            str: プロファイル単語 API の URL
+        """
         url = f"{self._base_url}/profilewords/{quote(engine, safe='')}/{quote(profile_id, safe='')}"
         if sampling_rate is not None:
             url = f"{url}?adf={quote(sampling_rate, safe='')}"
         return url
 
     def _classnames_url(self, engine: str) -> str:
-        """クラス名一覧 API の URL を構築する"""
+        """クラス名一覧 API の URL を構築する。
+
+        Args:
+            engine (str): 接続エンジン名
+
+        Returns:
+            str: クラス名一覧 API の URL
+        """
         return f"{self._base_url}/classnames/{quote(engine, safe='')}"
 
 
 def _serialize_profile_words(words: Sequence[ProfileWord]) -> bytes:
-    """ProfileWord の一覧を API リクエスト本文へ変換する"""
+    """ProfileWord の一覧を API リクエスト本文へ変換する。
+
+    Args:
+        words (Sequence[ProfileWord]): リクエスト本文へ含める単語一覧
+
+    Returns:
+        bytes: JSON 形式にシリアライズしたリクエスト本文
+    """
     payload = {"profilewords": [word.to_dict() for word in words]}
     return json.dumps(payload, ensure_ascii=False).encode("utf-8")

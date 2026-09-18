@@ -31,7 +31,11 @@ _DEFAULT_NOLOG_WRP_URL: str = "wss://acp-api.amivoice.com/v1/nolog/"
 
 
 def _construct_hrp_transport() -> HrpTransport:
-    """HRP ライブラリのトランスポートを生成する。"""
+    """HRP ライブラリのトランスポートを生成する。
+
+    Returns:
+        HrpTransport: 生成した HRP トランスポート
+    """
     return _Hrp.construct()
 
 
@@ -43,10 +47,22 @@ def _resolve_endpoint_url(  # noqa: PLR0913
     nolog_url: str,
     logging_opt_out: bool,
 ) -> str:
-    """URL overrideとログ保存なし設定から最終エンドポイントを解決する
+    """URL override とログ保存なし設定から最終エンドポイントを解決する。
 
-    カスタムURLは ``logging_opt_out`` が有効でも変更しない。コンストラクタと
-    呼び出し時のどちらでも、既定URLだけをnologエンドポイントへ切り替える。
+    カスタム URL は ``logging_opt_out`` が有効でも変更しない。コンストラクタと
+    呼び出し時のどちらでも、既定 URL だけを nolog エンドポイントへ切り替える。
+
+    Args:
+        override (str | _UnsetType): 呼び出し時の URL override。``UNSET`` は未指定を表す
+        configured_url (str): コンストラクタで設定された URL
+        configured_url_is_default (bool): コンストラクタで URL を省略したかどうか。
+            明示的に既定 URL と同じ値を指定した場合との区別に使用する
+        default_url (str): 通常の既定エンドポイント URL
+        nolog_url (str): ログ保存なしのエンドポイント URL
+        logging_opt_out (bool): 既定エンドポイントをログ保存なしの URL へ切り替えるかどうか
+
+    Returns:
+        str: 解決されたエンドポイント URL
     """
     if not isinstance(override, _UnsetType):
         return override
@@ -74,7 +90,14 @@ def _resolve_profile_words(profile_words: str | Sequence[ProfileWord] | None) ->
 def _resolve_profile_words_override(
     profile_words: str | Sequence[ProfileWord] | None | _UnsetType,
 ) -> str | None | _UnsetType:
-    """呼び出し時 profile_words override を解決し、未指定 sentinel を保持する"""
+    """呼び出し時 profile_words override を解決し、未指定 sentinel を保持する。
+
+    Args:
+        profile_words (str | Sequence[ProfileWord] | None | _UnsetType): 呼び出し時の profile_words override
+
+    Returns:
+        str | None | _UnsetType: 解決した profileWords 文字列、``None``、または未指定 sentinel
+    """
     if isinstance(profile_words, _UnsetType):
         return profile_words
     return _resolve_profile_words(profile_words)
@@ -272,7 +295,53 @@ class AmiVoiceClient:
         hrp_transport: HrpTransport | None = None,
         wrp_transport: WrpTransport | None = None,
     ) -> None:
-        """クライアント設定を保持し、未指定時は環境変数から API キーを解決する。"""
+        """クライアント設定を保持し、未指定時は環境変数から API キーを解決する。
+
+        Args:
+            api_key (str | None): 認証情報。省略時は環境変数 ``AMIVOICE_API_KEY`` を使用する
+            grammar_file_names (str | None): 接続エンジン名
+            codec (str | None): 音声コーデック
+            result_type (str | None): 認識結果タイプ
+            proxy_server_name (str | None): プロキシサーバ名
+            connect_timeout (int): 接続タイムアウト（ミリ秒）。0 は無制限
+            receive_timeout (int): 受信タイムアウト（ミリ秒）。0 は無制限
+            mode (str | None): 認識モード
+            profile_id (str | None): プロファイル ID
+            profile_words (str | Sequence[ProfileWord] | None): セッション単語登録リスト
+            logging_opt_out (bool): ログを保存しないエンドポイントを使用するか。カスタム URL は変更しない
+            segmenter_type (str | None): セグメンタータイプ
+            segmenter (SegmenterProperties | None): 型付きセグメンター設定
+            segmenter_properties (str | None): セグメンター設定
+            confidence_level (float | None): 発話区間の信頼度しきい値
+            keep_filler_token (bool | None): フィラー単語を出力するか
+            result_updated_interval (int | None): 途中結果の発行間隔（ミリ秒）
+            extension (str | None): 使用量集計タグ
+            billing_key (str | None): 使用量集計タグを専用形式で指定する文字列
+            recognition_timeout (int | None): 認識タイムアウト（ミリ秒）
+            complete_timeout (int | None): ルールグラマの確定待ちタイムアウト（ミリ秒）
+            wildcard_model_penalty (float | None): ルールグラマのワイルドカードモデルペナルティ
+            max_decoding_time (int | None): 認識処理時間の上限（ミリ秒）
+            max_response_time (int | None): 音声時間に加える応答時間の上限（ミリ秒）
+            max_decoding_rate (float | None): 音声時間に対する認識処理時間倍率の上限
+            target_response_time (int | None): 暫定結果の目標応答時間（ミリ秒）
+            target_decoding_rate (float | None): 暫定結果の目標認識処理時間倍率
+            result_encoding (str | None): 認識結果の文字エンコーディング（HRP 専用）
+            voice_detection (str | None): 発話区間検出パラメータ
+            accept_topic (str | None): HTTP ``Accept-Topic`` ヘッダ（HRP 専用）
+            content_type (str | None): HTTP ``Content-Type`` ヘッダ（HRP 専用）
+            accept (str | None): HTTP ``Accept`` ヘッダ（HRP 専用）
+            domain_id (str | None): ドメイン ID（HRP 専用）
+            no_input_timeout (int | None): 無入力タイムアウト（ミリ秒）（WRP 専用）
+            http_api_url (str | _UnsetType): HRP API エンドポイント URL。``UNSET`` は既定 URL を使用する
+            ws_api_url (str | _UnsetType): WRP API エンドポイント URL。``UNSET`` は既定 URL を使用する
+            hrp_transport (HrpTransport | None): テスト用 HRP トランスポート注入口
+            wrp_transport (WrpTransport | None): テスト用 WRP トランスポート注入口
+
+        Raises:
+            AuthenticationError: ``api_key`` が指定されず環境変数も設定されていない場合
+            ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
+                ``extension`` と ``billing_key`` を同時指定した場合
+        """
         resolved_key = api_key if api_key is not None else os.environ.get("AMIVOICE_API_KEY")
         if resolved_key is None:
             raise AuthenticationError("AMIVOICE_API_KEY is not set")
@@ -484,7 +553,16 @@ class AmiVoiceClient:
                     hrp.disconnect()
 
     def _setup_hrp(self, hrp: HrpTransport, api_url: str, params: RecognitionParams) -> _HrpListenerAdapter:
-        """HRP トランスポートに接続パラメータを設定し、結果を受け取るアダプターを返す。"""
+        """HRP トランスポートに接続パラメータを設定し、結果を受け取るアダプターを返す。
+
+        Args:
+            hrp (HrpTransport): パラメータを設定する HRP トランスポート
+            api_url (str): 接続先の HRP API エンドポイント URL
+            params (RecognitionParams): HRP に適用する認識パラメータ
+
+        Returns:
+            _HrpListenerAdapter: 認識結果を受け取るリスナーアダプター
+        """
         adapter = _HrpListenerAdapter()
         hrp.setListener(adapter)
 
@@ -552,7 +630,21 @@ class AmiVoiceClient:
         raise_on_error: bool,
         receive_timeout: int,
     ) -> RecognitionResult:
-        """HRP トランスポートに音声を送信し認識結果を返す。"""
+        """HRP トランスポートに音声を送信し認識結果を返す。
+
+        Args:
+            hrp (HrpTransport): 音声を送信する HRP トランスポート
+            adapter (_HrpListenerAdapter): 認識結果を受け取るリスナーアダプター
+            audio (AudioSource): 送信する音声ソース
+            raise_on_error (bool): エラー結果で ``RecognitionError`` を送出するかどうか
+            receive_timeout (int): 認識結果を待機するタイムアウト（ミリ秒）。0 は無制限
+
+        Returns:
+            RecognitionResult: 解析された認識結果
+
+        Raises:
+            RecognitionError: 音声送信または認識結果の取得に失敗した場合
+        """
         audio_bytes = resolve_audio(audio)
 
         if not hrp.feedDataResume():
