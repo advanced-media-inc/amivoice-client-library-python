@@ -95,6 +95,22 @@ def _resolve_logging_opt_out(override: bool | _UnsetType, configured: bool) -> b
     return _validate_logging_opt_out(override)
 
 
+def _validate_endpoint_url_type(url: object, parameter_name: str) -> None:
+    """明示されたエンドポイント URL が文字列であることを検証する
+
+    URL を明示する利用者は接続先を選んでいるため、``None`` を既定 URL へ置き換えずに拒否する
+
+    Args:
+        url (object): 検証する URL。``UNSET`` は未指定を表す
+        parameter_name (str): エラーメッセージに表示する引数名
+
+    Raises:
+        ConfigurationError: URL が ``UNSET`` でも文字列でもない場合
+    """
+    if not isinstance(url, (str, _UnsetType)):
+        raise ConfigurationError(f"Invalid {parameter_name}: must be a string")
+
+
 def _resolve_endpoint_url(
     override: str | _UnsetType,
     configured_url: str,
@@ -119,8 +135,10 @@ def _resolve_endpoint_url(
         str: 解決されたエンドポイント URL
 
     Raises:
-        ConfigurationError: ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合
+        ConfigurationError: override が文字列でも ``UNSET`` でもない場合、または
+            ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合
     """
+    _validate_endpoint_url_type(override, "api_url")
     if isinstance(override, _UnsetType) and configured_url_is_default:
         return nolog_url if logging_opt_out else configured_url
     url = configured_url if isinstance(override, _UnsetType) else override
@@ -281,6 +299,7 @@ class AmiVoiceClient:
             ``extension`` と ``billing_key`` を同時指定した場合。
             ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
             ``logging_opt_out`` が bool でない場合。
+            ``http_api_url`` または ``ws_api_url`` が文字列でない場合。
 
     Example::
 
@@ -405,6 +424,7 @@ class AmiVoiceClient:
             AuthenticationError: ``api_key`` が指定されず環境変数も設定されていない場合
             ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
                 ``extension`` と ``billing_key`` を同時指定した場合、``logging_opt_out`` が bool でない場合、
+                ``http_api_url`` または ``ws_api_url`` が文字列でない場合、
                 または ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合
         """
         resolved_key = api_key if api_key is not None else os.environ.get("AMIVOICE_API_KEY")
@@ -447,6 +467,8 @@ class AmiVoiceClient:
             target_decoding_rate=target_decoding_rate,
             no_input_timeout=no_input_timeout,
         )
+        _validate_endpoint_url_type(http_api_url, "http_api_url")
+        _validate_endpoint_url_type(ws_api_url, "ws_api_url")
         self._http_api_url = _DEFAULT_HRP_URL if isinstance(http_api_url, _UnsetType) else http_api_url
         self._ws_api_url = _DEFAULT_WRP_URL if isinstance(ws_api_url, _UnsetType) else ws_api_url
         self._http_api_url_is_default = isinstance(http_api_url, _UnsetType)
@@ -556,6 +578,7 @@ class AmiVoiceClient:
                 ``extension`` と ``billing_key`` を同時指定した場合。
                 ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
                 ``logging_opt_out`` が bool でない場合。
+                ``api_url`` が文字列でない場合。
             ConnectionFailedError: AmiVoice API への接続に失敗した場合。
             RecognitionError: 音声認識処理中にエラーが発生した場合。
         """
@@ -822,6 +845,7 @@ class AmiVoiceClient:
                 ``extension`` と ``billing_key`` を同時指定した場合。
                 ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
                 ``logging_opt_out`` が bool でない場合。
+                ``api_url`` が文字列でない場合。
 
         Example::
 
@@ -982,9 +1006,11 @@ def transcribe(  # noqa: PLR0913
             ``extension`` と ``billing_key`` を同時指定した場合。
             ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
             ``logging_opt_out`` が bool でない場合。
+            ``api_url`` が文字列でない場合。
         ConnectionFailedError: AmiVoice API への接続に失敗した場合。
         RecognitionError: 音声認識処理中にエラーが発生した場合。
     """
+    _validate_endpoint_url_type(api_url, "api_url")
     client = AmiVoiceClient(
         api_key=api_key,
         http_api_url=api_url,

@@ -82,6 +82,20 @@ def test_transcribe_custom_api_url_valid_uses_given_url() -> None:
     mock_hrp.setServerURL.assert_called_once_with(custom_url)
 
 
+def test_transcribe_api_url_none_invalid_raise_ConfigurationError() -> None:
+    """api_urlにNoneを渡すと送信前にConfigurationErrorになることを確認する。"""
+    # Given: モックHRP
+    mock_hrp = _make_mock_hrp()
+
+    # When / Then: Noneを既定URLへ置き換えずConfigurationErrorになる
+    with (
+        patch("amivoice.client._Hrp.construct", return_value=mock_hrp),
+        pytest.raises(ConfigurationError, match="Invalid api_url"),
+    ):
+        transcribe(b"audio-data", api_key="test-key", api_url=None)  # pyright: ignore[reportArgumentType]
+    mock_hrp.setServerURL.assert_not_called()
+
+
 def test_transcribe_logging_opt_out_valid_uses_nolog_url() -> None:
     """logging_opt_out=Trueで既定URLがnolog URLへ切り替わることを確認する。"""
     # Given: モックHRP

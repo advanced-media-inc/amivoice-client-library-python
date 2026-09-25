@@ -219,6 +219,26 @@ def test_AmiVoiceClient_transcribe_uses_constructor_http_api_url() -> None:
     mock_hrp.setServerURL.assert_called_once_with(custom)
 
 
+@pytest.mark.parametrize("parameter_name", ["http_api_url", "ws_api_url"])
+def test_AmiVoiceClient_endpoint_url_none_invalid_raise_ConfigurationError(parameter_name: str) -> None:
+    """コンストラクタのエンドポイントURLにNoneを渡すとConfigurationErrorになることを確認する。"""
+    # When / Then: Noneを既定URLへ置き換えずConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match=f"Invalid {parameter_name}"):
+        AmiVoiceClient(api_key="key", **{parameter_name: None})  # pyright: ignore[reportArgumentType]
+
+
+def test_AmiVoiceClient_transcribe_api_url_none_invalid_raise_ConfigurationError() -> None:
+    """transcribeのapi_urlにNoneを渡すと送信前にConfigurationErrorになることを確認する。"""
+    # Given: HRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
+
+    # When / Then: Noneを既定URLへ置き換えずConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="Invalid api_url"):
+        client.transcribe(b"audio-data", api_url=None)  # pyright: ignore[reportArgumentType]
+    mock_hrp.setServerURL.assert_not_called()
+
+
 def test_AmiVoiceClient_transcribe_logging_opt_out_constructor_valid_uses_nolog_url() -> None:
     """コンストラクタのlogging_opt_outで既定HRP URLがnolog URLへ切り替わることを確認する。"""
     # Given: ログ保存なしを指定したHRPクライアント
@@ -318,6 +338,20 @@ def test_AmiVoiceClient_transcribe_logging_opt_out_override_valid_uses_expected_
 
     # Then: overrideに対応するエンドポイントがHRPへ渡る
     mock_hrp.setServerURL.assert_called_once_with(expected_url)
+
+
+def test_AmiVoiceClient_stream_api_url_none_invalid_raise_ConfigurationError() -> None:
+    """streamのapi_urlにNoneを渡すと接続前にConfigurationErrorになることを確認する。"""
+    # Given: WebSocketクライアント
+    client = AmiVoiceClient(api_key="key")
+
+    # When / Then: Noneを既定URLへ置き換えずConfigurationErrorになる
+    with (
+        patch("amivoice._stream._build_wrp_transport") as mock_build,
+        pytest.raises(ConfigurationError, match="Invalid api_url"),
+    ):
+        client.stream(api_url=None)  # pyright: ignore[reportArgumentType]
+    mock_build.assert_not_called()
 
 
 def test_AmiVoiceClient_stream_logging_opt_out_constructor_valid_uses_nolog_url() -> None:
