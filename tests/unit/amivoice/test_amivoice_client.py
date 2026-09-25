@@ -1647,6 +1647,45 @@ def test_AmiVoiceClient_transcribe_selected_channel_override_valid_passes_audio_
     mock_hrp.setAudioFilterProperties.assert_called_once_with("selectedChannel=1-2")
 
 
+def test_AmiVoiceClient_transcribe_selected_channel_override_none_valid_clears_constructor_setting() -> None:
+    """transcribeのselected_channel=Noneでコンストラクタの指定が解除されることを確認する"""
+    # Given: コンストラクタでチャネルを指定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, selected_channel=1)
+
+    # When: 呼び出し時にselected_channel=Noneを指定してHTTP認識を実行する
+    client.transcribe(b"audio-data", selected_channel=None)
+
+    # Then: 音声フィルタプロパティはHRPへ渡らない
+    mock_hrp.setAudioFilterProperties.assert_not_called()
+
+
+def test_AmiVoiceClient_transcribe_audio_filter_properties_override_valid_replaces_selected_channel() -> None:
+    """transcribeのraw文字列overrideでコンストラクタのselected_channelが上書きされることを確認する"""
+    # Given: コンストラクタでチャネルを指定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, selected_channel=1)
+
+    # When: 呼び出し時にraw文字列を指定してHTTP認識を実行する
+    client.transcribe(b"audio-data", audio_filter_properties="selectedChannel=2")
+
+    # Then: 呼び出し時のraw文字列だけがHRP setterへ渡る
+    mock_hrp.setAudioFilterProperties.assert_called_once_with("selectedChannel=2")
+
+
+def test_AmiVoiceClient_transcribe_audio_filter_properties_override_none_valid_clears_constructor_setting() -> None:
+    """transcribeのaudio_filter_properties=Noneでコンストラクタの指定が解除されることを確認する"""
+    # Given: コンストラクタでraw文字列を指定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, audio_filter_properties="selectedChannel=1")
+
+    # When: 呼び出し時にaudio_filter_properties=Noneを指定してHTTP認識を実行する
+    client.transcribe(b"audio-data", audio_filter_properties=None)
+
+    # Then: 音声フィルタプロパティはHRPへ渡らない
+    mock_hrp.setAudioFilterProperties.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "selected_channel",
     [-1, (-1, 0), (1, 0), (0, 1, 2), True],
