@@ -361,7 +361,10 @@ class AmiVoiceClient:
         accept_topic: HTTP ``Accept-Topic`` ヘッダ（HRP 専用）。
         content_type: HTTP ``Content-Type`` ヘッダ（HRP 専用）。
         accept: HTTP ``Accept`` ヘッダ（HRP 専用）。
-        domain_id: ドメイン ID（HRP 専用）。
+        domain_id: ドメイン ID（HRP 専用）。指定すると ``d`` パラメータはこの文字列を基に組み立て、
+            ``confidence_level`` と音声フィルタ設定（``selected_channel`` / ``audio_filter_properties``）だけを追加する。
+            ``grammar_file_names``、``segmenter_properties`` など ``d`` パラメータへ入るほかの設定は送信しない。
+            ``domain_id`` に同じパラメータが含まれていても重複を検出しないため、両方に指定すると 2 つ送信される。
         selected_channel: 認識対象チャネル番号または混合するチャネル範囲（HRP 専用）。
         audio_filter_properties: 音声フィルタプロパティのraw文字列（HRP 専用）。
         confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）。
@@ -499,7 +502,7 @@ class AmiVoiceClient:
             accept_topic (str | None): HTTP ``Accept-Topic`` ヘッダ（HRP 専用）
             content_type (str | None): HTTP ``Content-Type`` ヘッダ（HRP 専用）
             accept (str | None): HTTP ``Accept`` ヘッダ（HRP 専用）
-            domain_id (str | None): ドメイン ID（HRP 専用）
+            domain_id (str | None): ドメイン ID（HRP 専用）、``d`` パラメータへ追加される設定はクラスの docstring を参照
             no_input_timeout (int | None): 無入力タイムアウト（ミリ秒）（WRP 専用）
             http_api_url (str | _UnsetType): HRP API エンドポイント URL。``UNSET`` は既定 URL を使用する
             ws_api_url (str | _UnsetType): WRP API エンドポイント URL。``UNSET`` は既定 URL を使用する
@@ -653,7 +656,7 @@ class AmiVoiceClient:
             accept_topic: HTTP ``Accept-Topic`` ヘッダの呼び出し時 override。
             content_type: HTTP ``Content-Type`` ヘッダの呼び出し時 override。
             accept: HTTP ``Accept`` ヘッダの呼び出し時 override。
-            domain_id: ドメイン ID の呼び出し時 override。
+            domain_id: ドメイン ID の呼び出し時 override。``d`` パラメータへ追加される設定はクラスの docstring を参照。
             selected_channel: 認識対象チャネル番号または混合するチャネル範囲の呼び出し時 override。
             audio_filter_properties: 音声フィルタプロパティraw文字列の呼び出し時 override。
             confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）の呼び出し時 override。
@@ -1099,7 +1102,7 @@ def transcribe(  # noqa: PLR0913
         accept_topic: HTTP ``Accept-Topic`` ヘッダ。
         content_type: HTTP ``Content-Type`` ヘッダ。
         accept: HTTP ``Accept`` ヘッダ。
-        domain_id: ドメイン ID。
+        domain_id: ドメイン ID。``d`` パラメータへ追加される設定は ``AmiVoiceClient`` の docstring を参照。
         selected_channel: 認識対象チャネル番号または混合するチャネル範囲。
         audio_filter_properties: 音声フィルタプロパティraw文字列。
         confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）。

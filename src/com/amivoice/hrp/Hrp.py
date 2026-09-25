@@ -290,6 +290,11 @@ class Hrp:
     def setDomainId(self, domainId: str | None) -> None:
         """ドメイン ID を設定する
 
+        ドメイン ID を設定すると、``d`` パラメータはこの文字列を基に組み立てる
+        追加するのは ``confidenceLevel`` と ``audioFilterProperties`` だけで、
+        ``grammarFileNames``、``segmenterProperties`` など ``d`` パラメータへ入るほかの設定は送信しない
+        ドメイン ID に同じパラメータが含まれていても重複を検出しないため、両方に指定すると 2 つ送信する
+
         Args:
             domainId: ドメイン ID の文字列
         """
