@@ -4,6 +4,7 @@ import http.client
 import json
 import math
 import os
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -18,6 +19,8 @@ _DEFAULT_BASE_URL = "https://acp-api.amivoice.com"
 SamplingRate = Literal["8k", "16k"]
 _WRITTEN_FORBIDDEN_CHARACTERS = (" ", "|", ":")
 _ALTERNATIVE_WRITTEN_FORBIDDEN_CHARACTERS = (" ", "|")
+# 公式ドキュメントは指数表記について記載していないため、小数表記（0.5）だけを許可する
+_BIASING_TEXT_PATTERN = re.compile(r"[0-9]+(?:\.[0-9]+)?")
 
 
 class DictionaryTransport(Protocol):
@@ -52,10 +55,12 @@ class ProfileWord:
     spoken: str | None = None
     classname: str | None = None
     alternative_written: str | None = None
-    biasing: float | None = None
+    biasing: float | str | None = None
 
     def __post_init__(self) -> None:
         """ハイブリッドと E2E のフィールドが混在せず、単語強調度が API の許容範囲に収まることを検証する
+
+        単語強調度の数値は float として、文字列は表記を保ったまま保持する
 
         Raises:
             ConfigurationError: フィールドが混在している場合、表記または代替表記に登録できない文字が含まれる場合、
@@ -65,12 +70,18 @@ class ProfileWord:
         self._validate_registrable_characters()
         if self.biasing is None:
             return
-        if isinstance(self.biasing, bool) or not isinstance(self.biasing, (int, float)):
-            raise ConfigurationError("biasing must be a number between 0.0 and 1.0")
-        normalized_biasing = float(self.biasing)
+        if isinstance(self.biasing, str):
+            if _BIASING_TEXT_PATTERN.fullmatch(self.biasing) is None:
+                raise ConfigurationError("biasing string must use decimal notation such as '0.5'")
+            normalized_biasing = float(self.biasing)
+        elif isinstance(self.biasing, bool) or not isinstance(self.biasing, (int, float)):
+            raise ConfigurationError("biasing must be a number or numeric string between 0.0 and 1.0")
+        else:
+            normalized_biasing = float(self.biasing)
         if not math.isfinite(normalized_biasing) or not 0.0 <= normalized_biasing <= 1.0:
-            raise ConfigurationError("biasing must be a number between 0.0 and 1.0")
-        object.__setattr__(self, "biasing", normalized_biasing)
+            raise ConfigurationError("biasing must be a number or numeric string between 0.0 and 1.0")
+        if not isinstance(self.biasing, str):
+            object.__setattr__(self, "biasing", normalized_biasing)
 
     def _validate_engine_fields_not_mixed(self) -> None:
         """ハイブリッド用フィールドと E2E 用フィールドが同時に指定されていないことを検証する
@@ -104,14 +115,14 @@ class ProfileWord:
         """API リクエスト用の JSON オブジェクトへ変換する
 
         Returns:
-            dict[str, str | float]: None のフィールドを除いた単語データ
+            dict[str, str | float]: None のフィールドを除いた単語データ、単語強調度は JSON の数値として扱う
         """
         values: dict[str, str | float | None] = {
             "written": self.written,
             "spoken": self.spoken,
             "classname": self.classname,
             "alternativewritten": self.alternative_written,
-            "biasing": self.biasing,
+            "biasing": float(self.biasing) if self.biasing is not None else None,
         }
         return {key: value for key, value in values.items() if value is not None}
 
@@ -147,17 +158,20 @@ def build_profile_words(words: Sequence[ProfileWord]) -> str:
     return "|".join(serialized_words)
 
 
-def _format_biasing(biasing: float) -> str:
+def _format_biasing(biasing: float | str) -> str:
     """単語強調度を指数表記を使わない小数表記の文字列へ変換する
 
     公式ドキュメントは単語強調度の指数表記について記載していないため、``1e-05`` ではなく ``0.00001`` を出力する
+    文字列は ProfileWord の生成時に小数表記であることを検証済みのため、そのまま返す
 
     Args:
-        biasing (float): ProfileWord が保持する単語強調度
+        biasing (float | str): ProfileWord が保持する単語強調度
 
     Returns:
         str: ``0.5`` や ``0.00001`` のような小数表記の単語強調度
     """
+    if isinstance(biasing, str):
+        return biasing
     return format(Decimal(repr(biasing)), "f")
 
 

@@ -238,7 +238,7 @@ user_dictionary.clear_words("-a-general", "user01", sampling_rate="16k")
 classnames = user_dictionary.list_classnames("-a-general")
 ```
 
-End to End エンジンの単語強調では、`alternative_written` と `biasing` を指定します。`biasing` は `0.0` 以上 `1.0` 以下です。
+End to End エンジンの単語強調では、`alternative_written` と `biasing` を指定します。`biasing` は `0.0` 以上 `1.0` 以下です。数値のほか、`"0.5"` のような小数表記の文字列も指定できます。`"1e-5"` のような指数表記の文字列は指定できません。
 
 ```python
 user_dictionary.register_words(

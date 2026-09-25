@@ -275,6 +275,38 @@ def test_build_profile_words_valid_serializes_word_forms(word: ProfileWord, expe
     assert serialized == expected
 
 
+@pytest.mark.parametrize("biasing", ["0.5", "0.00001", "1", "1.0"])
+def test_build_profile_words_biasing_decimal_string_valid_keep_text(biasing: str) -> None:
+    """小数表記の文字列で指定した単語強調度をそのまま出力することを確認する"""
+    # Given: 小数表記の文字列で単語強調度を指定したProfileWord
+    word = ProfileWord(written="AmiVoice", biasing=biasing)
+
+    # When: profileWords文字列を構築する
+    serialized = build_profile_words((word,))
+
+    # Then: 文字列が保持され、そのままprofileWordsへ出力される
+    assert word.biasing == biasing
+    assert serialized == f"AmiVoice  {biasing}"
+
+
+def test_profile_word_biasing_string_valid_send_json_number() -> None:
+    """文字列の単語強調度を辞書APIへは数値で送ることを確認する"""
+    # Given / When: 小数表記の文字列で単語強調度を指定したProfileWordを生成する
+    word = ProfileWord(written="AmiVoice", biasing="0.75")
+
+    # Then: JSON用の辞書では数値になる
+    assert word.to_dict() == {"written": "AmiVoice", "biasing": 0.75}
+
+
+@pytest.mark.parametrize("biasing", ["1e-5", "5E-1", "2", "abc"])
+def test_profile_word_biasing_string_invalid_raise_ConfigurationError(biasing: str) -> None:
+    """指数表記、範囲外、数値でない文字列でConfigurationErrorが送出されることを確認する"""
+    # Given: 公式ドキュメントに記載のない指数表記、範囲外、数値でない単語強調度
+    # When / Then: ProfileWordの生成でConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match="biasing"):
+        ProfileWord(written="AmiVoice", biasing=biasing)
+
+
 def test_build_profile_words_e2e_without_alternative_valid_keeps_empty_field() -> None:
     """E2E形式で代替表記を省略した場合に連続スペースを保持することを確認する"""
     # Given: 代替表記を省略して単語強調度だけ指定したProfileWord
