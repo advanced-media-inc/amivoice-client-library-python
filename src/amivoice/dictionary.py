@@ -16,6 +16,8 @@ __all__ = ["DictionaryTransport", "ProfileWord", "UserDictionaryClient", "build_
 
 _DEFAULT_BASE_URL = "https://acp-api.amivoice.com"
 SamplingRate = Literal["8k", "16k"]
+_WRITTEN_FORBIDDEN_CHARACTERS = (" ", "|", ":")
+_ALTERNATIVE_WRITTEN_FORBIDDEN_CHARACTERS = (" ", "|")
 
 
 class DictionaryTransport(Protocol):
@@ -56,9 +58,11 @@ class ProfileWord:
         """ハイブリッドと E2E のフィールドが混在せず、単語強調度が API の許容範囲に収まることを検証する
 
         Raises:
-            ConfigurationError: ハイブリッドと E2E のフィールドが混在している場合、または単語強調度が不正な場合
+            ConfigurationError: フィールドが混在している場合、表記または代替表記に登録できない文字が含まれる場合、
+                または単語強調度が不正な場合
         """
         self._validate_engine_fields_not_mixed()
+        self._validate_registrable_characters()
         if self.biasing is None:
             return
         if isinstance(self.biasing, bool) or not isinstance(self.biasing, (int, float)):
@@ -80,6 +84,21 @@ class ProfileWord:
         has_e2e_field = self.alternative_written is not None or self.biasing is not None
         if has_hybrid_field and has_e2e_field:
             raise ConfigurationError("Hybrid and E2E profile word fields cannot be mixed")
+
+    def _validate_registrable_characters(self) -> None:
+        """表記と代替表記に公式マニュアルで登録できないとされる文字が含まれないことを検証する
+
+        表記は半角パイプ・半角スペース・半角コロン、代替表記は半角パイプ・半角スペースを拒否する
+
+        Raises:
+            ConfigurationError: 表記または代替表記に登録できない文字が含まれる場合
+        """
+        if any(character in self.written for character in _WRITTEN_FORBIDDEN_CHARACTERS):
+            raise ConfigurationError("written cannot contain spaces, '|' or ':' characters")
+        if self.alternative_written is not None and any(
+            character in self.alternative_written for character in _ALTERNATIVE_WRITTEN_FORBIDDEN_CHARACTERS
+        ):
+            raise ConfigurationError("alternative_written cannot contain spaces or '|' characters")
 
     def to_dict(self) -> dict[str, str | float]:
         """API リクエスト用の JSON オブジェクトへ変換する

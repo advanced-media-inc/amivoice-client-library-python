@@ -351,17 +351,42 @@ def test_build_profile_words_classname_without_spoken_invalid_raise_Configuratio
         build_profile_words((word,))
 
 
-@pytest.mark.parametrize("field_name", ["written", "spoken", "classname", "alternative_written"])
+@pytest.mark.parametrize(
+    ("fields", "message"),
+    [
+        ({"written": "bad value", "spoken": "あ"}, "written cannot contain"),
+        ({"written": "bad|value", "spoken": "あ"}, "written cannot contain"),
+        ({"written": "a:b", "spoken": "あ"}, "written cannot contain"),
+        ({"written": "a:b", "alternative_written": "エービー"}, "written cannot contain"),
+        ({"written": "valid", "alternative_written": "bad value"}, "alternative_written cannot contain"),
+        ({"written": "valid", "alternative_written": "bad|value"}, "alternative_written cannot contain"),
+    ],
+)
+def test_profile_word_forbidden_character_invalid_raise_ConfigurationError(fields: dict[str, str], message: str) -> None:
+    """表記と代替表記に登録できない文字が含まれる場合にConfigurationErrorが送出されることを確認する"""
+    # Given: 公式マニュアルで登録できない文字を含む表記または代替表記
+    # When / Then: ProfileWordの生成でConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match=message):
+        ProfileWord(**fields)
+
+
+def test_profile_word_alternative_written_colon_valid_keep_value() -> None:
+    """代替表記の半角コロンは公式マニュアルの禁止文字ではないため受け付けることを確認する"""
+    # Given / When: 代替表記に半角コロンを含むProfileWordを生成する
+    word = ProfileWord(written="AB", alternative_written="a:b")
+
+    # Then: 代替表記がそのまま保持される
+    assert word.alternative_written == "a:b"
+
+
+@pytest.mark.parametrize("field_name", ["spoken", "classname"])
 def test_build_profile_words_forbidden_character_invalid_raise_ConfigurationError(field_name: str) -> None:
-    """単語フィールドに空白またはパイプが含まれる場合にConfigurationErrorが送出されることを確認する"""
+    """読みやクラス名に空白またはパイプが含まれる場合にConfigurationErrorが送出されることを確認する"""
     # Given: ワイヤー形式の区切り文字を含むフィールド値
-    word_value = "bad value" if field_name.endswith("written") else "bad|value"
-    is_e2e = field_name == "alternative_written"
     word = ProfileWord(
-        written=word_value if field_name == "written" else "valid",
-        spoken=None if is_e2e else word_value if field_name == "spoken" else "valid",
-        classname=word_value if field_name == "classname" else None,
-        alternative_written=word_value if is_e2e else None,
+        written="valid",
+        spoken="bad value" if field_name == "spoken" else "valid",
+        classname="bad|value" if field_name == "classname" else None,
     )
 
     # When / Then: profileWords文字列の構築でConfigurationErrorが送出される

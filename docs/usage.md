@@ -82,7 +82,7 @@ client = AmiVoiceClient(
 result = client.transcribe("audio.wav")
 ```
 
-`ProfileWord`の値には空白や`|`を含めないでください。複数の単語はライブラリが`|`で連結して API 送信用の形式に変換します。
+`ProfileWord`の値には空白や`|`を含めないでください。表記（`written`）には半角コロン（`:`）も使えません。これらの文字を含む`ProfileWord`を生成または変換すると、`ConfigurationError`が送出されます。複数の単語は、ライブラリが`|`で連結して API 送信用の形式へ変換します。
 
 ### セグメンター設定
 
