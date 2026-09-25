@@ -43,6 +43,42 @@ print(result.text)
 
 `transcribe()`には、ファイルパス、`pathlib.Path`、`bytes`、バイナリファイルオブジェクトを渡せます。
 
+### ログ保存なしの認識
+
+ログを保存せずに認識する場合は、`logging_opt_out=True`を指定します。同期 HTTP と WebSocket の既定エンドポイントが、それぞれログ保存なしのエンドポイントへ切り替わります。
+
+```python
+from amivoice import AmiVoiceClient
+
+client = AmiVoiceClient(logging_opt_out=True)
+result = client.transcribe("audio.wav")
+
+with client.stream() as session:
+    session.write(audio_chunk)
+    session.end()
+```
+
+`transcribe()`や`stream()`の呼び出し時にも`logging_opt_out`を指定できます。
+
+`http_api_url`、`ws_api_url`、`api_url`で URL を明示した場合、その URL は`logging_opt_out`で書き換えられません。`logging_opt_out`が有効なときに明示した URL のパスがログ保存なしのエンドポイントと一致しない場合は、リクエストを送信する前に`ConfigurationError`を送出します。既定と同じ URL を明示した場合も同じです。
+
+| インタフェース | ログ保存なしのパス | 例 |
+| --- | --- | --- |
+| 同期 HTTP | `/v1/nolog/recognize` | `https://acp-api.amivoice.com/v1/nolog/recognize` |
+| WebSocket | `/v1/nolog/` | `wss://acp-api.amivoice.com/v1/nolog/` |
+
+WebSocket の URL は末尾の`/`まで必要です。`wss://acp-api.amivoice.com/v1/nolog`のように`/`がない URL は、AmiVoice API ではログ保存ありになります。詳しくは[ログ保存](https://docs.amivoice.com/amivoice-api/manual/log-retention)を参照してください。
+
+AWS PrivateLink で接続する場合は、ホスト名だけを`acp-api-private.amivoice.com`へ変えた URL を指定します。
+
+```python
+client = AmiVoiceClient(
+    logging_opt_out=True,
+    http_api_url="https://acp-api-private.amivoice.com/v1/nolog/recognize",
+    ws_api_url="wss://acp-api-private.amivoice.com/v1/nolog/",
+)
+```
+
 ### 型付き認識結果
 
 `RecognitionResult.results`から発話区間、単語、信頼度、時刻、話者ラベル、言語ラベルを型付きで参照できます。
@@ -64,6 +100,25 @@ for utterance in result.results:
 ```
 
 `spoken`、`confidence`、`starttime`、`endtime`、`label`、`language`など、エンジンや設定により省略されるフィールドは`None`になります。`RecognitionResult.raw`、`data`、`text`、`is_error`、`session_id`も引き続き利用できます。
+
+### セッション単語登録
+
+認識セッションだけで有効にする単語は、`ProfileWord`のシーケンスで指定できます。ハイブリッドエンジンでは`spoken`を必須とし、クラスを指定する場合は`classname`を追加します。End to End エンジンでは`alternative_written`と`biasing`を指定します。従来どおり、ワイヤー形式の文字列も指定できます。
+
+```python
+from amivoice import AmiVoiceClient, ProfileWord
+
+client = AmiVoiceClient(
+    grammar_file_names="-a-general",
+    profile_words=(
+        ProfileWord("AmiVoice", "あみぼいす", "固有名詞"),
+        ProfileWord("WWW", "とりぷるだぶる"),
+    ),
+)
+result = client.transcribe("audio.wav")
+```
+
+`ProfileWord`の値には空白や`|`を含めないでください。表記（`written`）には半角コロン（`:`）も使えません。これらの文字を含む`ProfileWord`を生成または変換すると、`ConfigurationError`が送出されます。複数の単語は、ライブラリが`|`で連結して API 送信用の形式へ変換します。
 
 ### セグメンター設定
 
@@ -219,7 +274,7 @@ user_dictionary.clear_words("-a-general", "user01", sampling_rate="16k")
 classnames = user_dictionary.list_classnames("-a-general")
 ```
 
-End to End エンジンの単語強調では、`alternative_written` と `biasing` を指定します。`biasing` は `0.0` 以上 `1.0` 以下です。
+End to End エンジンの単語強調では、`alternative_written` と `biasing` を指定します。`biasing` は `0.0` 以上 `1.0` 以下です。数値のほか、`"0.5"` のような小数表記の文字列も指定できます。`"1e-5"` のような指数表記の文字列は指定できません。
 
 ```python
 user_dictionary.register_words(

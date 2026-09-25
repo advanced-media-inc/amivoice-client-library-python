@@ -3,14 +3,20 @@
 """AmiVoiceClient のユニットテスト。"""
 
 import threading
+from collections.abc import Sequence
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from amivoice import ProfileWord
 from amivoice._segmenter import SegmenterProperties
 from amivoice._stream import StreamConnectionManager, StreamSession
 from amivoice._transport import HrpTransport
-from amivoice.client import _DEFAULT_HRP_URL, _DEFAULT_WRP_URL, AmiVoiceClient
+from amivoice.client import (
+    _DEFAULT_HRP_URL,
+    _DEFAULT_WRP_URL,
+    AmiVoiceClient,
+)
 from amivoice.exceptions import (
     AuthenticationError,
     ConfigurationError,
@@ -211,6 +217,255 @@ def test_AmiVoiceClient_transcribe_uses_constructor_http_api_url() -> None:
 
     # Then: コンストラクタの http_api_url が使われる
     mock_hrp.setServerURL.assert_called_once_with(custom)
+
+
+@pytest.mark.parametrize("parameter_name", ["http_api_url", "ws_api_url"])
+def test_AmiVoiceClient_endpoint_url_none_invalid_raise_ConfigurationError(parameter_name: str) -> None:
+    """コンストラクタのエンドポイントURLにNoneを渡すとConfigurationErrorになることを確認する。"""
+    # When / Then: Noneを既定URLへ置き換えずConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match=f"Invalid {parameter_name}"):
+        AmiVoiceClient(api_key="key", **{parameter_name: None})  # pyright: ignore[reportArgumentType]
+
+
+def test_AmiVoiceClient_transcribe_api_url_none_invalid_raise_ConfigurationError() -> None:
+    """transcribeのapi_urlにNoneを渡すと送信前にConfigurationErrorになることを確認する。"""
+    # Given: HRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
+
+    # When / Then: Noneを既定URLへ置き換えずConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="Invalid api_url"):
+        client.transcribe(b"audio-data", api_url=None)  # pyright: ignore[reportArgumentType]
+    mock_hrp.setServerURL.assert_not_called()
+
+
+def test_AmiVoiceClient_transcribe_logging_opt_out_constructor_valid_uses_nolog_url() -> None:
+    """コンストラクタのlogging_opt_outで既定HRP URLがnolog URLへ切り替わることを確認する。"""
+    # Given: ログ保存なしを指定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, logging_opt_out=True)
+
+    # When: HTTP認識を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: nologエンドポイントがHRPへ渡る
+    mock_hrp.setServerURL.assert_called_once_with("https://acp-api.amivoice.com/v1/nolog/recognize")
+
+
+@pytest.mark.parametrize(
+    "custom_url",
+    [
+        "https://acp-api-private.amivoice.com/v1/recognize",
+        "https://acp-api.amivoice.com/v1/recognize",
+    ],
+)
+def test_AmiVoiceClient_logging_opt_out_logged_http_api_url_invalid_raise_ConfigurationError(custom_url: str) -> None:
+    """ログ保存ありのカスタムHRP URLとlogging_opt_outの併用でConfigurationErrorになることを確認する。"""
+    # When / Then: ログ保存ありのパスとログ保存なしを同時に指定するとConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="/v1/nolog/recognize"):
+        AmiVoiceClient(api_key="key", http_api_url=custom_url, logging_opt_out=True)
+
+
+def test_AmiVoiceClient_transcribe_logging_opt_out_nolog_custom_url_valid_keeps_custom_url() -> None:
+    """ログ保存なしのパスを持つカスタムHRP URLをそのまま使うことを確認する。"""
+    # Given: PrivateLinkのログ保存なしURLとログ保存なしを指定したクライアント
+    custom = "https://acp-api-private.amivoice.com/v1/nolog/recognize"
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, http_api_url=custom, logging_opt_out=True)
+
+    # When: HTTP認識を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: カスタムURLがそのままHRPへ渡る
+    mock_hrp.setServerURL.assert_called_once_with(custom)
+
+
+def test_AmiVoiceClient_transcribe_logging_opt_out_override_logged_custom_url_invalid_raise_ConfigurationError() -> None:
+    """呼び出し時にログ保存ありのカスタムURLとlogging_opt_outを併用するとエラーになることを確認する。"""
+    # Given: ログ保存ありのカスタムURLを設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(
+        api_key="key",
+        hrp_transport=mock_hrp,
+        http_api_url="https://acp-api-private.amivoice.com/v1/recognize",
+    )
+
+    # When / Then: 呼び出し時にログ保存なしを指定するとConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="/v1/nolog/recognize"):
+        client.transcribe(b"audio-data", logging_opt_out=True)
+    with pytest.raises(ConfigurationError, match="/v1/nolog/recognize"):
+        client.transcribe(
+            b"audio-data",
+            api_url="https://acp-api.amivoice.com/v1/recognize",
+            logging_opt_out=True,
+        )
+    mock_hrp.setServerURL.assert_not_called()
+
+
+def test_AmiVoiceClient_transcribe_logging_opt_out_override_nolog_custom_url_valid_uses_custom_url() -> None:
+    """呼び出し時のログ保存なしカスタムURLとlogging_opt_outを併用できることを確認する。"""
+    # Given: ログ保存なしを指定したHRPクライアント
+    custom = "https://acp-api-private.amivoice.com/v1/nolog/recognize"
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, logging_opt_out=True)
+
+    # When: ログ保存なしのカスタムURLを指定してHTTP認識を実行する
+    client.transcribe(b"audio-data", api_url=custom)
+
+    # Then: カスタムURLがそのままHRPへ渡る
+    mock_hrp.setServerURL.assert_called_once_with(custom)
+
+
+@pytest.mark.parametrize(
+    ("constructor_value", "override_value", "expected_url"),
+    [
+        (False, True, "https://acp-api.amivoice.com/v1/nolog/recognize"),
+        (True, False, "https://acp-api.amivoice.com/v1/recognize"),
+    ],
+)
+def test_AmiVoiceClient_transcribe_logging_opt_out_override_valid_uses_expected_url(
+    constructor_value: bool,
+    override_value: bool,
+    expected_url: str,
+) -> None:
+    """transcribeのlogging_opt_out overrideがコンストラクタ設定を上書きすることを確認する。"""
+    # Given: logging_opt_outの既定値を設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, logging_opt_out=constructor_value)
+
+    # When: 呼び出し時にlogging_opt_outを上書きしてHTTP認識を実行する
+    client.transcribe(b"audio-data", logging_opt_out=override_value)
+
+    # Then: overrideに対応するエンドポイントがHRPへ渡る
+    mock_hrp.setServerURL.assert_called_once_with(expected_url)
+
+
+def test_AmiVoiceClient_stream_api_url_none_invalid_raise_ConfigurationError() -> None:
+    """streamのapi_urlにNoneを渡すと接続前にConfigurationErrorになることを確認する。"""
+    # Given: WebSocketクライアント
+    client = AmiVoiceClient(api_key="key")
+
+    # When / Then: Noneを既定URLへ置き換えずConfigurationErrorになる
+    with (
+        patch("amivoice._stream._build_wrp_transport") as mock_build,
+        pytest.raises(ConfigurationError, match="Invalid api_url"),
+    ):
+        client.stream(api_url=None)  # pyright: ignore[reportArgumentType]
+    mock_build.assert_not_called()
+
+
+def test_AmiVoiceClient_stream_logging_opt_out_constructor_valid_uses_nolog_url() -> None:
+    """コンストラクタのlogging_opt_outで既定WRP URLがnolog URLへ切り替わることを確認する。"""
+    # Given: ログ保存なしを指定したWebSocketクライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", logging_opt_out=True)
+
+    # When: ストリーミングセッションを開始する
+    with patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build, client.stream() as session:
+        session.end()
+
+    # Then: nologエンドポイントがWRPへ渡る
+    assert mock_build.call_args.args[1] == "wss://acp-api.amivoice.com/v1/nolog/"
+
+
+@pytest.mark.parametrize(
+    "custom_url",
+    [
+        "wss://acp-api-private.amivoice.com/v1/",
+        "wss://acp-api.amivoice.com/v1/",
+        "wss://acp-api.amivoice.com/v1/nolog",
+    ],
+)
+def test_AmiVoiceClient_logging_opt_out_logged_ws_api_url_invalid_raise_ConfigurationError(custom_url: str) -> None:
+    """ログ保存ありのカスタムWRP URLとlogging_opt_outの併用でConfigurationErrorになることを確認する。"""
+    # When / Then: 末尾のスラッシュがないURLを含め、ログ保存ありのパスはConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="/v1/nolog/"):
+        AmiVoiceClient(api_key="key", ws_api_url=custom_url, logging_opt_out=True)
+
+
+def test_AmiVoiceClient_stream_logging_opt_out_nolog_custom_url_valid_keeps_custom_url() -> None:
+    """ログ保存なしのパスを持つカスタムWRP URLをそのまま使うことを確認する。"""
+    # Given: PrivateLinkのログ保存なしURLとログ保存なしを指定したクライアント
+    custom = "wss://acp-api-private.amivoice.com/v1/nolog/"
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", ws_api_url=custom, logging_opt_out=True)
+
+    # When: ストリーミングセッションを開始する
+    with patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build, client.stream() as session:
+        session.end()
+
+    # Then: カスタムURLがそのままWRPへ渡る
+    assert mock_build.call_args.args[1] == custom
+
+
+def test_AmiVoiceClient_stream_logging_opt_out_override_logged_custom_url_invalid_raise_ConfigurationError() -> None:
+    """呼び出し時にログ保存ありのカスタムWRP URLとlogging_opt_outを併用するとエラーになることを確認する。"""
+    # Given: ログ保存なしを指定したWebSocketクライアント
+    client = AmiVoiceClient(api_key="key", logging_opt_out=True)
+
+    # When / Then: 末尾のスラッシュがないnolog URLを指定するとConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="/v1/nolog/"):
+        client.stream(api_url="wss://acp-api.amivoice.com/v1/nolog")
+
+
+@pytest.mark.parametrize(
+    ("constructor_value", "override_value", "expected_url"),
+    [
+        (False, True, "wss://acp-api.amivoice.com/v1/nolog/"),
+        (True, False, "wss://acp-api.amivoice.com/v1/"),
+    ],
+)
+def test_AmiVoiceClient_stream_logging_opt_out_override_valid_uses_expected_url(
+    constructor_value: bool,
+    override_value: bool,
+    expected_url: str,
+) -> None:
+    """streamのlogging_opt_out overrideがコンストラクタ設定を上書きすることを確認する。"""
+    # Given: logging_opt_outの既定値を設定したWebSocketクライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", logging_opt_out=constructor_value)
+
+    # When: 呼び出し時にlogging_opt_outを上書きしてストリーミングを開始する
+    with (
+        patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build,
+        client.stream(logging_opt_out=override_value) as session,
+    ):
+        session.end()
+
+    # Then: overrideに対応するエンドポイントがWRPへ渡る
+    assert mock_build.call_args.args[1] == expected_url
+
+
+@pytest.mark.parametrize("value", [None, "false", 1])
+def test_AmiVoiceClient_logging_opt_out_not_bool_invalid_raise_ConfigurationError(value: object) -> None:
+    """コンストラクタのlogging_opt_outがboolでない場合にConfigurationErrorになることを確認する。"""
+    # When / Then: bool以外を指定するとConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="logging_opt_out"):
+        AmiVoiceClient(api_key="key", logging_opt_out=value)  # pyright: ignore[reportArgumentType]
+
+
+@pytest.mark.parametrize("value", [None, "false", 0])
+def test_AmiVoiceClient_transcribe_logging_opt_out_override_not_bool_invalid_raise_ConfigurationError(value: object) -> None:
+    """transcribeのlogging_opt_out overrideがboolでない場合に送信前にエラーになることを確認する。"""
+    # Given: ログ保存なしを指定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, logging_opt_out=True)
+
+    # When / Then: bool以外のoverrideはFalseとして扱わずConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="logging_opt_out"):
+        client.transcribe(b"audio-data", logging_opt_out=value)  # pyright: ignore[reportArgumentType]
+    mock_hrp.setServerURL.assert_not_called()
+
+
+@pytest.mark.parametrize("value", [None, "false", 0])
+def test_AmiVoiceClient_stream_logging_opt_out_override_not_bool_invalid_raise_ConfigurationError(value: object) -> None:
+    """streamのlogging_opt_out overrideがboolでない場合にConfigurationErrorになることを確認する。"""
+    # Given: ログ保存なしを指定したWebSocketクライアント
+    client = AmiVoiceClient(api_key="key", logging_opt_out=True)
+
+    # When / Then: bool以外のoverrideはFalseとして扱わずConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="logging_opt_out"):
+        client.stream(logging_opt_out=value)  # pyright: ignore[reportArgumentType]
 
 
 def test_AmiVoiceClient_transcribe_recognition_timeout_passed_to_setter() -> None:
@@ -1297,3 +1552,101 @@ def test_AmiVoiceClient_stream_rule_grammar_parameter_override_passes_string(
 
     # Then: 上書きした文字列値が対応するWRP setterへ渡る
     getattr(mock_wrp, setter_name).assert_called_once_with(expected)
+
+
+def test_AmiVoiceClient_transcribe_profile_words_sequence_valid_passes_serialized_string() -> None:
+    """コンストラクタのProfileWordシーケンスがHRPへシリアライズされることを確認する"""
+    # Given: ProfileWordシーケンスを設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(
+        api_key="key",
+        hrp_transport=mock_hrp,
+        profile_words=(ProfileWord(written="AmiVoice", spoken="あみぼいす"),),
+    )
+
+    # When: HTTP認識を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: profileWordsのワイヤー形式がHRP setterへ渡る
+    mock_hrp.setProfileWords.assert_called_once_with("AmiVoice あみぼいす")
+
+
+def test_AmiVoiceClient_transcribe_profile_words_override_valid_passes_serialized_string() -> None:
+    """transcribeのProfileWordシーケンスoverrideがHRPへシリアライズされることを確認する"""
+    # Given: 既定のprofile_wordsを持つHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(
+        api_key="key",
+        hrp_transport=mock_hrp,
+        profile_words="default word",
+    )
+
+    # When: ProfileWordシーケンスでHTTP認識時の設定を上書きする
+    client.transcribe(
+        b"audio-data",
+        profile_words=(ProfileWord(written="WWW", spoken="とりぷるだぶる"),),
+    )
+
+    # Then: overrideのワイヤー形式がHRP setterへ渡る
+    mock_hrp.setProfileWords.assert_called_once_with("WWW とりぷるだぶる")
+
+
+@pytest.mark.parametrize("empty_words", [(), []])
+def test_AmiVoiceClient_transcribe_profile_words_empty_sequence_valid_skip_setter(empty_words: Sequence[ProfileWord]) -> None:
+    """空のProfileWordシーケンスでHRPのprofileWordsを設定しないことを確認する"""
+    # Given: 空のProfileWordシーケンスを設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, profile_words=empty_words)
+
+    # When: HTTP認識を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: 空文字列のprofileWordsは送られない
+    mock_hrp.setProfileWords.assert_not_called()
+
+
+def test_AmiVoiceClient_transcribe_profile_words_empty_override_valid_clear_default() -> None:
+    """空のProfileWordシーケンスoverrideが既定のprofile_wordsを送らないことを確認する"""
+    # Given: 既定のprofile_wordsを持つHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, profile_words="default word")
+
+    # When: 空のProfileWordシーケンスでHTTP認識時の設定を上書きする
+    client.transcribe(b"audio-data", profile_words=())
+
+    # Then: 既定値も空文字列もHRP setterへ渡らない
+    mock_hrp.setProfileWords.assert_not_called()
+
+
+def test_AmiVoiceClient_stream_profile_words_empty_sequence_valid_skip_setter() -> None:
+    """streamの空のProfileWordシーケンスでWRPのprofileWordsを設定しないことを確認する"""
+    # Given: クライアントとモックWRP
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key")
+
+    # When: 空のProfileWordシーケンスでストリーミングセッションを開始する
+    with (
+        patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
+        client.stream(profile_words=[]) as session,
+    ):
+        session.end()
+
+    # Then: 空文字列のprofileWordsは送られない
+    mock_wrp.setProfileWords.assert_not_called()
+
+
+def test_AmiVoiceClient_stream_profile_words_sequence_valid_passes_serialized_string() -> None:
+    """streamのProfileWordシーケンスがWRPへシリアライズされることを確認する"""
+    # Given: ProfileWordシーケンスを指定するクライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key")
+
+    # When: ProfileWordシーケンスでストリーミングセッションを開始する
+    with (
+        patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
+        client.stream(profile_words=(ProfileWord(written="AmiVoice", spoken="あみぼいす"),)) as session,
+    ):
+        session.end()
+
+    # Then: profileWordsのワイヤー形式がWRP setterへ渡る
+    mock_wrp.setProfileWords.assert_called_once_with("AmiVoice あみぼいす")

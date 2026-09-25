@@ -6,7 +6,7 @@ from ._billing import build_billing_extension
 from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager, StreamSession
 from .client import AmiVoiceClient, transcribe
-from .dictionary import ProfileWord, UserDictionaryClient
+from .dictionary import ProfileWord, UserDictionaryClient, build_profile_words
 from .exceptions import (
     AmiVoiceError,
     AuthenticationError,
@@ -46,6 +46,7 @@ __all__ = [
     "UtteranceResult",
     "build_billing_extension",
     "build_grammar_file_names",
+    "build_profile_words",
     "encode_grammar",
     "transcribe",
 ]

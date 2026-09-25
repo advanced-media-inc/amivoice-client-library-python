@@ -6,7 +6,11 @@ from .exceptions import ConfigurationError
 
 
 def _validate_billing_key(billing_key: str) -> None:
-    """billing_key が空でない文字列であることを検証する"""
+    """billing_key が空でない文字列であることを検証する。
+
+    Args:
+        billing_key (str): 検証する使用量集計タグ
+    """
     if not isinstance(billing_key, str) or billing_key == "":
         raise ConfigurationError("Invalid billing_key: must be a non-empty string")
 

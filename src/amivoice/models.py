@@ -70,13 +70,20 @@ class RecognitionResult:
         """認識テキスト：``data["text"]`` のショートカット。
 
         ``data`` に ``"text"`` キーが存在しない場合は空文字列を返す。
+
+        Returns:
+            str: 認識テキスト。``data`` に ``"text"`` がない場合は空文字列
         """
         val = self.data.get("text")
         return str(val) if val is not None else ""
 
     @property
     def utterance_id(self) -> str | None:
-        """発話 ID：``data["utteranceid"]`` のショートカット。"""
+        """発話 ID：``data["utteranceid"]`` のショートカット。
+
+        Returns:
+            str | None: 発話 ID。``data`` に ``"utteranceid"`` がない場合は ``None``
+        """
         val = self.data.get("utteranceid")
         return str(val) if val is not None else None
 
@@ -117,12 +124,20 @@ class StreamEvent:
 
     @property
     def is_final(self) -> bool:
-        """確定認識結果イベント（``type == "final"``）か否か。"""
+        """確定認識結果イベント（``type == "final"``）か否か。
+
+        Returns:
+            bool: 確定認識結果イベントの場合は ``True``
+        """
         return self.type == "final"
 
     @property
     def is_partial(self) -> bool:
-        """途中認識結果イベント（``type == "partial"``）か否か。"""
+        """途中認識結果イベント（``type == "partial"``）か否か。
+
+        Returns:
+            bool: 途中認識結果イベントの場合は ``True``
+        """
         return self.type == "partial"
 
 

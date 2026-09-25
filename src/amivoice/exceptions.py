@@ -8,22 +8,38 @@ class RecognitionResultLike(Protocol):
 
     @property
     def raw(self) -> str:
-        """生レスポンス文字列。"""
+        """生レスポンス文字列。
+
+        Returns:
+            str: 生のレスポンス文字列
+        """
         ...
 
     @property
     def data(self) -> dict[str, object]:
-        """パース済み JSON データ。"""
+        """パース済み JSON データ。
+
+        Returns:
+            dict[str, object]: パース済みの JSON データ
+        """
         ...
 
     @property
     def is_error(self) -> bool:
-        """エラー結果か否か。"""
+        """エラー結果か否か。
+
+        Returns:
+            bool: エラー結果の場合は ``True``
+        """
         ...
 
     @property
     def session_id(self) -> str | None:
-        """セッション ID。"""
+        """セッション ID。
+
+        Returns:
+            str | None: セッション ID。存在しない場合は ``None``
+        """
         ...
 
 
@@ -31,7 +47,11 @@ class AmiVoiceError(Exception):
     """AmiVoice 高レベルクライアントの基底例外クラス。"""
 
     def __init__(self, message: str) -> None:
-        """例外を初期化する。"""
+        """例外を初期化する。
+
+        Args:
+            message (str): 例外メッセージ
+        """
         super().__init__(message)
         self.message: str = message
 
@@ -51,7 +71,12 @@ class RecognitionError(AmiVoiceError):
     """音声認識が失敗、またはサービスがエラー結果を返した場合に送出される例外。"""
 
     def __init__(self, message: str, result: RecognitionResultLike | None = None) -> None:
-        """例外を初期化する。"""
+        """例外を初期化する。
+
+        Args:
+            message (str): 例外メッセージ
+            result (RecognitionResultLike | None): エラーの原因となった認識結果
+        """
         super().__init__(message)
         self.result: RecognitionResultLike | None = result
 
