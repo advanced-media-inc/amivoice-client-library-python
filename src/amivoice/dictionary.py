@@ -137,10 +137,16 @@ def build_profile_words(words: Sequence[ProfileWord]) -> str:
         ``profileWords`` リクエストパラメータへ渡す文字列
 
     Raises:
-        ConfigurationError: spoken なしで classname が指定されている場合、または値に空白や ``|`` が含まれる場合
+        ConfigurationError: 要素が ProfileWord でない場合、spoken なしで classname が指定されている場合、
+            または値に空白や ``|`` が含まれる場合
     """
     serialized_words: list[str] = []
-    for word in words:
+    for index, word in enumerate(words):
+        if not isinstance(word, ProfileWord):
+            raise ConfigurationError(
+                f"profile_words[{index}] must be a ProfileWord, got {type(word).__name__}; "
+                "pass a sequence of ProfileWord or a profileWords wire-format string"
+            )
         _validate_profile_word_wire_values(word)
         if word.spoken is not None or word.classname is not None:
             if word.spoken is None:

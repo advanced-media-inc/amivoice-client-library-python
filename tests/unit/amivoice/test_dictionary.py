@@ -424,3 +424,14 @@ def test_build_profile_words_forbidden_character_invalid_raise_ConfigurationErro
     # When / Then: profileWords文字列の構築でConfigurationErrorが送出される
     with pytest.raises(ConfigurationError, match="spaces or"):
         build_profile_words((word,))
+
+
+@pytest.mark.parametrize("word", ["AmiVoice あみぼいす", ("AmiVoice", "あみぼいす"), {"written": "AmiVoice"}])
+def test_build_profile_words_non_profile_word_invalid_raise_ConfigurationError(word: object) -> None:
+    """ProfileWord以外の要素でAttributeErrorではなくConfigurationErrorが送出されることを確認する"""
+    # Given: 文字列、tuple、dictなどProfileWord以外の要素を含むシーケンス
+    words = [ProfileWord(written="WWW", spoken="とりぷるだぶる"), word]
+
+    # When / Then: 要素の位置とProfileWordまたはワイヤー形式文字列の案内を含むConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match=r"profile_words\[1\] must be a ProfileWord.*wire-format string"):
+        build_profile_words(words)  # type: ignore[list-item]
