@@ -14,8 +14,6 @@ from amivoice._stream import StreamConnectionManager, StreamSession
 from amivoice._transport import HrpTransport
 from amivoice.client import (
     _DEFAULT_HRP_URL,
-    _DEFAULT_NOLOG_HRP_URL,
-    _DEFAULT_NOLOG_WRP_URL,
     _DEFAULT_WRP_URL,
     AmiVoiceClient,
 )
@@ -231,13 +229,27 @@ def test_AmiVoiceClient_transcribe_logging_opt_out_constructor_valid_uses_nolog_
     client.transcribe(b"audio-data")
 
     # Then: nologエンドポイントがHRPへ渡る
-    mock_hrp.setServerURL.assert_called_once_with(_DEFAULT_NOLOG_HRP_URL)
+    mock_hrp.setServerURL.assert_called_once_with("https://acp-api.amivoice.com/v1/nolog/recognize")
 
 
-def test_AmiVoiceClient_transcribe_logging_opt_out_custom_url_valid_keeps_custom_url() -> None:
-    """カスタムHRP URLをlogging_opt_outで書き換えないことを確認する。"""
-    # Given: カスタムURLとログ保存なしを指定したクライアント
-    custom = "https://custom.example.com/recognize"
+@pytest.mark.parametrize(
+    "custom_url",
+    [
+        "https://acp-api-private.amivoice.com/v1/recognize",
+        "https://acp-api.amivoice.com/v1/recognize",
+    ],
+)
+def test_AmiVoiceClient_logging_opt_out_logged_http_api_url_invalid_raise_ConfigurationError(custom_url: str) -> None:
+    """ログ保存ありのカスタムHRP URLとlogging_opt_outの併用でConfigurationErrorになることを確認する。"""
+    # When / Then: ログ保存ありのパスとログ保存なしを同時に指定するとConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="/v1/nolog/recognize"):
+        AmiVoiceClient(api_key="key", http_api_url=custom_url, logging_opt_out=True)
+
+
+def test_AmiVoiceClient_transcribe_logging_opt_out_nolog_custom_url_valid_keeps_custom_url() -> None:
+    """ログ保存なしのパスを持つカスタムHRP URLをそのまま使うことを確認する。"""
+    # Given: PrivateLinkのログ保存なしURLとログ保存なしを指定したクライアント
+    custom = "https://acp-api-private.amivoice.com/v1/nolog/recognize"
     mock_hrp = _make_mock_hrp()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, http_api_url=custom, logging_opt_out=True)
 
@@ -248,11 +260,47 @@ def test_AmiVoiceClient_transcribe_logging_opt_out_custom_url_valid_keeps_custom
     mock_hrp.setServerURL.assert_called_once_with(custom)
 
 
+def test_AmiVoiceClient_transcribe_logging_opt_out_override_logged_custom_url_invalid_raise_ConfigurationError() -> None:
+    """呼び出し時にログ保存ありのカスタムURLとlogging_opt_outを併用するとエラーになることを確認する。"""
+    # Given: ログ保存ありのカスタムURLを設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(
+        api_key="key",
+        hrp_transport=mock_hrp,
+        http_api_url="https://acp-api-private.amivoice.com/v1/recognize",
+    )
+
+    # When / Then: 呼び出し時にログ保存なしを指定するとConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="/v1/nolog/recognize"):
+        client.transcribe(b"audio-data", logging_opt_out=True)
+    with pytest.raises(ConfigurationError, match="/v1/nolog/recognize"):
+        client.transcribe(
+            b"audio-data",
+            api_url="https://acp-api.amivoice.com/v1/recognize",
+            logging_opt_out=True,
+        )
+    mock_hrp.setServerURL.assert_not_called()
+
+
+def test_AmiVoiceClient_transcribe_logging_opt_out_override_nolog_custom_url_valid_uses_custom_url() -> None:
+    """呼び出し時のログ保存なしカスタムURLとlogging_opt_outを併用できることを確認する。"""
+    # Given: ログ保存なしを指定したHRPクライアント
+    custom = "https://acp-api-private.amivoice.com/v1/nolog/recognize"
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, logging_opt_out=True)
+
+    # When: ログ保存なしのカスタムURLを指定してHTTP認識を実行する
+    client.transcribe(b"audio-data", api_url=custom)
+
+    # Then: カスタムURLがそのままHRPへ渡る
+    mock_hrp.setServerURL.assert_called_once_with(custom)
+
+
 @pytest.mark.parametrize(
     ("constructor_value", "override_value", "expected_url"),
     [
-        (False, True, _DEFAULT_NOLOG_HRP_URL),
-        (True, False, _DEFAULT_HRP_URL),
+        (False, True, "https://acp-api.amivoice.com/v1/nolog/recognize"),
+        (True, False, "https://acp-api.amivoice.com/v1/recognize"),
     ],
 )
 def test_AmiVoiceClient_transcribe_logging_opt_out_override_valid_uses_expected_url(
@@ -283,13 +331,28 @@ def test_AmiVoiceClient_stream_logging_opt_out_constructor_valid_uses_nolog_url(
         session.end()
 
     # Then: nologエンドポイントがWRPへ渡る
-    assert mock_build.call_args.args[1] == _DEFAULT_NOLOG_WRP_URL
+    assert mock_build.call_args.args[1] == "wss://acp-api.amivoice.com/v1/nolog/"
 
 
-def test_AmiVoiceClient_stream_logging_opt_out_custom_url_valid_keeps_custom_url() -> None:
-    """カスタムWRP URLをlogging_opt_outで書き換えないことを確認する。"""
-    # Given: カスタムURLとログ保存なしを指定したクライアント
-    custom = "wss://custom.example.com/v1/"
+@pytest.mark.parametrize(
+    "custom_url",
+    [
+        "wss://acp-api-private.amivoice.com/v1/",
+        "wss://acp-api.amivoice.com/v1/",
+        "wss://acp-api.amivoice.com/v1/nolog",
+    ],
+)
+def test_AmiVoiceClient_logging_opt_out_logged_ws_api_url_invalid_raise_ConfigurationError(custom_url: str) -> None:
+    """ログ保存ありのカスタムWRP URLとlogging_opt_outの併用でConfigurationErrorになることを確認する。"""
+    # When / Then: 末尾のスラッシュがないURLを含め、ログ保存ありのパスはConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="/v1/nolog/"):
+        AmiVoiceClient(api_key="key", ws_api_url=custom_url, logging_opt_out=True)
+
+
+def test_AmiVoiceClient_stream_logging_opt_out_nolog_custom_url_valid_keeps_custom_url() -> None:
+    """ログ保存なしのパスを持つカスタムWRP URLをそのまま使うことを確認する。"""
+    # Given: PrivateLinkのログ保存なしURLとログ保存なしを指定したクライアント
+    custom = "wss://acp-api-private.amivoice.com/v1/nolog/"
     mock_wrp = _make_mock_wrp()
     client = AmiVoiceClient(api_key="key", ws_api_url=custom, logging_opt_out=True)
 
@@ -301,11 +364,21 @@ def test_AmiVoiceClient_stream_logging_opt_out_custom_url_valid_keeps_custom_url
     assert mock_build.call_args.args[1] == custom
 
 
+def test_AmiVoiceClient_stream_logging_opt_out_override_logged_custom_url_invalid_raise_ConfigurationError() -> None:
+    """呼び出し時にログ保存ありのカスタムWRP URLとlogging_opt_outを併用するとエラーになることを確認する。"""
+    # Given: ログ保存なしを指定したWebSocketクライアント
+    client = AmiVoiceClient(api_key="key", logging_opt_out=True)
+
+    # When / Then: 末尾のスラッシュがないnolog URLを指定するとConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="/v1/nolog/"):
+        client.stream(api_url="wss://acp-api.amivoice.com/v1/nolog")
+
+
 @pytest.mark.parametrize(
     ("constructor_value", "override_value", "expected_url"),
     [
-        (False, True, _DEFAULT_NOLOG_WRP_URL),
-        (True, False, _DEFAULT_WRP_URL),
+        (False, True, "wss://acp-api.amivoice.com/v1/nolog/"),
+        (True, False, "wss://acp-api.amivoice.com/v1/"),
     ],
 )
 def test_AmiVoiceClient_stream_logging_opt_out_override_valid_uses_expected_url(

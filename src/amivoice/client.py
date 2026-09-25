@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from contextlib import suppress
 from dataclasses import replace
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -39,38 +40,56 @@ def _construct_hrp_transport() -> HrpTransport:
     return _Hrp.construct()
 
 
-def _resolve_endpoint_url(  # noqa: PLR0913
+def _validate_custom_url_logging_opt_out(url: str, nolog_url: str) -> None:
+    """``logging_opt_out`` が有効なときにカスタム URL がログ保存なしのパスか検証する
+
+    カスタム URL はホスト名を保ったまま使うため、PrivateLink などのホスト名は許容し、
+    パスだけをログ保存なしのエンドポイントと比較する
+
+    Args:
+        url (str): 検証するカスタム URL
+        nolog_url (str): 比較対象のログ保存なしの既定エンドポイント URL
+
+    Raises:
+        ConfigurationError: カスタム URL のパスがログ保存なしのエンドポイントと一致しない場合
+    """
+    nolog_path = urlsplit(nolog_url).path
+    if not isinstance(url, str) or urlsplit(url).path != nolog_path:
+        raise ConfigurationError(f"Custom URL must use the '{nolog_path}' path when logging_opt_out is True")
+
+
+def _resolve_endpoint_url(
     override: str | _UnsetType,
     configured_url: str,
     configured_url_is_default: bool,
-    default_url: str,
     nolog_url: str,
     logging_opt_out: bool,
 ) -> str:
     """URL override とログ保存なし設定から最終エンドポイントを解決する。
 
-    カスタム URL は ``logging_opt_out`` が有効でも変更しない。コンストラクタと
-    呼び出し時のどちらでも、既定 URL だけを nolog エンドポイントへ切り替える。
+    既定 URL だけを nolog エンドポイントへ切り替える。カスタム URL は書き換えず、
+    ``logging_opt_out`` が有効な場合はログ保存なしのパスであることを検証する。
 
     Args:
         override (str | _UnsetType): 呼び出し時の URL override。``UNSET`` は未指定を表す
         configured_url (str): コンストラクタで設定された URL
         configured_url_is_default (bool): コンストラクタで URL を省略したかどうか。
             明示的に既定 URL と同じ値を指定した場合との区別に使用する
-        default_url (str): 通常の既定エンドポイント URL
-        nolog_url (str): ログ保存なしのエンドポイント URL
-        logging_opt_out (bool): 既定エンドポイントをログ保存なしの URL へ切り替えるかどうか
+        nolog_url (str): ログ保存なしの既定エンドポイント URL
+        logging_opt_out (bool): ログ保存なしのエンドポイントを使用するかどうか
 
     Returns:
         str: 解決されたエンドポイント URL
+
+    Raises:
+        ConfigurationError: ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合
     """
-    if not isinstance(override, _UnsetType):
-        return override
-    if logging_opt_out and configured_url_is_default:
-        return nolog_url
-    if configured_url == default_url:
-        return default_url
-    return configured_url
+    if isinstance(override, _UnsetType) and configured_url_is_default:
+        return nolog_url if logging_opt_out else configured_url
+    url = configured_url if isinstance(override, _UnsetType) else override
+    if logging_opt_out:
+        _validate_custom_url_logging_opt_out(url, nolog_url)
+    return url
 
 
 def _resolve_profile_words(profile_words: str | Sequence[ProfileWord] | None) -> str | None:
@@ -212,7 +231,8 @@ class AmiVoiceClient:
         no_input_timeout: 無入力タイムアウト（ミリ秒）（WRP 専用）。
         complete_timeout: ルールグラマの確定待ちタイムアウト（ミリ秒） 0 以上
         wildcard_model_penalty: ルールグラマのワイルドカードモデルペナルティ 負値は無効
-        logging_opt_out: ログを保存しないエンドポイントを使用するか。カスタムURLは変更しない。
+        logging_opt_out: ログを保存しないエンドポイントを使用するか。
+            カスタムURLは書き換えず、ログ保存なしのパスでなければエラーにする。
         http_api_url: HRP（HTTP）API エンドポイント URL の既定値。
         ws_api_url: WRP（WebSocket）API エンドポイント URL の既定値。
         hrp_transport: テスト用 HRP トランスポート注入口。
@@ -222,6 +242,7 @@ class AmiVoiceClient:
         AuthenticationError: ``api_key`` が指定されず環境変数も設定されていない場合。
         ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
             ``extension`` と ``billing_key`` を同時指定した場合。
+            ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
 
     Example::
 
@@ -312,7 +333,8 @@ class AmiVoiceClient:
             mode (str | None): 認識モード
             profile_id (str | None): プロファイル ID
             profile_words (str | Sequence[ProfileWord] | None): セッション単語登録リスト
-            logging_opt_out (bool): ログを保存しないエンドポイントを使用するか。カスタム URL は変更しない
+            logging_opt_out (bool): ログを保存しないエンドポイントを使用するか。カスタム URL は書き換えず、
+                ログ保存なしのパスでなければエラーにする
             segmenter_type (str | None): セグメンタータイプ
             segmenter (SegmenterProperties | None): 型付きセグメンター設定
             segmenter_properties (str | None): セグメンター設定
@@ -344,7 +366,8 @@ class AmiVoiceClient:
         Raises:
             AuthenticationError: ``api_key`` が指定されず環境変数も設定されていない場合
             ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
-                ``extension`` と ``billing_key`` を同時指定した場合
+                ``extension`` と ``billing_key`` を同時指定した場合、
+                または ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合
         """
         resolved_key = api_key if api_key is not None else os.environ.get("AMIVOICE_API_KEY")
         if resolved_key is None:
@@ -391,6 +414,11 @@ class AmiVoiceClient:
         self._http_api_url_is_default = isinstance(http_api_url, _UnsetType)
         self._ws_api_url_is_default = isinstance(ws_api_url, _UnsetType)
         self._logging_opt_out = logging_opt_out
+        if logging_opt_out:
+            if not self._http_api_url_is_default:
+                _validate_custom_url_logging_opt_out(self._http_api_url, _DEFAULT_NOLOG_HRP_URL)
+            if not self._ws_api_url_is_default:
+                _validate_custom_url_logging_opt_out(self._ws_api_url, _DEFAULT_NOLOG_WRP_URL)
         # テスト注入口
         self._hrp_transport = hrp_transport
         self._wrp_transport = wrp_transport
@@ -479,7 +507,8 @@ class AmiVoiceClient:
             confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）の呼び出し時 override。
             raise_on_error: エラー結果の場合に ``RecognitionError`` を送出するか否か。
             api_url: HRP API エンドポイント URL の呼び出し時 override。指定時はカスタムURLとして扱う。
-            logging_opt_out: 既定URLをログ保存なしエンドポイントへ切り替える呼び出し時 override。カスタムURLは変更しない。
+            logging_opt_out: 既定URLをログ保存なしエンドポイントへ切り替える呼び出し時 override。
+                カスタムURLは書き換えず、ログ保存なしのパスでなければエラーにする。
 
         Returns:
             認識結果。
@@ -487,6 +516,7 @@ class AmiVoiceClient:
         Raises:
             ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
                 ``extension`` と ``billing_key`` を同時指定した場合。
+                ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
             ConnectionFailedError: AmiVoice API への接続に失敗した場合。
             RecognitionError: 音声認識処理中にエラーが発生した場合。
         """
@@ -530,7 +560,6 @@ class AmiVoiceClient:
             api_url,
             self._http_api_url,
             self._http_api_url_is_default,
-            _DEFAULT_HRP_URL,
             _DEFAULT_NOLOG_HRP_URL,
             resolved_logging_opt_out,
         )
@@ -743,7 +772,8 @@ class AmiVoiceClient:
             confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）の呼び出し時 override。
             no_input_timeout: 無入力タイムアウトの呼び出し時 override。
             api_url: WRP API エンドポイント URL の呼び出し時 override。指定時はカスタムURLとして扱う。
-            logging_opt_out: 既定URLをログ保存なしエンドポイントへ切り替える呼び出し時 override。カスタムURLは変更しない。
+            logging_opt_out: 既定URLをログ保存なしエンドポイントへ切り替える呼び出し時 override。
+                カスタムURLは書き換えず、ログ保存なしのパスでなければエラーにする。
 
         Returns:
             ``StreamConnectionManager``。``__enter__`` で ``StreamSession`` を返す。
@@ -751,6 +781,7 @@ class AmiVoiceClient:
         Raises:
             ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
                 ``extension`` と ``billing_key`` を同時指定した場合。
+                ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
 
         Example::
 
@@ -802,7 +833,6 @@ class AmiVoiceClient:
             api_url,
             self._ws_api_url,
             self._ws_api_url_is_default,
-            _DEFAULT_WRP_URL,
             _DEFAULT_NOLOG_WRP_URL,
             resolved_logging_opt_out,
         )
@@ -867,7 +897,7 @@ def transcribe(  # noqa: PLR0913
     Args:
         audio: 音声ソース（bytes・バイナリストリーム・ファイルパス）。
         api_key: 認証情報。省略時は環境変数 ``AMIVOICE_API_KEY`` を使用する。
-        api_url: AmiVoice API の接続先 URL。カスタムURLは ``logging_opt_out`` で変更しない。
+        api_url: AmiVoice API の接続先 URL。カスタムURLは ``logging_opt_out`` で書き換えない。
         logging_opt_out: ログを保存しない既定エンドポイントを使用するか。
         grammar_file_names: 接続エンジン名。
         codec: 音声コーデック（例: ``"16K"``, ``"8K"``）。
@@ -910,6 +940,7 @@ def transcribe(  # noqa: PLR0913
         AuthenticationError: ``api_key`` が指定されず環境変数も設定されていない場合。
         ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
             ``extension`` と ``billing_key`` を同時指定した場合。
+            ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
         ConnectionFailedError: AmiVoice API への接続に失敗した場合。
         RecognitionError: 音声認識処理中にエラーが発生した場合。
     """

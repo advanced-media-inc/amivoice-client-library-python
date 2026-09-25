@@ -58,7 +58,26 @@ with client.stream() as session:
     session.end()
 ```
 
-`transcribe()`や`stream()`の呼び出し時にも`logging_opt_out`を指定できます。`http_api_url`、`ws_api_url`、`api_url`でカスタム URL を指定した場合、その URL は`logging_opt_out`で変更されません。カスタム URL でログ保存なしのエンドポイントを使う場合は、URL を直接指定してください。
+`transcribe()`や`stream()`の呼び出し時にも`logging_opt_out`を指定できます。
+
+`http_api_url`、`ws_api_url`、`api_url`で URL を明示した場合、その URL は`logging_opt_out`で書き換えられません。`logging_opt_out`が有効なときに明示した URL のパスがログ保存なしのエンドポイントと一致しない場合は、リクエストを送信する前に`ConfigurationError`を送出します。既定と同じ URL を明示した場合も同じです。
+
+| インタフェース | ログ保存なしのパス | 例 |
+| --- | --- | --- |
+| 同期 HTTP | `/v1/nolog/recognize` | `https://acp-api.amivoice.com/v1/nolog/recognize` |
+| WebSocket | `/v1/nolog/` | `wss://acp-api.amivoice.com/v1/nolog/` |
+
+WebSocket の URL は末尾の`/`まで必要です。`wss://acp-api.amivoice.com/v1/nolog`のように`/`がない URL は、AmiVoice API ではログ保存ありになります。詳しくは[ログ保存](https://docs.amivoice.com/amivoice-api/manual/log-retention)を参照してください。
+
+AWS PrivateLink で接続する場合は、ホスト名だけを`acp-api-private.amivoice.com`へ変えた URL を指定します。
+
+```python
+client = AmiVoiceClient(
+    logging_opt_out=True,
+    http_api_url="https://acp-api-private.amivoice.com/v1/nolog/recognize",
+    ws_api_url="wss://acp-api-private.amivoice.com/v1/nolog/",
+)
+```
 
 ### 型付き認識結果
 
