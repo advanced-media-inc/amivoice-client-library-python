@@ -940,6 +940,24 @@ def test_AmiVoiceClient_stream_returns_stream_connection_manager() -> None:
     assert isinstance(manager, StreamConnectionManager)
 
 
+@pytest.mark.parametrize(
+    "audio_filter_kwargs",
+    [{"selected_channel": 1}, {"audio_filter_properties": "selectedChannel=1"}],
+)
+def test_AmiVoiceClient_stream_audio_filter_configured_invalid_raise_ConfigurationError(
+    audio_filter_kwargs: dict[str, object],
+) -> None:
+    """コンストラクタの音声フィルタ設定がstream()で黙って捨てられないことを確認する"""
+    # Given: チャネル選択を設定したWRPクライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp, **audio_filter_kwargs)  # type: ignore[arg-type]
+
+    # When / Then: stream()はWebSocket非対応の設定としてConfigurationErrorを送出する
+    with pytest.raises(ConfigurationError, match="not supported by stream"):
+        client.stream()
+    mock_wrp.connect.assert_not_called()
+
+
 def test_AmiVoiceClient_stream_context_manager_returns_stream_session() -> None:
     """With client.stream() as session: で StreamSession が返ることを確認する。"""
     # Given: モック WRP トランスポートを注入した AmiVoiceClient

@@ -944,6 +944,8 @@ class AmiVoiceClient:
                 ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
                 ``logging_opt_out`` が bool でない場合。
                 ``api_url`` が文字列でない場合。
+                コンストラクタで ``selected_channel`` または ``audio_filter_properties`` を指定した場合。
+                WebSocket インタフェースはチャネル選択に対応せず、1 チャネル目だけを認識するため。
 
         Example::
 
@@ -960,6 +962,11 @@ class AmiVoiceClient:
                         )
                 session.end()
         """
+        if self._params.audio_filter_properties is not None:
+            raise ConfigurationError(
+                "selected_channel and audio_filter_properties are not supported by stream(); "
+                "the WebSocket interface recognizes only the first channel"
+            )
         resolved_segmenter_properties = _resolve_segmenter_override(segmenter, segmenter_properties)
         resolved_profile_words = _resolve_profile_words_override(profile_words)
         params = merge_params(

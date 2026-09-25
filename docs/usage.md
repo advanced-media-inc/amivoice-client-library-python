@@ -90,7 +90,7 @@ client = AmiVoiceClient(selected_channel=(0, 1))
 result = client.transcribe("stereo.wav")
 ```
 
-API の`audioFilterProperties`を直接指定する場合は、`audio_filter_properties`を使用します。`selected_channel`と同時には指定できません。チャネル選択は同期 HTTP の`transcribe()`専用で、WebSocket の`stream()`では利用できません。
+API の`audioFilterProperties`を直接指定する場合は、`audio_filter_properties`を使用します。`selected_channel`と同時には指定できません。チャネル選択は同期 HTTP の`transcribe()`専用で、WebSocket の`stream()`では利用できません。コンストラクタで`selected_channel`または`audio_filter_properties`を指定したクライアントで`stream()`を呼び出すと、設定を無視せずに`ConfigurationError`を送出します。WebSocket で認識する場合は、音声フィルタを指定しないクライアントを使用してください。WebSocket では 1 チャネル目だけが認識対象になります。
 
 ### 型付き認識結果
 
