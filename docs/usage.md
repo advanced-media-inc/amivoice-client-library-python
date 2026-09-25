@@ -75,8 +75,8 @@ from amivoice import AmiVoiceClient, ProfileWord
 client = AmiVoiceClient(
     grammar_file_names="-a-general",
     profile_words=(
-        ProfileWord(written="AmiVoice", spoken="あみぼいす", classname="固有名詞"),
-        ProfileWord(written="WWW", spoken="とりぷるだぶる"),
+        ProfileWord("AmiVoice", "あみぼいす", "固有名詞"),
+        ProfileWord("WWW", "とりぷるだぶる"),
     ),
 )
 result = client.transcribe("audio.wav")
