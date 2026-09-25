@@ -148,6 +148,31 @@ def test_AmiVoiceClient_transcribe_legacy_hrp_transport_without_rule_grammar_set
     assert result.data == {"text": "hello"}
 
 
+def test_AmiVoiceClient_transcribe_legacy_hrp_transport_without_audio_filter_setter_succeeds() -> None:
+    """音声フィルタsetterを持たない従来の hrp_transport でも通常の認識が成功することを確認する。"""
+    # Given: setAudioFilterPropertiesを持たない従来のHRPトランスポート
+    mock_hrp = _make_mock_hrp(legacy=True)
+    assert not hasattr(mock_hrp, "setAudioFilterProperties")
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
+
+    # When: 音声フィルタを指定せずに認識を実行する
+    result = client.transcribe(b"audio-data")
+
+    # Then: 新setterの属性解決を行わず認識結果を返す
+    assert result.data == {"text": "hello"}
+
+
+def test_AmiVoiceClient_transcribe_legacy_hrp_transport_with_selected_channel_invalid_raise_AttributeError() -> None:
+    """音声フィルタsetterを持たない hrp_transport でチャネル指定を黙って捨てないことを確認する。"""
+    # Given: setAudioFilterPropertiesを持たない従来のHRPトランスポートとチャネル指定
+    mock_hrp = _make_mock_hrp(legacy=True)
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, selected_channel=1)
+
+    # When / Then: 未対応のsetterとしてAttributeErrorが送出される
+    with pytest.raises(AttributeError, match="setAudioFilterProperties"):
+        client.transcribe(b"audio-data")
+
+
 def test_AmiVoiceClient_transcribe_success_returns_result() -> None:
     """Transcribe が正常終了したとき RecognitionResult が返ることを確認する。"""
     # Given
