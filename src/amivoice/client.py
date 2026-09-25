@@ -44,11 +44,15 @@ def _resolve_profile_words(profile_words: str | Sequence[ProfileWord] | None) ->
     Args:
         profile_words: 既存の wire format 文字列またはシリアライズする ProfileWord シーケンス
 
+    空の ProfileWord シーケンスは ``setProfileWords("")`` で空のパラメータを送らないよう None として扱う
+
     Returns:
-        トランスポートへ渡す profileWords 文字列
+        トランスポートへ渡す profileWords 文字列、空のシーケンスの場合は None
     """
     if profile_words is None or isinstance(profile_words, str):
         return profile_words
+    if len(profile_words) == 0:
+        return None
     return build_profile_words(profile_words)
 
 
