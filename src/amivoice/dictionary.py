@@ -53,7 +53,12 @@ class ProfileWord:
     biasing: float | None = None
 
     def __post_init__(self) -> None:
-        """単語強調度が API の許容範囲に収まることを検証する"""
+        """ハイブリッドと E2E のフィールドが混在せず、単語強調度が API の許容範囲に収まることを検証する
+
+        Raises:
+            ConfigurationError: ハイブリッドと E2E のフィールドが混在している場合、または単語強調度が不正な場合
+        """
+        self._validate_engine_fields_not_mixed()
         if self.biasing is None:
             return
         if isinstance(self.biasing, bool) or not isinstance(self.biasing, (int, float)):
@@ -62,6 +67,19 @@ class ProfileWord:
         if not math.isfinite(normalized_biasing) or not 0.0 <= normalized_biasing <= 1.0:
             raise ConfigurationError("biasing must be a number between 0.0 and 1.0")
         object.__setattr__(self, "biasing", normalized_biasing)
+
+    def _validate_engine_fields_not_mixed(self) -> None:
+        """ハイブリッド用フィールドと E2E 用フィールドが同時に指定されていないことを検証する
+
+        辞書 API は混在した単語を HTTP 200 で受け付け、一方のフィールドを通知なしで破棄するため生成時に拒否する
+
+        Raises:
+            ConfigurationError: ハイブリッドと E2E のフィールドが混在している場合
+        """
+        has_hybrid_field = self.spoken is not None or self.classname is not None
+        has_e2e_field = self.alternative_written is not None or self.biasing is not None
+        if has_hybrid_field and has_e2e_field:
+            raise ConfigurationError("Hybrid and E2E profile word fields cannot be mixed")
 
     def to_dict(self) -> dict[str, str | float]:
         """API リクエスト用の JSON オブジェクトへ変換する
@@ -89,7 +107,7 @@ def build_profile_words(words: Sequence[ProfileWord]) -> str:
         ``profileWords`` リクエストパラメータへ渡す文字列
 
     Raises:
-        ConfigurationError: 単語のフィールドが混在している場合、または値に空白や ``|`` が含まれる場合
+        ConfigurationError: spoken なしで classname が指定されている場合、または値に空白や ``|`` が含まれる場合
     """
     serialized_words: list[str] = []
     for word in words:
@@ -97,8 +115,6 @@ def build_profile_words(words: Sequence[ProfileWord]) -> str:
         if word.spoken is not None or word.classname is not None:
             if word.spoken is None:
                 raise ConfigurationError("spoken must be specified when classname is specified")
-            if word.alternative_written is not None or word.biasing is not None:
-                raise ConfigurationError("Hybrid and E2E profile word fields cannot be mixed")
             fields = [word.written, word.spoken]
             if word.classname is not None:
                 fields.append(word.classname)

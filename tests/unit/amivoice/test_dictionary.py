@@ -127,6 +127,30 @@ def test_get_words_unicode_escaped_valid_return_decoded_profile_words() -> None:
     assert transport.requests[0][3] is None
 
 
+def test_get_words_e2e_actual_response_valid_return_profile_words_without_error() -> None:
+    """実APIのE2E応答形式をDictionaryApiErrorなしでProfileWordへ変換することを確認する"""
+    # Given: E2Eエンジンが代替表記をspoken、単語強調度をclassnameとして返す応答
+    transport = FakeDictionaryTransport(
+        responses=[
+            (
+                200,
+                '{"profilewords":[{"written":"AOI","classname":"0.6"},'
+                '{"written":"AmiVoice","spoken":"アミボイス","classname":"0.7"}]}'.encode("utf-8"),
+            )
+        ]
+    )
+    client = UserDictionaryClient(api_key="test-key", transport=transport)
+
+    # When: 登録済み単語を取得する
+    words = client.get_words("-a2-ja-general", "profile")
+
+    # Then: 混在チェックに接触せず応答どおりのProfileWordが返る
+    assert words == (
+        ProfileWord(written="AOI", classname="0.6"),
+        ProfileWord(written="AmiVoice", spoken="アミボイス", classname="0.7"),
+    )
+
+
 def test_clear_words_valid_send_empty_profile_words() -> None:
     """単語を全削除する場合に空配列を登録することを確認する"""
     # Given: 空の登録結果を返すフェイクトランスポート
@@ -301,17 +325,29 @@ def test_build_profile_words_multiple_valid_joins_with_pipe() -> None:
 
 
 @pytest.mark.parametrize(
-    "word",
+    "fields",
     [
-        ProfileWord(written="AmiVoice", spoken="あみぼいす", alternative_written="あみボイス"),
-        ProfileWord(written="AmiVoice", spoken="あみぼいす", biasing=0.75),
+        {"spoken": "あみぼいす", "alternative_written": "あみボイス"},
+        {"spoken": "あみぼいす", "biasing": 0.75},
+        {"classname": "固有名詞", "alternative_written": "あみボイス"},
+        {"classname": "固有名詞", "biasing": 0.75},
     ],
 )
-def test_build_profile_words_mixed_fields_invalid_raise_ConfigurationError(word: ProfileWord) -> None:
+def test_profile_word_mixed_fields_invalid_raise_ConfigurationError(fields: dict[str, str | float]) -> None:
     """ハイブリッド形式とE2E形式のフィールド混在でConfigurationErrorが送出されることを確認する"""
-    # Given: ハイブリッドとE2Eのフィールドを混在させたProfileWord
-    # When / Then: profileWords文字列の構築でConfigurationErrorが送出される
+    # Given: ハイブリッドとE2Eのフィールドを混在させた値
+    # When / Then: ProfileWordの生成でConfigurationErrorが送出される
     with pytest.raises(ConfigurationError, match="mixed"):
+        ProfileWord(written="AmiVoice", **fields)  # type: ignore[arg-type]
+
+
+def test_build_profile_words_classname_without_spoken_invalid_raise_ConfigurationError() -> None:
+    """spokenなしでclassnameを指定した場合にConfigurationErrorが送出されることを確認する"""
+    # Given: 辞書APIのE2E応答と同じくspokenなしでclassnameを持つProfileWord
+    word = ProfileWord(written="AOI", classname="0.6")
+
+    # When / Then: profileWords文字列の構築でConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match="spoken must be specified"):
         build_profile_words((word,))
 
 
@@ -320,11 +356,12 @@ def test_build_profile_words_forbidden_character_invalid_raise_ConfigurationErro
     """単語フィールドに空白またはパイプが含まれる場合にConfigurationErrorが送出されることを確認する"""
     # Given: ワイヤー形式の区切り文字を含むフィールド値
     word_value = "bad value" if field_name.endswith("written") else "bad|value"
+    is_e2e = field_name == "alternative_written"
     word = ProfileWord(
         written=word_value if field_name == "written" else "valid",
-        spoken=word_value if field_name == "spoken" else "valid",
+        spoken=None if is_e2e else word_value if field_name == "spoken" else "valid",
         classname=word_value if field_name == "classname" else None,
-        alternative_written=word_value if field_name == "alternative_written" else None,
+        alternative_written=word_value if is_e2e else None,
     )
 
     # When / Then: profileWords文字列の構築でConfigurationErrorが送出される
