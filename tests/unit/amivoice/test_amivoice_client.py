@@ -402,6 +402,38 @@ def test_AmiVoiceClient_stream_logging_opt_out_override_valid_uses_expected_url(
     assert mock_build.call_args.args[1] == expected_url
 
 
+@pytest.mark.parametrize("value", [None, "false", 1])
+def test_AmiVoiceClient_logging_opt_out_not_bool_invalid_raise_ConfigurationError(value: object) -> None:
+    """コンストラクタのlogging_opt_outがboolでない場合にConfigurationErrorになることを確認する。"""
+    # When / Then: bool以外を指定するとConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="logging_opt_out"):
+        AmiVoiceClient(api_key="key", logging_opt_out=value)  # pyright: ignore[reportArgumentType]
+
+
+@pytest.mark.parametrize("value", [None, "false", 0])
+def test_AmiVoiceClient_transcribe_logging_opt_out_override_not_bool_invalid_raise_ConfigurationError(value: object) -> None:
+    """transcribeのlogging_opt_out overrideがboolでない場合に送信前にエラーになることを確認する。"""
+    # Given: ログ保存なしを指定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, logging_opt_out=True)
+
+    # When / Then: bool以外のoverrideはFalseとして扱わずConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="logging_opt_out"):
+        client.transcribe(b"audio-data", logging_opt_out=value)  # pyright: ignore[reportArgumentType]
+    mock_hrp.setServerURL.assert_not_called()
+
+
+@pytest.mark.parametrize("value", [None, "false", 0])
+def test_AmiVoiceClient_stream_logging_opt_out_override_not_bool_invalid_raise_ConfigurationError(value: object) -> None:
+    """streamのlogging_opt_out overrideがboolでない場合にConfigurationErrorになることを確認する。"""
+    # Given: ログ保存なしを指定したWebSocketクライアント
+    client = AmiVoiceClient(api_key="key", logging_opt_out=True)
+
+    # When / Then: bool以外のoverrideはFalseとして扱わずConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="logging_opt_out"):
+        client.stream(logging_opt_out=value)  # pyright: ignore[reportArgumentType]
+
+
 def test_AmiVoiceClient_transcribe_recognition_timeout_passed_to_setter() -> None:
     """recognition_timeout が setRecognitionTimeout に文字列で渡されることを確認する。"""
     # Given

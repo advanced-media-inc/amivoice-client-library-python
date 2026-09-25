@@ -58,6 +58,43 @@ def _validate_custom_url_logging_opt_out(url: str, nolog_url: str) -> None:
         raise ConfigurationError(f"Custom URL must use the '{nolog_path}' path when logging_opt_out is True")
 
 
+def _validate_logging_opt_out(logging_opt_out: object) -> bool:
+    """``logging_opt_out`` が bool であることを検証する
+
+    ``None`` や文字列を False または True として解釈すると、意図せずログが保存されるため拒否する
+
+    Args:
+        logging_opt_out (object): 検証する ``logging_opt_out`` の値
+
+    Returns:
+        bool: 検証済みの ``logging_opt_out``
+
+    Raises:
+        ConfigurationError: ``logging_opt_out`` が bool でない場合
+    """
+    if not isinstance(logging_opt_out, bool):
+        raise ConfigurationError("Invalid logging_opt_out: must be a boolean")
+    return logging_opt_out
+
+
+def _resolve_logging_opt_out(override: bool | _UnsetType, configured: bool) -> bool:
+    """呼び出し時の ``logging_opt_out`` override とコンストラクタ設定から最終値を解決する
+
+    Args:
+        override (bool | _UnsetType): 呼び出し時の override。``UNSET`` は未指定を表す
+        configured (bool): コンストラクタで設定された値
+
+    Returns:
+        bool: 解決した ``logging_opt_out``
+
+    Raises:
+        ConfigurationError: override が bool でも ``UNSET`` でもない場合
+    """
+    if isinstance(override, _UnsetType):
+        return configured
+    return _validate_logging_opt_out(override)
+
+
 def _resolve_endpoint_url(
     override: str | _UnsetType,
     configured_url: str,
@@ -243,6 +280,7 @@ class AmiVoiceClient:
         ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
             ``extension`` と ``billing_key`` を同時指定した場合。
             ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
+            ``logging_opt_out`` が bool でない場合。
 
     Example::
 
@@ -366,7 +404,7 @@ class AmiVoiceClient:
         Raises:
             AuthenticationError: ``api_key`` が指定されず環境変数も設定されていない場合
             ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
-                ``extension`` と ``billing_key`` を同時指定した場合、
+                ``extension`` と ``billing_key`` を同時指定した場合、``logging_opt_out`` が bool でない場合、
                 または ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合
         """
         resolved_key = api_key if api_key is not None else os.environ.get("AMIVOICE_API_KEY")
@@ -413,8 +451,8 @@ class AmiVoiceClient:
         self._ws_api_url = _DEFAULT_WRP_URL if isinstance(ws_api_url, _UnsetType) else ws_api_url
         self._http_api_url_is_default = isinstance(http_api_url, _UnsetType)
         self._ws_api_url_is_default = isinstance(ws_api_url, _UnsetType)
-        self._logging_opt_out = logging_opt_out
-        if logging_opt_out:
+        self._logging_opt_out = _validate_logging_opt_out(logging_opt_out)
+        if self._logging_opt_out:
             if not self._http_api_url_is_default:
                 _validate_custom_url_logging_opt_out(self._http_api_url, _DEFAULT_NOLOG_HRP_URL)
             if not self._ws_api_url_is_default:
@@ -517,6 +555,7 @@ class AmiVoiceClient:
             ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
                 ``extension`` と ``billing_key`` を同時指定した場合。
                 ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
+                ``logging_opt_out`` が bool でない場合。
             ConnectionFailedError: AmiVoice API への接続に失敗した場合。
             RecognitionError: 音声認識処理中にエラーが発生した場合。
         """
@@ -555,7 +594,7 @@ class AmiVoiceClient:
             target_response_time=target_response_time,
             target_decoding_rate=target_decoding_rate,
         )
-        resolved_logging_opt_out = self._logging_opt_out if isinstance(logging_opt_out, _UnsetType) else logging_opt_out
+        resolved_logging_opt_out = _resolve_logging_opt_out(logging_opt_out, self._logging_opt_out)
         resolved_url = _resolve_endpoint_url(
             api_url,
             self._http_api_url,
@@ -782,6 +821,7 @@ class AmiVoiceClient:
             ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
                 ``extension`` と ``billing_key`` を同時指定した場合。
                 ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
+                ``logging_opt_out`` が bool でない場合。
 
         Example::
 
@@ -828,7 +868,7 @@ class AmiVoiceClient:
             wildcard_model_penalty=wildcard_model_penalty,
             no_input_timeout=no_input_timeout,
         )
-        resolved_logging_opt_out = self._logging_opt_out if isinstance(logging_opt_out, _UnsetType) else logging_opt_out
+        resolved_logging_opt_out = _resolve_logging_opt_out(logging_opt_out, self._logging_opt_out)
         resolved_url = _resolve_endpoint_url(
             api_url,
             self._ws_api_url,
@@ -941,6 +981,7 @@ def transcribe(  # noqa: PLR0913
         ConfigurationError: ``segmenter`` と ``segmenter_properties``、または
             ``extension`` と ``billing_key`` を同時指定した場合。
             ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
+            ``logging_opt_out`` が bool でない場合。
         ConnectionFailedError: AmiVoice API への接続に失敗した場合。
         RecognitionError: 音声認識処理中にエラーが発生した場合。
     """

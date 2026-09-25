@@ -124,6 +124,20 @@ def test_transcribe_logging_opt_out_nolog_custom_url_valid_keeps_custom_url() ->
     mock_hrp.setServerURL.assert_called_once_with(custom_url)
 
 
+def test_transcribe_logging_opt_out_none_invalid_raise_ConfigurationError() -> None:
+    """logging_opt_out=NoneをFalseとして扱わずConfigurationErrorにすることを確認する。"""
+    # Given: モックHRP
+    mock_hrp = _make_mock_hrp()
+
+    # When / Then: logging_opt_out=Noneでtranscribeを呼び出すとConfigurationErrorになる
+    with (
+        patch("amivoice.client._Hrp.construct", return_value=mock_hrp),
+        pytest.raises(ConfigurationError, match="logging_opt_out"),
+    ):
+        transcribe(b"audio-data", api_key="test-key", logging_opt_out=None)  # pyright: ignore[reportArgumentType]
+    mock_hrp.setServerURL.assert_not_called()
+
+
 def test_transcribe_segmenter_valid_passes_generated_parameter() -> None:
     """モジュールレベル transcribe の型付き設定が HRP に渡されることを確認する。"""
     # Given: 型付きセグメンター設定とモック HRP
