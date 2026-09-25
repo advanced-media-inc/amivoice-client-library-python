@@ -3,6 +3,7 @@
 """AmiVoiceClient のユニットテスト。"""
 
 import threading
+from collections.abc import Sequence
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1449,6 +1450,50 @@ def test_AmiVoiceClient_transcribe_profile_words_override_valid_passes_serialize
 
     # Then: overrideのワイヤー形式がHRP setterへ渡る
     mock_hrp.setProfileWords.assert_called_once_with("WWW とりぷるだぶる")
+
+
+@pytest.mark.parametrize("empty_words", [(), []])
+def test_AmiVoiceClient_transcribe_profile_words_empty_sequence_valid_skip_setter(empty_words: Sequence[ProfileWord]) -> None:
+    """空のProfileWordシーケンスでHRPのprofileWordsを設定しないことを確認する"""
+    # Given: 空のProfileWordシーケンスを設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, profile_words=empty_words)
+
+    # When: HTTP認識を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: 空文字列のprofileWordsは送られない
+    mock_hrp.setProfileWords.assert_not_called()
+
+
+def test_AmiVoiceClient_transcribe_profile_words_empty_override_valid_clear_default() -> None:
+    """空のProfileWordシーケンスoverrideが既定のprofile_wordsを送らないことを確認する"""
+    # Given: 既定のprofile_wordsを持つHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, profile_words="default word")
+
+    # When: 空のProfileWordシーケンスでHTTP認識時の設定を上書きする
+    client.transcribe(b"audio-data", profile_words=())
+
+    # Then: 既定値も空文字列もHRP setterへ渡らない
+    mock_hrp.setProfileWords.assert_not_called()
+
+
+def test_AmiVoiceClient_stream_profile_words_empty_sequence_valid_skip_setter() -> None:
+    """streamの空のProfileWordシーケンスでWRPのprofileWordsを設定しないことを確認する"""
+    # Given: クライアントとモックWRP
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key")
+
+    # When: 空のProfileWordシーケンスでストリーミングセッションを開始する
+    with (
+        patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
+        client.stream(profile_words=[]) as session,
+    ):
+        session.end()
+
+    # Then: 空文字列のprofileWordsは送られない
+    mock_wrp.setProfileWords.assert_not_called()
 
 
 def test_AmiVoiceClient_stream_profile_words_sequence_valid_passes_serialized_string() -> None:

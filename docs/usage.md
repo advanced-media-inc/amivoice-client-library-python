@@ -92,14 +92,14 @@ from amivoice import AmiVoiceClient, ProfileWord
 client = AmiVoiceClient(
     grammar_file_names="-a-general",
     profile_words=(
-        ProfileWord(written="AmiVoice", spoken="あみぼいす", classname="固有名詞"),
-        ProfileWord(written="WWW", spoken="とりぷるだぶる"),
+        ProfileWord("AmiVoice", "あみぼいす", "固有名詞"),
+        ProfileWord("WWW", "とりぷるだぶる"),
     ),
 )
 result = client.transcribe("audio.wav")
 ```
 
-`ProfileWord`の値には空白や`|`を含めないでください。複数の単語はライブラリが`|`で連結して API 送信用の形式に変換します。
+`ProfileWord`の値には空白や`|`を含めないでください。表記（`written`）には半角コロン（`:`）も使えません。これらの文字を含む`ProfileWord`を生成または変換すると、`ConfigurationError`が送出されます。複数の単語は、ライブラリが`|`で連結して API 送信用の形式へ変換します。
 
 ### セグメンター設定
 
@@ -255,7 +255,7 @@ user_dictionary.clear_words("-a-general", "user01", sampling_rate="16k")
 classnames = user_dictionary.list_classnames("-a-general")
 ```
 
-End to End エンジンの単語強調では、`alternative_written` と `biasing` を指定します。`biasing` は `0.0` 以上 `1.0` 以下です。
+End to End エンジンの単語強調では、`alternative_written` と `biasing` を指定します。`biasing` は `0.0` 以上 `1.0` 以下です。数値のほか、`"0.5"` のような小数表記の文字列も指定できます。`"1e-5"` のような指数表記の文字列は指定できません。
 
 ```python
 user_dictionary.register_words(

@@ -127,6 +127,30 @@ def test_get_words_unicode_escaped_valid_return_decoded_profile_words() -> None:
     assert transport.requests[0][3] is None
 
 
+def test_get_words_e2e_actual_response_valid_return_profile_words_without_error() -> None:
+    """実APIのE2E応答形式をDictionaryApiErrorなしでProfileWordへ変換することを確認する"""
+    # Given: E2Eエンジンが代替表記をspoken、単語強調度をclassnameとして返す応答
+    transport = FakeDictionaryTransport(
+        responses=[
+            (
+                200,
+                '{"profilewords":[{"written":"AOI","classname":"0.6"},'
+                '{"written":"AmiVoice","spoken":"アミボイス","classname":"0.7"}]}'.encode("utf-8"),
+            )
+        ]
+    )
+    client = UserDictionaryClient(api_key="test-key", transport=transport)
+
+    # When: 登録済み単語を取得する
+    words = client.get_words("-a2-ja-general", "profile")
+
+    # Then: 混在チェックに接触せず応答どおりのProfileWordが返る
+    assert words == (
+        ProfileWord(written="AOI", classname="0.6"),
+        ProfileWord(written="AmiVoice", spoken="アミボイス", classname="0.7"),
+    )
+
+
 def test_clear_words_valid_send_empty_profile_words() -> None:
     """単語を全削除する場合に空配列を登録することを確認する"""
     # Given: 空の登録結果を返すフェイクトランスポート
@@ -251,6 +275,38 @@ def test_build_profile_words_valid_serializes_word_forms(word: ProfileWord, expe
     assert serialized == expected
 
 
+@pytest.mark.parametrize("biasing", ["0.5", "0.00001", "1", "1.0"])
+def test_build_profile_words_biasing_decimal_string_valid_keep_text(biasing: str) -> None:
+    """小数表記の文字列で指定した単語強調度をそのまま出力することを確認する"""
+    # Given: 小数表記の文字列で単語強調度を指定したProfileWord
+    word = ProfileWord(written="AmiVoice", biasing=biasing)
+
+    # When: profileWords文字列を構築する
+    serialized = build_profile_words((word,))
+
+    # Then: 文字列が保持され、そのままprofileWordsへ出力される
+    assert word.biasing == biasing
+    assert serialized == f"AmiVoice  {biasing}"
+
+
+def test_profile_word_biasing_string_valid_send_json_number() -> None:
+    """文字列の単語強調度を辞書APIへは数値で送ることを確認する"""
+    # Given / When: 小数表記の文字列で単語強調度を指定したProfileWordを生成する
+    word = ProfileWord(written="AmiVoice", biasing="0.75")
+
+    # Then: JSON用の辞書では数値になる
+    assert word.to_dict() == {"written": "AmiVoice", "biasing": 0.75}
+
+
+@pytest.mark.parametrize("biasing", ["1e-5", "5E-1", "2", "abc"])
+def test_profile_word_biasing_string_invalid_raise_ConfigurationError(biasing: str) -> None:
+    """指数表記、範囲外、数値でない文字列でConfigurationErrorが送出されることを確認する"""
+    # Given: 公式ドキュメントに記載のない指数表記、範囲外、数値でない単語強調度
+    # When / Then: ProfileWordの生成でConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match="biasing"):
+        ProfileWord(written="AmiVoice", biasing=biasing)
+
+
 def test_build_profile_words_e2e_without_alternative_valid_keeps_empty_field() -> None:
     """E2E形式で代替表記を省略した場合に連続スペースを保持することを確認する"""
     # Given: 代替表記を省略して単語強調度だけ指定したProfileWord
@@ -261,6 +317,28 @@ def test_build_profile_words_e2e_without_alternative_valid_keeps_empty_field() -
 
     # Then: 代替表記の空フィールドが連続スペースとして保持される
     assert serialized == "AmiVoice  0.75"
+
+
+@pytest.mark.parametrize(
+    ("biasing", "expected"),
+    [
+        (0.00001, "AmiVoice  0.00001"),
+        (1.5e-10, "AmiVoice  0.00000000015"),
+        (0.0001, "AmiVoice  0.0001"),
+        (1, "AmiVoice  1.0"),
+        (0.0, "AmiVoice  0.0"),
+    ],
+)
+def test_build_profile_words_biasing_valid_serialize_decimal_notation(biasing: float, expected: str) -> None:
+    """単語強調度を指数表記ではなく小数表記で出力することを確認する"""
+    # Given: str(float)では指数表記になる値を含む単語強調度
+    word = ProfileWord(written="AmiVoice", biasing=biasing)
+
+    # When: profileWords文字列を構築する
+    serialized = build_profile_words((word,))
+
+    # Then: 公式ドキュメントに記載のない指数表記を使わず小数表記で出力される
+    assert serialized == expected
 
 
 def test_build_profile_words_multiple_valid_joins_with_pipe() -> None:
@@ -279,32 +357,81 @@ def test_build_profile_words_multiple_valid_joins_with_pipe() -> None:
 
 
 @pytest.mark.parametrize(
-    "word",
+    "fields",
     [
-        ProfileWord(written="AmiVoice", spoken="あみぼいす", alternative_written="あみボイス"),
-        ProfileWord(written="AmiVoice", spoken="あみぼいす", biasing=0.75),
+        {"spoken": "あみぼいす", "alternative_written": "あみボイス"},
+        {"spoken": "あみぼいす", "biasing": 0.75},
+        {"classname": "固有名詞", "alternative_written": "あみボイス"},
+        {"classname": "固有名詞", "biasing": 0.75},
     ],
 )
-def test_build_profile_words_mixed_fields_invalid_raise_ConfigurationError(word: ProfileWord) -> None:
+def test_profile_word_mixed_fields_invalid_raise_ConfigurationError(fields: dict[str, str | float]) -> None:
     """ハイブリッド形式とE2E形式のフィールド混在でConfigurationErrorが送出されることを確認する"""
-    # Given: ハイブリッドとE2Eのフィールドを混在させたProfileWord
-    # When / Then: profileWords文字列の構築でConfigurationErrorが送出される
+    # Given: ハイブリッドとE2Eのフィールドを混在させた値
+    # When / Then: ProfileWordの生成でConfigurationErrorが送出される
     with pytest.raises(ConfigurationError, match="mixed"):
+        ProfileWord(written="AmiVoice", **fields)  # type: ignore[arg-type]
+
+
+def test_build_profile_words_classname_without_spoken_invalid_raise_ConfigurationError() -> None:
+    """spokenなしでclassnameを指定した場合にConfigurationErrorが送出されることを確認する"""
+    # Given: 辞書APIのE2E応答と同じくspokenなしでclassnameを持つProfileWord
+    word = ProfileWord(written="AOI", classname="0.6")
+
+    # When / Then: profileWords文字列の構築でConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match="spoken must be specified"):
         build_profile_words((word,))
 
 
-@pytest.mark.parametrize("field_name", ["written", "spoken", "classname", "alternative_written"])
+@pytest.mark.parametrize(
+    ("fields", "message"),
+    [
+        ({"written": "bad value", "spoken": "あ"}, "written cannot contain"),
+        ({"written": "bad|value", "spoken": "あ"}, "written cannot contain"),
+        ({"written": "a:b", "spoken": "あ"}, "written cannot contain"),
+        ({"written": "a:b", "alternative_written": "エービー"}, "written cannot contain"),
+        ({"written": "valid", "alternative_written": "bad value"}, "alternative_written cannot contain"),
+        ({"written": "valid", "alternative_written": "bad|value"}, "alternative_written cannot contain"),
+    ],
+)
+def test_profile_word_forbidden_character_invalid_raise_ConfigurationError(fields: dict[str, str], message: str) -> None:
+    """表記と代替表記に登録できない文字が含まれる場合にConfigurationErrorが送出されることを確認する"""
+    # Given: 公式マニュアルで登録できない文字を含む表記または代替表記
+    # When / Then: ProfileWordの生成でConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match=message):
+        ProfileWord(**fields)
+
+
+def test_profile_word_alternative_written_colon_valid_keep_value() -> None:
+    """代替表記の半角コロンは公式マニュアルの禁止文字ではないため受け付けることを確認する"""
+    # Given / When: 代替表記に半角コロンを含むProfileWordを生成する
+    word = ProfileWord(written="AB", alternative_written="a:b")
+
+    # Then: 代替表記がそのまま保持される
+    assert word.alternative_written == "a:b"
+
+
+@pytest.mark.parametrize("field_name", ["spoken", "classname"])
 def test_build_profile_words_forbidden_character_invalid_raise_ConfigurationError(field_name: str) -> None:
-    """単語フィールドに空白またはパイプが含まれる場合にConfigurationErrorが送出されることを確認する"""
+    """読みやクラス名に空白またはパイプが含まれる場合にConfigurationErrorが送出されることを確認する"""
     # Given: ワイヤー形式の区切り文字を含むフィールド値
-    word_value = "bad value" if field_name.endswith("written") else "bad|value"
     word = ProfileWord(
-        written=word_value if field_name == "written" else "valid",
-        spoken=word_value if field_name == "spoken" else "valid",
-        classname=word_value if field_name == "classname" else None,
-        alternative_written=word_value if field_name == "alternative_written" else None,
+        written="valid",
+        spoken="bad value" if field_name == "spoken" else "valid",
+        classname="bad|value" if field_name == "classname" else None,
     )
 
     # When / Then: profileWords文字列の構築でConfigurationErrorが送出される
     with pytest.raises(ConfigurationError, match="spaces or"):
         build_profile_words((word,))
+
+
+@pytest.mark.parametrize("word", ["AmiVoice あみぼいす", ("AmiVoice", "あみぼいす"), {"written": "AmiVoice"}])
+def test_build_profile_words_non_profile_word_invalid_raise_ConfigurationError(word: object) -> None:
+    """ProfileWord以外の要素でAttributeErrorではなくConfigurationErrorが送出されることを確認する"""
+    # Given: 文字列、tuple、dictなどProfileWord以外の要素を含むシーケンス
+    words = [ProfileWord(written="WWW", spoken="とりぷるだぶる"), word]
+
+    # When / Then: 要素の位置とProfileWordまたはワイヤー形式文字列の案内を含むConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match=r"profile_words\[1\] must be a ProfileWord.*wire-format string"):
+        build_profile_words(words)  # type: ignore[list-item]

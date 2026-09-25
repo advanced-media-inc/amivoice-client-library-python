@@ -4,8 +4,10 @@ import http.client
 import json
 import math
 import os
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Literal, NoReturn, Protocol
 from urllib.parse import quote, urlsplit
 
@@ -15,6 +17,10 @@ __all__ = ["DictionaryTransport", "ProfileWord", "UserDictionaryClient", "build_
 
 _DEFAULT_BASE_URL = "https://acp-api.amivoice.com"
 SamplingRate = Literal["8k", "16k"]
+_WRITTEN_FORBIDDEN_CHARACTERS = (" ", "|", ":")
+_ALTERNATIVE_WRITTEN_FORBIDDEN_CHARACTERS = (" ", "|")
+# 公式ドキュメントは指数表記について記載していないため、小数表記（0.5）だけを許可する
+_BIASING_TEXT_PATTERN = re.compile(r"[0-9]+(?:\.[0-9]+)?")
 
 
 class DictionaryTransport(Protocol):
@@ -49,31 +55,74 @@ class ProfileWord:
     spoken: str | None = None
     classname: str | None = None
     alternative_written: str | None = None
-    biasing: float | None = None
+    biasing: float | str | None = None
 
     def __post_init__(self) -> None:
-        """単語強調度が API の許容範囲に収まることを検証する"""
+        """ハイブリッドと E2E のフィールドが混在せず、単語強調度が API の許容範囲に収まることを検証する
+
+        単語強調度の数値は float として、文字列は表記を保ったまま保持する
+
+        Raises:
+            ConfigurationError: フィールドが混在している場合、表記または代替表記に登録できない文字が含まれる場合、
+                または単語強調度が不正な場合
+        """
+        self._validate_engine_fields_not_mixed()
+        self._validate_registrable_characters()
         if self.biasing is None:
             return
-        if isinstance(self.biasing, bool) or not isinstance(self.biasing, (int, float)):
-            raise ConfigurationError("biasing must be a number between 0.0 and 1.0")
-        normalized_biasing = float(self.biasing)
+        if isinstance(self.biasing, str):
+            if _BIASING_TEXT_PATTERN.fullmatch(self.biasing) is None:
+                raise ConfigurationError("biasing string must use decimal notation such as '0.5'")
+            normalized_biasing = float(self.biasing)
+        elif isinstance(self.biasing, bool) or not isinstance(self.biasing, (int, float)):
+            raise ConfigurationError("biasing must be a number or numeric string between 0.0 and 1.0")
+        else:
+            normalized_biasing = float(self.biasing)
         if not math.isfinite(normalized_biasing) or not 0.0 <= normalized_biasing <= 1.0:
-            raise ConfigurationError("biasing must be a number between 0.0 and 1.0")
-        object.__setattr__(self, "biasing", normalized_biasing)
+            raise ConfigurationError("biasing must be a number or numeric string between 0.0 and 1.0")
+        if not isinstance(self.biasing, str):
+            object.__setattr__(self, "biasing", normalized_biasing)
+
+    def _validate_engine_fields_not_mixed(self) -> None:
+        """ハイブリッド用フィールドと E2E 用フィールドが同時に指定されていないことを検証する
+
+        辞書 API は混在した単語を HTTP 200 で受け付け、一方のフィールドを通知なしで破棄するため生成時に拒否する
+
+        Raises:
+            ConfigurationError: ハイブリッドと E2E のフィールドが混在している場合
+        """
+        has_hybrid_field = self.spoken is not None or self.classname is not None
+        has_e2e_field = self.alternative_written is not None or self.biasing is not None
+        if has_hybrid_field and has_e2e_field:
+            raise ConfigurationError("Hybrid and E2E profile word fields cannot be mixed")
+
+    def _validate_registrable_characters(self) -> None:
+        """表記と代替表記に公式マニュアルで登録できないとされる文字が含まれないことを検証する
+
+        表記は半角パイプ・半角スペース・半角コロン、代替表記は半角パイプ・半角スペースを拒否する
+
+        Raises:
+            ConfigurationError: 表記または代替表記に登録できない文字が含まれる場合
+        """
+        if any(character in self.written for character in _WRITTEN_FORBIDDEN_CHARACTERS):
+            raise ConfigurationError("written cannot contain spaces, '|' or ':' characters")
+        if self.alternative_written is not None and any(
+            character in self.alternative_written for character in _ALTERNATIVE_WRITTEN_FORBIDDEN_CHARACTERS
+        ):
+            raise ConfigurationError("alternative_written cannot contain spaces or '|' characters")
 
     def to_dict(self) -> dict[str, str | float]:
         """API リクエスト用の JSON オブジェクトへ変換する
 
         Returns:
-            dict[str, str | float]: None のフィールドを除いた単語データ
+            dict[str, str | float]: None のフィールドを除いた単語データ、単語強調度は JSON の数値として扱う
         """
         values: dict[str, str | float | None] = {
             "written": self.written,
             "spoken": self.spoken,
             "classname": self.classname,
             "alternativewritten": self.alternative_written,
-            "biasing": self.biasing,
+            "biasing": float(self.biasing) if self.biasing is not None else None,
         }
         return {key: value for key, value in values.items() if value is not None}
 
@@ -88,16 +137,20 @@ def build_profile_words(words: Sequence[ProfileWord]) -> str:
         ``profileWords`` リクエストパラメータへ渡す文字列
 
     Raises:
-        ConfigurationError: 単語のフィールドが混在している場合、または値に空白や ``|`` が含まれる場合
+        ConfigurationError: 要素が ProfileWord でない場合、spoken なしで classname が指定されている場合、
+            または値に空白や ``|`` が含まれる場合
     """
     serialized_words: list[str] = []
-    for word in words:
+    for index, word in enumerate(words):
+        if not isinstance(word, ProfileWord):
+            raise ConfigurationError(
+                f"profile_words[{index}] must be a ProfileWord, got {type(word).__name__}; "
+                "pass a sequence of ProfileWord or a profileWords wire-format string"
+            )
         _validate_profile_word_wire_values(word)
         if word.spoken is not None or word.classname is not None:
             if word.spoken is None:
                 raise ConfigurationError("spoken must be specified when classname is specified")
-            if word.alternative_written is not None or word.biasing is not None:
-                raise ConfigurationError("Hybrid and E2E profile word fields cannot be mixed")
             fields = [word.written, word.spoken]
             if word.classname is not None:
                 fields.append(word.classname)
@@ -106,9 +159,26 @@ def build_profile_words(words: Sequence[ProfileWord]) -> str:
             if word.alternative_written is not None or word.biasing is not None:
                 fields.append(word.alternative_written or "")
             if word.biasing is not None:
-                fields.append(str(word.biasing))
+                fields.append(_format_biasing(word.biasing))
         serialized_words.append(" ".join(fields))
     return "|".join(serialized_words)
+
+
+def _format_biasing(biasing: float | str) -> str:
+    """単語強調度を指数表記を使わない小数表記の文字列へ変換する
+
+    公式ドキュメントは単語強調度の指数表記について記載していないため、``1e-05`` ではなく ``0.00001`` を出力する
+    文字列は ProfileWord の生成時に小数表記であることを検証済みのため、そのまま返す
+
+    Args:
+        biasing (float | str): ProfileWord が保持する単語強調度
+
+    Returns:
+        str: ``0.5`` や ``0.00001`` のような小数表記の単語強調度
+    """
+    if isinstance(biasing, str):
+        return biasing
+    return format(Decimal(repr(biasing)), "f")
 
 
 def _validate_profile_word_wire_values(word: ProfileWord) -> None:
@@ -116,6 +186,9 @@ def _validate_profile_word_wire_values(word: ProfileWord) -> None:
 
     Args:
         word (ProfileWord): 検証する単語
+
+    Raises:
+        ConfigurationError: 値に空白や ``|`` が含まれる場合
     """
     values = (word.written, word.spoken, word.classname, word.alternative_written)
     if any(value is not None and (" " in value or "|" in value) for value in values):
