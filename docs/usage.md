@@ -44,7 +44,7 @@ issued_api_key = api_key_client.issue(
 )
 ```
 
-API キーをコンストラクタへ渡さない場合は、`AMIVOICE_API_KEY`の環境変数を使用します。`expires_in`にはミリ秒の整数、`2h`などの API 形式の文字列、`timedelta`を指定できます。
+API キーをコンストラクタへ渡さない場合は、`AMIVOICE_ISSUER_API_KEY`の環境変数を使用します。音声認識用の`AMIVOICE_API_KEY`は使用しません。`expires_in`にはミリ秒の整数、`2h`などの API 形式の文字列、`timedelta`を指定できます。
 
 ## HTTP音声認識
 

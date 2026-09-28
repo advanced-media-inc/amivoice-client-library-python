@@ -34,7 +34,8 @@ class FakeApiKeyTransport:
 @pytest.fixture(autouse=True)
 def clear_api_key_authentication_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """APIキー発行の認証環境変数を各テスト前に削除する。"""
-    monkeypatch.delenv("AMIVOICE_API_KEY", raising=False)
+    for variable_name in ("AMIVOICE_API_KEY", "AMIVOICE_ISSUER_API_KEY"):
+        monkeypatch.delenv(variable_name, raising=False)
 
 
 @pytest.mark.parametrize("base_url", ["https://example.test/api?tenant=1", "https://example.test/api#fragment"])
@@ -67,7 +68,7 @@ def test_api_key_client_environment_api_key_control_character_invalid_raise_Conf
 ) -> None:
     """環境変数のAPIキーが改行を含む場合もConfigurationErrorで拒否することを確認する。"""
     # Given: 末尾に改行を含むAPIキーの環境変数
-    monkeypatch.setenv("AMIVOICE_API_KEY", "secret-issuer-key\n")
+    monkeypatch.setenv("AMIVOICE_ISSUER_API_KEY", "secret-issuer-key\n")
 
     # When / Then: クライアント生成が拒否され、例外メッセージにキーが含まれない
     with pytest.raises(ConfigurationError, match="control characters") as exc_info:
@@ -144,9 +145,9 @@ def test_api_key_client_issue_without_optional_parameters_valid_omits_form_value
 
 
 def test_api_key_client_environment_credentials_valid_uses_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    """認証情報を省略した場合にAMIVOICE_API_KEYを使用することを確認する。"""
+    """認証情報を省略した場合にAMIVOICE_ISSUER_API_KEYを使用することを確認する。"""
     # Given: APIキーの環境変数
-    monkeypatch.setenv("AMIVOICE_API_KEY", "env-issuer-key")
+    monkeypatch.setenv("AMIVOICE_ISSUER_API_KEY", "env-issuer-key")
     transport = FakeApiKeyTransport(responses=[(200, b"issued-key")])
 
     # When: 認証情報を省略してクライアントを生成し、発行する
@@ -157,10 +158,25 @@ def test_api_key_client_environment_credentials_valid_uses_environment(monkeypat
     assert transport.requests[0][2]["Authorization"] == "Bearer env-issuer-key"
 
 
+def test_api_key_client_recognition_api_key_environment_ignored_raise_AuthenticationError(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """音声認識用のAMIVOICE_API_KEYを発行用のAPIキーとして使用しないことを確認する。"""
+    # Given: 音声認識用のAPIキーだけを設定した環境変数
+    monkeypatch.setenv("AMIVOICE_API_KEY", "recognition-key")
+    transport = FakeApiKeyTransport(responses=[(200, b"issued-key")])
+
+    # When / Then: 発行用のAPIキーがないためクライアント生成が拒否される
+    with pytest.raises(AuthenticationError, match="AMIVOICE_ISSUER_API_KEY"):
+        ApiKeyClient(transport=transport)
+
+    assert transport.requests == []
+
+
 def test_api_key_client_missing_credentials_invalid_raise_AuthenticationError(monkeypatch: pytest.MonkeyPatch) -> None:
     """認証情報がない場合にAuthenticationErrorが送出されることを確認する。"""
     # Given: APIキーの環境変数を削除する
-    monkeypatch.delenv("AMIVOICE_API_KEY", raising=False)
+    monkeypatch.delenv("AMIVOICE_ISSUER_API_KEY", raising=False)
 
     # When / Then: 認証情報なしのクライアント生成でAuthenticationErrorが送出される
     with pytest.raises(AuthenticationError):

@@ -14,6 +14,7 @@ __all__ = ["ApiKeyClient", "ApiKeyTransport"]
 
 _DEFAULT_BASE_URL = "https://acp-api.amivoice.com"
 _ISSUE_API_PATH = "/issue_service_authorization"
+_ISSUER_API_KEY_ENVIRONMENT_VARIABLE = "AMIVOICE_ISSUER_API_KEY"
 
 
 class ApiKeyTransport(Protocol):
@@ -189,9 +190,10 @@ def _resolve_api_key_authentication(api_key: str | None) -> str:
         AuthenticationError: API キーが指定されていない場合
         ConfigurationError: API キーが制御文字を含む場合
     """
-    resolved_api_key = api_key if api_key is not None else os.environ.get("AMIVOICE_API_KEY")
+    # 音声認識用の AMIVOICE_API_KEY を発行用として誤送信しないよう、発行専用の環境変数から読む
+    resolved_api_key = api_key if api_key is not None else os.environ.get(_ISSUER_API_KEY_ENVIRONMENT_VARIABLE)
     if resolved_api_key is None:
-        raise AuthenticationError("AMIVOICE_API_KEY is not set")
+        raise AuthenticationError(f"{_ISSUER_API_KEY_ENVIRONMENT_VARIABLE} is not set")
     if _contains_control_character(resolved_api_key):
         # 値を例外メッセージへ含めると発行権限付きキーがログへ漏れるため、理由だけを伝える
         raise ConfigurationError("api_key must not contain control characters such as CR or LF")
@@ -204,7 +206,7 @@ class ApiKeyClient:
     API キー発行機能付き API キーによる Bearer 認証を使用して API キーを発行する。
 
     Args:
-        api_key: API キー発行機能付き API キー。省略時は ``AMIVOICE_API_KEY`` を使用する
+        api_key: API キー発行機能付き API キー。省略時は ``AMIVOICE_ISSUER_API_KEY`` を使用する
         base_url: API のベース URL
         timeout: HTTP 接続のタイムアウト秒数
         transport: テスト用トランスポート
@@ -225,7 +227,7 @@ class ApiKeyClient:
         """クライアント設定とトランスポートを初期化する。
 
         Args:
-            api_key: API キー発行機能付き API キー。省略時は ``AMIVOICE_API_KEY`` を使用する
+            api_key: API キー発行機能付き API キー。省略時は ``AMIVOICE_ISSUER_API_KEY`` を使用する
             base_url: API のベース URL
             timeout: HTTP 接続のタイムアウト秒数
             transport: テスト用トランスポート
