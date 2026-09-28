@@ -3,7 +3,7 @@
 import base64
 import gzip
 
-from .engines import Engines
+from .constants import Engines
 from .exceptions import ConfigurationError
 
 

@@ -1,4 +1,4 @@
-"""音声コーデックと接続エンジン名の定数。"""
+"""音声フォーマット名と接続エンジン名の定数。"""
 
 from enum import StrEnum
 from typing import Self

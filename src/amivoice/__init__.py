@@ -7,8 +7,8 @@ from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager, StreamSession
 from .api_key import ApiKeyIssuanceClient
 from .client import AmiVoiceClient, transcribe
+from .constants import Codec, Engines
 from .dictionary import ProfileWord, UserDictionaryClient, build_profile_words
-from .engines import Codec, Engines
 from .exceptions import (
     AmiVoiceError,
     ApiKeyIssuanceApiError,
