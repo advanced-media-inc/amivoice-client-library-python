@@ -7,7 +7,16 @@ __all__ = ["Codec", "Engine"]
 
 
 class Codec(StrEnum):
-    """AmiVoice APIで指定できる音声フォーマット名。"""
+    """AmiVoice APIで指定できる音声フォーマット名
+
+    値は大文字小文字を区別せずに解決する（例: ``Codec("lsb16k")`` は
+    ``Codec.LSB16K``）
+
+    文字列が有効な音声フォーマット名かを判定するときは、``"lsb16k" in Codec``
+    を使わず、``Codec(value)`` を呼んで ``ValueError`` を捕捉すること。
+    ``in`` 演算子の結果はPythonの版で異なる（3.11は ``TypeError``、3.12は
+    ``_missing_`` を経由して ``True``、3.13以降は大文字小文字を区別して ``False``）
+    """
 
     # ヘッダあり音声（WAV、Ogg、MP3、FLACなど）用の指定
     # 8kHz・11.025kHzはHEADER_8K、16kHz以上はHEADER_16Kを使う
@@ -59,6 +68,10 @@ class Engine(StrEnum):
     ``StrEnum`` のため各定数は ``str`` として扱える。接続エンジン名を受け取る
     引数の型は ``str`` なので、ここにないAmiVoice API Privateの独自エンジン名も
     文字列で指定できる
+
+    文字列が定義済みの接続エンジン名かを判定するときは、``value in Engine`` を
+    使わず、``Engine(value)`` を呼んで ``ValueError`` を捕捉すること。
+    Python 3.11では ``in`` 演算子に文字列を渡すと ``TypeError`` になる
     """
 
     # End to End エンジン

@@ -132,3 +132,11 @@ def test_engine_member_reassign_invalid_raise_AttributeError() -> None:
         Engine.A_GENERAL = "-bogus"  # type: ignore[misc]
 
     assert Engine.A_GENERAL == "-a-general"
+
+
+def test_engine_unknown_value_invalid_raise_ValueError() -> None:
+    """定義されていない接続エンジン名でValueErrorが送出されることを確認する。"""
+    # Given: 提供終了した接続エンジン名
+    # When / Then: Engineの生成が拒否される
+    with pytest.raises(ValueError):
+        Engine("-a-medgeneral")
