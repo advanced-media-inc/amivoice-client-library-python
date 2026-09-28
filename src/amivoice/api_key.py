@@ -314,7 +314,7 @@ class ApiKeyIssuanceClient:
         """有効期限と接続元IP制限を指定してAPIキーを発行する。
 
         Args:
-            expires_in: 有効期限。整数はミリ秒、文字列は ``2h`` などの API 形式、期間はミリ秒へ変換する
+            expires_in: 有効期限。省略時は 30 秒。整数はミリ秒、文字列は ``2h`` などの API 形式、期間はミリ秒へ変換する
             allowed_ip_addresses: API キーを利用できる接続元 IPv4 アドレスまたは IPv4 CIDR の一覧。省略時は制限しない
 
         Returns:
