@@ -9,9 +9,12 @@ __all__ = ["Codec", "Engines"]
 class Codec(StrEnum):
     """AmiVoice APIで指定できる音声フォーマット名。"""
 
-    # Pythonでは変数名の先頭に数字を使用できないため、冗長ですがCODEC_を付けています
-    CODEC_8K = "8K"
-    CODEC_16K = "16K"
+    # ヘッダあり音声（WAV、Ogg、MP3、FLACなど）用の指定
+    # 8kHz・11.025kHzはHEADER_8K、16kHz以上はHEADER_16Kを使う
+    HEADER_8K = "8K"
+    HEADER_16K = "16K"
+
+    # ヘッダなし音声（生のPCM、mu-law、A-law）用の指定
     LSB8K = "LSB8K"
     LSB11K = "LSB11K"
     LSB16K = "LSB16K"

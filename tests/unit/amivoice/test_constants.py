@@ -8,8 +8,8 @@ from amivoice import Codec, Engines
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        ("8k", Codec.CODEC_8K),
-        ("16k", Codec.CODEC_16K),
+        ("8k", Codec.HEADER_8K),
+        ("16k", Codec.HEADER_16K),
         ("lsb16k", Codec.LSB16K),
         ("MsB48K", Codec.MSB48K),
         ("mulaw", Codec.MULAW),
