@@ -98,6 +98,12 @@ def test_engines_values_valid_match_supported_engine_names() -> None:
 
     # Then: 公式エンジン名と一致する
     assert actual_values == expected_values
-    assert Engines.E2E_JA_GENERAL == Engines.A2_JA_GENERAL
-    assert Engines.HYBRID_GENERAL == Engines.A_GENERAL
-    assert Engines.PRIVATE_RULE_INPUT == Engines.A_RULE_INPUT_PRIVATE
+
+
+@pytest.mark.parametrize("name", ["E2E_JA_GENERAL", "HYBRID_GENERAL", "PRIVATE_RULE_INPUT"])
+def test_engines_alias_name_invalid_raise_AttributeError(name: str) -> None:
+    """Enginesが接続エンジン名から導けない別名を持たないことを確認する。"""
+    # Given: 接続エンジン名から導けない以前の別名
+    # When / Then: 別名を参照できない
+    with pytest.raises(AttributeError):
+        getattr(Engines, name)

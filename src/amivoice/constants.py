@@ -44,54 +44,59 @@ class Codec(StrEnum):
 
 
 class Engines:
-    """AmiVoice APIで指定できる接続エンジン名。"""
+    """AmiVoice APIで指定できる接続エンジン名
+
+    定数名は、公式ドキュメントの「接続エンジン名」から先頭の ``-`` を除き、
+    ``-`` を ``_`` に置き換えて大文字にしたもの（例: ``-a2-ja-general`` は
+    ``A2_JA_GENERAL``）
+
+    公式ドキュメントの文字列から定数名を一意に導けるようにするため、別名は
+    定義しない。各定数のdocstringには公式のエンジン名を記載する
+
+    分類と並び順は、公式ドキュメントの音声認識エンジン一覧に従う
+    https://docs.amivoice.com/amivoice-api/manual/engines#list
+    """
 
     # End to End エンジン
     A2_JA_GENERAL = "-a2-ja-general"
+    """日本語E2E_汎用"""
     A2_ZH_GENERAL = "-a2-zh-general"
+    """中国語E2E_汎用"""
     A2_MULTI_GENERAL = "-a2-multi-general"
+    """多言語E2E_汎用"""
     A2B_JA_GENERAL = "-a2b-ja-general"
+    """日本語E2E_汎用バッチ"""
     A2B_ZH_GENERAL = "-a2b-zh-general"
+    """中国語E2E_汎用バッチ"""
     A2B_MULTI_GENERAL = "-a2b-multi-general"
+    """多言語E2E_汎用バッチ"""
 
-    # ハイブリッド（会話）エンジン
+    # ハイブリッドエンジン
     A_GENERAL = "-a-general"
+    """会話_汎用"""
     A_MEDICAL = "-a-medical"
+    """会話_医療"""
     A_BIZFINANCE = "-a-bizfinance"
+    """会話_金融"""
     A_BIZINSURANCE = "-a-bizinsurance"
-    A_GENERAL_EN = "-a-general-en"
-    A_GENERAL_ZH = "-a-general-zh"
-    A_GENERAL_KO = "-a-general-ko"
-
-    # ハイブリッド（音声入力）エンジン
+    """会話_保険"""
     A_GENERAL_INPUT = "-a-general-input"
+    """音声入力_汎用"""
     A_MEDICAL_INPUT = "-a-medical-input"
+    """音声入力_医療"""
     A_BIZINSURANCE_INPUT = "-a-bizinsurance-input"
+    """音声入力_保険"""
     A_BIZFINANCE_INPUT = "-a-bizfinance-input"
-
-    # AmiVoice API Private エンジン
+    """音声入力_金融"""
+    A_GENERAL_EN = "-a-general-en"
+    """英語_汎用"""
+    A_GENERAL_ZH = "-a-general-zh"
+    """中国語_汎用"""
+    A_GENERAL_KO = "-a-general-ko"
+    """韓国語_汎用"""
     A_NAME_INPUT_PRIVATE = "-a-name-input-private"
+    """音声入力_氏名（AmiVoice API Private専用、非同期HTTPでは利用不可）"""
     A_ADDRESS_INPUT_PRIVATE = "-a-address-input-private"
+    """音声入力_住所（AmiVoice API Private専用、非同期HTTPでは利用不可）"""
     A_RULE_INPUT_PRIVATE = "-a-rule-input-private"
-
-    # 読みやすさのためのカテゴリ別別名
-    E2E_JA_GENERAL = A2_JA_GENERAL
-    E2E_ZH_GENERAL = A2_ZH_GENERAL
-    E2E_MULTI_GENERAL = A2_MULTI_GENERAL
-    E2E_B_JA_GENERAL = A2B_JA_GENERAL
-    E2E_B_ZH_GENERAL = A2B_ZH_GENERAL
-    E2E_B_MULTI_GENERAL = A2B_MULTI_GENERAL
-    HYBRID_GENERAL = A_GENERAL
-    HYBRID_MEDICAL = A_MEDICAL
-    HYBRID_BIZFINANCE = A_BIZFINANCE
-    HYBRID_BIZINSURANCE = A_BIZINSURANCE
-    HYBRID_GENERAL_EN = A_GENERAL_EN
-    HYBRID_GENERAL_ZH = A_GENERAL_ZH
-    HYBRID_GENERAL_KO = A_GENERAL_KO
-    HYBRID_GENERAL_INPUT = A_GENERAL_INPUT
-    HYBRID_MEDICAL_INPUT = A_MEDICAL_INPUT
-    HYBRID_BIZINSURANCE_INPUT = A_BIZINSURANCE_INPUT
-    HYBRID_BIZFINANCE_INPUT = A_BIZFINANCE_INPUT
-    PRIVATE_NAME_INPUT = A_NAME_INPUT_PRIVATE
-    PRIVATE_ADDRESS_INPUT = A_ADDRESS_INPUT_PRIVATE
-    PRIVATE_RULE_INPUT = A_RULE_INPUT_PRIVATE
+    """音声入力_ルール（AmiVoice API Private専用、非同期HTTPでは利用不可）"""
