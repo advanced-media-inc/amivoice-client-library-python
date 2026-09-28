@@ -21,6 +21,7 @@ from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager
 from ._transport import HrpTransport, WrpTransport, _set_optional_transport_parameter, bool_string
 from ._types import AudioSource
+from .constants import Codec
 from .dictionary import ProfileWord, build_profile_words
 from .exceptions import AuthenticationError, ConfigurationError, ConnectionFailedError, RecognitionError
 from .models import RecognitionResult, parse_result
@@ -339,7 +340,7 @@ class AmiVoiceClient:
     Args:
         api_key: 認証情報。省略時は環境変数 ``AMIVOICE_API_KEY`` を使用する。
         grammar_file_names: 接続エンジン名。
-        codec: 音声コーデック（例: ``"16K"``, ``"8K"``）。
+        codec: 音声コーデック（例: ``Codec.HEADER_16K``, ``Codec.LSB16K``）。
         result_type: 認識結果タイプ。
         proxy_server_name: プロキシサーバ名。
         connect_timeout: 接続タイムアウト（ミリ秒）。0 は無制限。
@@ -395,8 +396,8 @@ class AmiVoiceClient:
         # HTTP 認識
         client = AmiVoiceClient(
             api_key="...",
-            grammar_file_names="-a-general",
-            codec="16K",
+            grammar_file_names=Engine.A_GENERAL,
+            codec=Codec.HEADER_16K,
         )
         result = client.transcribe(
             "audio.wav"
@@ -429,7 +430,7 @@ class AmiVoiceClient:
         api_key: str | None = None,
         *,
         grammar_file_names: str | None = None,
-        codec: str | None = None,
+        codec: Codec | str | None = None,
         result_type: str | None = None,
         proxy_server_name: str | None = None,
         connect_timeout: int = 0,
@@ -473,7 +474,7 @@ class AmiVoiceClient:
         Args:
             api_key (str | None): 認証情報。省略時は環境変数 ``AMIVOICE_API_KEY`` を使用する
             grammar_file_names (str | None): 接続エンジン名
-            codec (str | None): 音声コーデック
+            codec (Codec | str | None): 音声コーデック
             result_type (str | None): 認識結果タイプ
             proxy_server_name (str | None): プロキシサーバ名
             connect_timeout (int): 接続タイムアウト（ミリ秒）。0 は無制限
@@ -587,7 +588,7 @@ class AmiVoiceClient:
         audio: AudioSource,
         *,
         grammar_file_names: str | None | _UnsetType = UNSET,
-        codec: str | None | _UnsetType = UNSET,
+        codec: Codec | str | None | _UnsetType = UNSET,
         result_type: str | None | _UnsetType = UNSET,
         proxy_server_name: str | None | _UnsetType = UNSET,
         connect_timeout: int | _UnsetType = UNSET,
@@ -877,7 +878,7 @@ class AmiVoiceClient:
         self,
         *,
         grammar_file_names: str | None | _UnsetType = UNSET,
-        codec: str | None | _UnsetType = UNSET,
+        codec: Codec | str | None | _UnsetType = UNSET,
         result_type: str | None | _UnsetType = UNSET,
         proxy_server_name: str | None | _UnsetType = UNSET,
         connect_timeout: int | _UnsetType = UNSET,
@@ -1032,7 +1033,7 @@ def transcribe(  # noqa: PLR0913
     api_url: str | _UnsetType = UNSET,
     logging_opt_out: bool = False,
     grammar_file_names: str | None = None,
-    codec: str | None = None,
+    codec: Codec | str | None = None,
     result_type: str | None = None,
     proxy_server_name: str | None = None,
     connect_timeout: int = 0,
@@ -1078,7 +1079,7 @@ def transcribe(  # noqa: PLR0913
         api_url: AmiVoice API の接続先 URL。カスタムURLは ``logging_opt_out`` で書き換えない。
         logging_opt_out: ログを保存しない既定エンドポイントを使用するか。
         grammar_file_names: 接続エンジン名。
-        codec: 音声コーデック（例: ``"16K"``, ``"8K"``）。
+        codec: 音声コーデック（例: ``Codec.HEADER_16K``, ``Codec.LSB16K``）。
         result_type: 認識結果タイプ。
         proxy_server_name: プロキシサーバ名。
         connect_timeout: 接続タイムアウト（ミリ秒）。0 は無制限。

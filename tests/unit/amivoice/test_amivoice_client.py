@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from amivoice import ProfileWord
+from amivoice import Codec, Engine, ProfileWord
 from amivoice._segmenter import SegmenterProperties
 from amivoice._stream import StreamConnectionManager, StreamSession
 from amivoice._transport import HrpTransport
@@ -825,6 +825,25 @@ def test_AmiVoiceClient_transcribe_call_args_override_instance_defaults() -> Non
     mock_hrp.setConnectTimeout.assert_called_once_with(3000)
     mock_hrp.setReceiveTimeout.assert_called_once_with(4000)
     mock_hrp.setExtension.assert_called_once_with("override-tag")
+
+
+def test_AmiVoiceClient_transcribe_constant_params_valid_return_wire_values() -> None:
+    """CodecとEngineの定数を指定した場合にAPIへ送る文字列がsetterへ渡されることを確認する。"""
+    # Given: 定数で既定値を保持したクライアントと注入済み HRP トランスポート
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(
+        api_key="key",
+        grammar_file_names=Engine.A_GENERAL,
+        codec=Codec.HEADER_16K,
+        hrp_transport=mock_hrp,
+    )
+
+    # When: 呼び出し時にcodecを定数で上書きして transcribe する
+    client.transcribe(b"audio-data", codec=Codec.LSB8K)
+
+    # Then: 定数の値が文字列として setter に渡される
+    mock_hrp.setGrammarFileNames.assert_called_once_with("-a-general")
+    mock_hrp.setCodec.assert_called_once_with("LSB8K")
 
 
 def test_AmiVoiceClient_transcribe_omitted_args_use_instance_defaults() -> None:

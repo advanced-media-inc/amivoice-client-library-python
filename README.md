@@ -16,12 +16,12 @@ src/
 高レベル API は次のように利用できます。
 
 ```python
-from amivoice import AmiVoiceClient
+from amivoice import AmiVoiceClient, Codec, Engine
 
 client = AmiVoiceClient(
     api_key="your-api-key",
-    grammar_file_names="-a-general",
-    codec="16K",
+    grammar_file_names=Engine.A_GENERAL,
+    codec=Codec.HEADER_16K,
 )
 result = client.transcribe("audio.wav")
 print(result.text)

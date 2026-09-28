@@ -151,10 +151,10 @@ for utterance in result.results:
 認識セッションだけで有効にする単語は、`ProfileWord`のシーケンスで指定できます。ハイブリッドエンジンでは`spoken`を必須とし、クラスを指定する場合は`classname`を追加します。End to End エンジンでは`alternative_written`と`biasing`を指定します。従来どおり、ワイヤー形式の文字列も指定できます。
 
 ```python
-from amivoice import AmiVoiceClient, ProfileWord
+from amivoice import AmiVoiceClient, Engine, ProfileWord
 
 client = AmiVoiceClient(
-    grammar_file_names="-a-general",
+    grammar_file_names=Engine.A_GENERAL,
     profile_words=(
         ProfileWord("AmiVoice", "あみぼいす", "固有名詞"),
         ProfileWord("WWW", "とりぷるだぶる"),
