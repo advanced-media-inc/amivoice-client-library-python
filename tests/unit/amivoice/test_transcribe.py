@@ -196,6 +196,19 @@ def test_transcribe_profile_words_sequence_valid_passes_serialized_string() -> N
     mock_hrp.setProfileWords.assert_called_once_with("AmiVoice あみぼいす")
 
 
+def test_transcribe_selected_channel_valid_passes_audio_filter_properties() -> None:
+    """モジュールレベルtranscribeのselected_channelがHRPへ渡ることを確認する"""
+    # Given: selected_channelとモックHRP
+    mock_hrp = _make_mock_hrp()
+
+    # When: チャネル範囲を指定してtranscribeを呼び出す
+    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
+        transcribe(b"audio-data", api_key="test-key", selected_channel=(0, 1))
+
+    # Then: selectedChannel形式がHRP setterへ渡る
+    mock_hrp.setAudioFilterProperties.assert_called_once_with("selectedChannel=0-1")
+
+
 def test_transcribe_processing_time_params_valid_passes_strings() -> None:
     """モジュールレベル transcribe の処理時間制御パラメータが文字列で HRP に渡ることを確認する"""
     # Given: 処理時間制御パラメータとモック HRP

@@ -56,8 +56,8 @@ class StreamSession:
     Example::
 
         with client.stream(
-            grammar_file_names="-a-general",
-            codec="16K",
+            grammar_file_names=Engine.A_GENERAL,
+            codec=Codec.HEADER_16K,
         ) as session:
             session.write(
                 audio_bytes
@@ -311,8 +311,8 @@ class StreamConnectionManager:
     Example::
 
         manager = client.stream(
-            grammar_file_names="-a-general",
-            codec="16K",
+            grammar_file_names=Engine.A_GENERAL,
+            codec=Codec.HEADER_16K,
         )
         # コンテキストマネージャ経由（推奨）
         with (

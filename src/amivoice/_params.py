@@ -5,6 +5,7 @@ override を一元管理する。呼び出し時 override は :func:`merge_param
 """
 
 import math
+import warnings
 from dataclasses import dataclass, replace
 from typing import Final
 
@@ -70,11 +71,13 @@ class RecognitionParams:
     content_type: str | None = None
     accept: str | None = None
     domain_id: str | None = None
+    audio_filter_properties: str | None = None
     # WRP 専用
     no_input_timeout: int | None = None
 
     def __post_init__(self) -> None:
         """認識パラメータの入力値を検証する"""
+        _validate_profile_id(self.profile_id)
         resolve_billing_extension(self.extension, self.billing_key)
         value = self.confidence_level
         if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not 0.0 <= value <= 1.0):
@@ -85,6 +88,30 @@ class RecognitionParams:
         for field_name in _PROCESSING_RATE_FIELDS:
             _validate_processing_rate(field_name, getattr(self, field_name))
         _validate_wildcard_model_penalty(self.wildcard_model_penalty)
+
+
+def _validate_profile_id(value: str | None) -> None:
+    """プロファイル ID を検証し、先頭に ``:`` がない場合は警告する
+
+    先頭に ``:`` のないプロファイル ID は、セッション終了時にプロファイルを上書きする可能性がある
+
+    Args:
+        value (str | None): プロファイル ID
+
+    Raises:
+        ConfigurationError: 値が文字列でない場合
+    """
+    if value is None:
+        return
+    if not isinstance(value, str):
+        raise ConfigurationError("Invalid profile_id: must be a string")
+    if not value.startswith(":"):
+        warnings.warn(
+            "profile_id without a leading ':' may overwrite the profile when the session ends; "
+            f"use ':{value}' to reference the profile read-only",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 def _validate_processing_time(field_name: str, value: int | None) -> None:

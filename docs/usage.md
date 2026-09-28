@@ -28,18 +28,48 @@ from amivoice import AmiVoiceClient
 client = AmiVoiceClient(api_key="your-api-key")
 ```
 
+### APIキーの発行
+
+`ApiKeyIssuanceClient`を使うと、有効期限や接続元 IP アドレス制限を付けた API キーを発行できます。API キー発行機能付きの API キーを Bearer 認証で使用します。発行用の API キーはサーバー側で管理してください。
+
+```python
+from datetime import timedelta
+
+from amivoice import ApiKeyIssuanceClient
+
+api_key_issuance_client = ApiKeyIssuanceClient(api_key="api-key-with-issuance-permission")
+issued_api_key = api_key_issuance_client.issue(
+    expires_in=timedelta(hours=2),
+    allowed_ip_addresses=("203.0.113.0/24",),
+)
+```
+
+API キーをコンストラクタへ渡さない場合は、`AMIVOICE_ISSUER_API_KEY`の環境変数を使用します。音声認識用の`AMIVOICE_API_KEY`は使用しません。`expires_in`にはミリ秒の整数、`2h`などの API 形式の文字列、`timedelta`を指定できます。省略時の有効期限は 30 秒です。整数と`timedelta`は 1 ミリ秒以上を指定してください。1 ミリ秒未満の`timedelta`の端数は切り捨てます。
+`allowed_ip_addresses`には、IPv4 アドレスまたは IPv4 CIDR を文字列、`ipaddress.IPv4Address`、`ipaddress.IPv4Network`で指定します。IPv6 アドレスや空の一覧を指定すると`ConfigurationError`が送出されます。接続元 IP アドレスを制限しない場合は`allowed_ip_addresses`を省略してください。
+
 ## HTTP音声認識
 
 ```python
-from amivoice import AmiVoiceClient
+from amivoice import AmiVoiceClient, Codec, Engine
 
 client = AmiVoiceClient(
-    grammar_file_names="-a-general",
-    codec="16K",
+    grammar_file_names=Engine.A_GENERAL,
+    codec=Codec.HEADER_16K,
 )
 result = client.transcribe("audio.wav")
 print(result.text)
 ```
+
+`Codec`は音声フォーマット名の定数です。`Codec.HEADER_16K`は`"16K"`と同じ値として扱われ、`Codec("lsb16k")`のように大文字小文字を区別せずに解決できます。文字列が有効な音声フォーマット名かを判定するときは、`"lsb16k" in Codec`ではなく`Codec(value)`を呼び、`ValueError`を捕捉してください。`in`演算子の結果は Python のバージョンによって異なります。音声ファイルのヘッダにフォーマット情報がある場合は、HTTP 音声認識では`codec`の指定を省略できます。ヘッダ付き音声で明示的に指定する場合は、8kHz または 11.025kHz なら`Codec.HEADER_8K`、16kHz 以上なら`Codec.HEADER_16K`を使用してください。ヘッダなし PCM では`Codec.LSB16K`や`Codec.MSB16K`など、エンディアンとサンプリングレートに合った定数を指定します。ヘッダなし音声に`Codec.HEADER_8K`や`Codec.HEADER_16K`を指定すると、ヘッダの読み込みに失敗して`LSB16K`として扱われます。詳細は[AmiVoice APIの音声フォーマット](https://docs.amivoice.com/amivoice-api/manual/audio-format)を参照してください。
+
+`Engine`は接続エンジン名の定数です。定数名は、公式ドキュメントの接続エンジン名から先頭の`-`を除き、`-`を`_`に置き換えて大文字にしたものです（例：`-a2-ja-general`は`Engine.A2_JA_GENERAL`）。会話用の汎用エンジンは`Engine.A_GENERAL`、音声入力用は`Engine.A_GENERAL_INPUT`、AmiVoice API Private のルールエンジンは`Engine.A_RULE_INPUT_PRIVATE`で指定できます。グラマファイルを使うルールグラマは`Engine.A_RULE_INPUT_PRIVATE`専用で、ほかのエンジンとは組み合わせられません（[ルールグラマ](https://docs.amivoice.com/amivoice-api/manual/rule-grammar)）。
+
+エンジンごとに対応するサンプリングレートとインタフェースが異なるため、`Engine`と`Codec`を組み合わせるときは[AmiVoice APIの音声認識エンジン一覧](https://docs.amivoice.com/amivoice-api/manual/engines#list)を確認してください。特に次の制約があります。
+
+- すべてのエンジンは 16kHz に対応するが、8kHz または 11.025kHz に対応するのは一部のエンジンだけである。例えば、`Engine.A_GENERAL`は 8kHz と 16kHz に対応し、`Engine.A_MEDICAL`と`Engine.A_RULE_INPUT_PRIVATE`は 16kHz に対応する。
+- `Engine.A_NAME_INPUT_PRIVATE`、`Engine.A_ADDRESS_INPUT_PRIVATE`、`Engine.A_RULE_INPUT_PRIVATE`は AmiVoice API Private 向けのエンジンで、非同期 HTTP インタフェースでは利用できない。
+
+`Engine`と`Codec`のすべての組み合わせが有効とは限らないため、利用するインタフェース、エンジン、音声のサンプリングレートの対応を公式一覧で確認してください。
 
 `transcribe()`には、ファイルパス、`pathlib.Path`、`bytes`、バイナリファイルオブジェクトを渡せます。
 
@@ -79,6 +109,21 @@ client = AmiVoiceClient(
 )
 ```
 
+### マルチチャネル音声のチャネル選択
+
+複数チャネルの音声を同期 HTTP で認識する場合は、`selected_channel`で認識対象を指定できます。単一チャネルは整数、複数チャネルの混合平均は`(開始チャネル, 終了チャネル)`のタプルで指定します。チャネル番号は`0`から始まります。`(0, 0)`のように開始と終了が同じタプルは`ConfigurationError`になります。単一チャネルは整数で指定してください。
+
+```python
+from amivoice import AmiVoiceClient
+
+client = AmiVoiceClient(selected_channel=(0, 1))
+result = client.transcribe("stereo.wav")
+```
+
+複数チャネルに対応するのは、Wave、Ogg、FLAC などファイルのヘッダに音声フォーマットが含まれる「ヘッダあり」の音声だけです。`codec="LSB16K"`のように音声フォーマットを指定して送る「ヘッダなし」の PCM データは 1 チャネルにしか対応しないため、`selected_channel`で別のチャネルを選んだり、複数チャネルを混合したりできません。詳細は公式マニュアルの[音声フォーマット](https://docs.amivoice.com/amivoice-api/manual/audio-format#channels)を参照してください。
+
+API の`audioFilterProperties`を直接指定する場合は、`audio_filter_properties`を使用します。`selected_channel`と同時には指定できません。チャネル選択は同期 HTTP の`transcribe()`専用で、WebSocket の`stream()`では利用できません。コンストラクタで`selected_channel`または`audio_filter_properties`を指定したクライアントで`stream()`を呼び出すと、設定を無視せずに`ConfigurationError`を送出します。WebSocket で認識する場合は、音声フィルタを指定しないクライアントを使用してください。WebSocket では 1 チャネル目だけが認識対象になります。
+
 ### 型付き認識結果
 
 `RecognitionResult.results`から発話区間、単語、信頼度、時刻、話者ラベル、言語ラベルを型付きで参照できます。
@@ -106,10 +151,10 @@ for utterance in result.results:
 認識セッションだけで有効にする単語は、`ProfileWord`のシーケンスで指定できます。ハイブリッドエンジンでは`spoken`を必須とし、クラスを指定する場合は`classname`を追加します。End to End エンジンでは`alternative_written`と`biasing`を指定します。従来どおり、ワイヤー形式の文字列も指定できます。
 
 ```python
-from amivoice import AmiVoiceClient, ProfileWord
+from amivoice import AmiVoiceClient, Engine, ProfileWord
 
 client = AmiVoiceClient(
-    grammar_file_names="-a-general",
+    grammar_file_names=Engine.A_GENERAL,
     profile_words=(
         ProfileWord("AmiVoice", "あみぼいす", "固有名詞"),
         ProfileWord("WWW", "とりぷるだぶる"),
@@ -191,7 +236,7 @@ result = client.transcribe("audio.wav")
 
 ### ルールグラマ
 
-AmiVoice API Private の「音声入力_ルール」エンジンを使う場合は、`build_grammar_file_names()`で接続エンジン名とグラマ指定を組み立てます。この機能は通常の AmiVoice API 環境では利用できません。
+AmiVoice API Private の「音声入力_ルール」エンジン（`Engine.A_RULE_INPUT_PRIVATE`）を使う場合は、`build_grammar_file_names()`で接続エンジン名とグラマ指定を組み立てます。グラマファイルを使えるのはこのエンジンだけで、`build_grammar_file_names()`も既定でこのエンジンを使います。この機能は通常の AmiVoice API 環境では利用できません。
 
 グラマ本文を直接指定するときは、`encode_grammar()`で GZIP 圧縮と Base64 エンコードを行います。URL とエンコード済み本文は混在でき、ヘルパーは URL エンコードを追加しません。
 
@@ -294,14 +339,14 @@ user_dictionary.register_words(
 
 ユーザー辞書はアプリケーションのデータベースなどで保持し、バックアップしてください。プロファイルをマスターデータにせず、API のプロファイルを更新する前にアプリケーションで全件を管理することが推奨されています。
 
-登録した単語を音声認識で利用する場合は、登録時と同じ接続エンジン名を指定し、`profile_id` の先頭に `:` を付けます。
+登録した単語を音声認識で利用する場合は、登録時と同じ接続エンジン名を指定し、`profile_id` の先頭に `:` を付けます。`:` 付きのプロファイル ID は、プロファイルを参照だけする指定です。`:` を付けないと、セッション終了時にプロファイルを上書きする場合があります（[プロファイルの利用](https://docs.amivoice.com/amivoice-api/manual/user-dictionary-use-profile)）。ライブラリは値を書き換えず、先頭に `:` がない場合は `UserWarning` を出します。
 
 ```python
-from amivoice import AmiVoiceClient
+from amivoice import AmiVoiceClient, Codec, Engine
 
 recognition_client = AmiVoiceClient(
-    grammar_file_names="-a-general",
-    codec="16K",
+    grammar_file_names=Engine.A_GENERAL,
+    codec=Codec.HEADER_16K,
     profile_id=":user01",
 )
 result = recognition_client.transcribe("audio.wav")
@@ -310,9 +355,9 @@ result = recognition_client.transcribe("audio.wav")
 ## WebSocketストリーミング認識
 
 ```python
-from amivoice import AmiVoiceClient
+from amivoice import AmiVoiceClient, Codec, Engine
 
-client = AmiVoiceClient(grammar_file_names="-a-general", codec="16K")
+client = AmiVoiceClient(grammar_file_names=Engine.A_GENERAL, codec=Codec.HEADER_16K)
 
 with client.stream() as session:
     session.write(audio_chunk)

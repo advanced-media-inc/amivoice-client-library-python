@@ -6,6 +6,50 @@ from amivoice._params import RecognitionParams, merge_params
 from amivoice.exceptions import ConfigurationError
 
 
+@pytest.mark.filterwarnings("error")
+@pytest.mark.parametrize("profile_id", [":myprofile", None])
+def test_recognition_params_profile_id_valid_no_warning_keeps_value(profile_id: str | None) -> None:
+    """コロン付き、または未指定のprofile_idでは警告せず値を保持することを確認する"""
+    # Given: コロン付き、または未指定のprofile_id
+    # When: RecognitionParamsを生成する
+    params = RecognitionParams(profile_id=profile_id)
+
+    # Then: 値は書き換えられない
+    assert params.profile_id == profile_id
+
+
+def test_recognition_params_profile_id_without_colon_warns_and_keeps_value() -> None:
+    """コロンなしのprofile_idで警告し、値を書き換えないことを確認する"""
+    # Given: コロンなしのprofile_id
+    # When: RecognitionParamsを生成する
+    with pytest.warns(UserWarning, match="':myprofile'"):
+        params = RecognitionParams(profile_id="myprofile")
+
+    # Then: 先頭にコロンは付与されない
+    assert params.profile_id == "myprofile"
+
+
+def test_merge_params_profile_id_override_without_colon_warns() -> None:
+    """profile_idの呼び出し時overrideにも警告が適用されることを確認する"""
+    # Given: コロン付きのprofile_idを持つ既定パラメータ
+    base = RecognitionParams(profile_id=":base-profile")
+
+    # When: コロンなしのprofile_idでoverrideする
+    with pytest.warns(UserWarning, match="profile_id"):
+        params = merge_params(base, profile_id="override-profile")
+
+    # Then: override値は書き換えられない
+    assert params.profile_id == "override-profile"
+
+
+def test_recognition_params_profile_id_invalid_raise_ConfigurationError() -> None:
+    """profile_idに文字列以外を指定するとConfigurationErrorが送出されることを確認する"""
+    # Given: 文字列以外のprofile_id
+    # When / Then: RecognitionParamsの生成が拒否される
+    with pytest.raises(ConfigurationError, match="profile_id"):
+        RecognitionParams(profile_id=123)  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize("value", [0.0, 0.3, 1.0])
 def test_recognition_params_confidence_level_boundary_valid_return_params(value: float) -> None:
     """confidence_level の境界値を含む有効な値を保持できることを確認する。"""

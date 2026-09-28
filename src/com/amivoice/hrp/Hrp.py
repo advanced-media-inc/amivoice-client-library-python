@@ -71,6 +71,7 @@ class Hrp:
         self.profileWords_: str | None = None
         self.segmenterType_: str | None = None
         self.segmenterProperties_: str | None = None
+        self.audioFilterProperties_: str | None = None
         self.keepFillerToken_: str | None = None
         self.resultUpdatedInterval_: str | None = None
         self.maxDecodingTime_: str | None = None
@@ -198,6 +199,14 @@ class Hrp:
         """
         self.segmenterProperties_ = segmenterProperties
 
+    def setAudioFilterProperties(self, audioFilterProperties: str | None) -> None:
+        """音声フィルタプロパティを設定する
+
+        Args:
+            audioFilterProperties: 音声フィルタプロパティの文字列
+        """
+        self.audioFilterProperties_ = audioFilterProperties
+
     def setKeepFillerToken(self, keepFillerToken: str | None) -> None:
         """フィラー単語を保持するかどうかを設定する
 
@@ -280,6 +289,11 @@ class Hrp:
 
     def setDomainId(self, domainId: str | None) -> None:
         """ドメイン ID を設定する
+
+        ドメイン ID を設定すると、``d`` パラメータはこの文字列を基に組み立てる
+        追加するのは ``confidenceLevel`` と ``audioFilterProperties`` だけで、
+        ``grammarFileNames``、``segmenterProperties`` など ``d`` パラメータへ入るほかの設定は送信しない
+        ドメイン ID に同じパラメータが含まれていても重複を検出しないため、両方に指定すると 2 つ送信する
 
         Args:
             domainId: ドメイン ID の文字列
@@ -507,6 +521,12 @@ class Hrp:
                     domainId += "confidenceLevel="
                     with suppress(Exception):
                         domainId += q(self.confidenceLevel_)
+                if self.audioFilterProperties_ is not None:
+                    if len(domainId) > 0:
+                        domainId += " "
+                    domainId += "audioFilterProperties="
+                    with suppress(Exception):
+                        domainId += q(self.audioFilterProperties_)
             else:
                 if self.grammarFileNames_ is not None:
                     domainId += "grammarFileNames="
@@ -554,6 +574,12 @@ class Hrp:
                     domainId += "segmenterProperties="
                     with suppress(Exception):
                         domainId += q(self.segmenterProperties_)
+                if self.audioFilterProperties_ is not None:
+                    if len(domainId) > 0:
+                        domainId += " "
+                    domainId += "audioFilterProperties="
+                    with suppress(Exception):
+                        domainId += q(self.audioFilterProperties_)
                 if self.keepFillerToken_ is not None:
                     if len(domainId) > 0:
                         domainId += " "

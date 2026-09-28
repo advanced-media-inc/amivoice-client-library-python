@@ -21,6 +21,7 @@ from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager
 from ._transport import HrpTransport, WrpTransport, _set_optional_transport_parameter, bool_string
 from ._types import AudioSource
+from .constants import Codec
 from .dictionary import ProfileWord, build_profile_words
 from .exceptions import AuthenticationError, ConfigurationError, ConnectionFailedError, RecognitionError
 from .models import RecognitionResult, parse_result
@@ -181,6 +182,90 @@ def _resolve_profile_words_override(
     return _resolve_profile_words(profile_words)
 
 
+def _build_selected_channel_properties(selected_channel: int | tuple[int, int]) -> str:
+    """チャネル指定をaudioFilterPropertiesのselectedChannel形式へ変換する
+
+    Args:
+        selected_channel: 単一チャネル番号または混合する開始・終了チャネル番号
+
+    Returns:
+        ``audioFilterProperties``へ渡すselectedChannel文字列
+
+    Raises:
+        ConfigurationError: チャネル番号または範囲が不正な場合、範囲の開始と終了が同じ場合
+    """
+    if isinstance(selected_channel, bool):
+        raise ConfigurationError("selected_channel must be a non-negative integer or a pair of integers")
+    if isinstance(selected_channel, int):
+        if selected_channel < 0:
+            raise ConfigurationError("selected_channel must be non-negative")
+        return f"selectedChannel={selected_channel}"
+    if not isinstance(selected_channel, tuple) or len(selected_channel) != 2:
+        raise ConfigurationError("selected_channel must be a non-negative integer or a pair of integers")
+
+    start_channel, end_channel = selected_channel
+    if (
+        isinstance(start_channel, bool)
+        or isinstance(end_channel, bool)
+        or not isinstance(start_channel, int)
+        or not isinstance(end_channel, int)
+        or start_channel < 0
+        or end_channel < 0
+    ):
+        raise ConfigurationError("selected_channel range must contain non-negative integers")
+    if start_channel > end_channel:
+        raise ConfigurationError("selected_channel range start must not be greater than end")
+    if start_channel == end_channel:
+        raise ConfigurationError(
+            "selected_channel range start and end must be different; use an integer to select a single channel"
+        )
+    return f"selectedChannel={start_channel}-{end_channel}"
+
+
+def _resolve_audio_filter_properties(
+    selected_channel: int | tuple[int, int] | None,
+    audio_filter_properties: str | None,
+) -> str | None:
+    """型付きチャネル指定またはraw音声フィルタプロパティを解決する
+
+    Args:
+        selected_channel: 型付きの単一チャネルまたは混合チャネル範囲
+        audio_filter_properties: 既存の音声フィルタプロパティ文字列
+
+    Returns:
+        トランスポートへ渡す音声フィルタプロパティ文字列
+
+    Raises:
+        ConfigurationError: 型付き指定とraw文字列を同時指定した場合
+    """
+    if selected_channel is not None and audio_filter_properties is not None:
+        raise ConfigurationError("selected_channel and audio_filter_properties cannot be specified together")
+    return _build_selected_channel_properties(selected_channel) if selected_channel is not None else audio_filter_properties
+
+
+def _resolve_audio_filter_properties_override(
+    selected_channel: int | tuple[int, int] | None | _UnsetType,
+    audio_filter_properties: str | None | _UnsetType,
+) -> str | None | _UnsetType:
+    """呼び出し時の音声フィルタプロパティoverrideを解決する
+
+    Args:
+        selected_channel: 型付きチャネル指定または未指定sentinel
+        audio_filter_properties: raw文字列指定または未指定sentinel
+
+    Returns:
+        トランスポートへ渡す音声フィルタプロパティまたは未指定sentinel
+
+    Raises:
+        ConfigurationError: 型付き指定とraw文字列を同時指定した場合
+    """
+    if not isinstance(selected_channel, _UnsetType) and not isinstance(audio_filter_properties, _UnsetType):
+        raise ConfigurationError("selected_channel and audio_filter_properties cannot be specified together")
+    if isinstance(selected_channel, _UnsetType):
+        return audio_filter_properties
+    return _build_selected_channel_properties(selected_channel) if selected_channel is not None else None
+
+
 def _resolve_segmenter_properties(
     segmenter: SegmenterProperties | None,
     segmenter_properties: str | None,
@@ -255,13 +340,13 @@ class AmiVoiceClient:
     Args:
         api_key: 認証情報。省略時は環境変数 ``AMIVOICE_API_KEY`` を使用する。
         grammar_file_names: 接続エンジン名。
-        codec: 音声コーデック（例: ``"16K"``, ``"8K"``）。
+        codec: 音声コーデック（例: ``Codec.HEADER_16K``, ``Codec.LSB16K``）。
         result_type: 認識結果タイプ。
         proxy_server_name: プロキシサーバ名。
         connect_timeout: 接続タイムアウト（ミリ秒）。0 は無制限。
         receive_timeout: 受信タイムアウト（ミリ秒）。0 は無制限。
         mode: 認識モード。
-        profile_id: プロファイル ID。
+        profile_id: プロファイル ID。先頭に ``:`` がなければ警告する。
         profile_words: ワイヤー形式文字列または ``ProfileWord`` シーケンスのセッション単語登録リスト。
         segmenter_type: セグメンタータイプ。
         segmenter: 発話検出、話者ダイアライゼーション、言語識別の型付き設定。
@@ -281,7 +366,12 @@ class AmiVoiceClient:
         accept_topic: HTTP ``Accept-Topic`` ヘッダ（HRP 専用）。
         content_type: HTTP ``Content-Type`` ヘッダ（HRP 専用）。
         accept: HTTP ``Accept`` ヘッダ（HRP 専用）。
-        domain_id: ドメイン ID（HRP 専用）。
+        domain_id: ドメイン ID（HRP 専用）。指定すると ``d`` パラメータはこの文字列を基に組み立て、
+            ``confidence_level`` と音声フィルタ設定（``selected_channel`` / ``audio_filter_properties``）だけを追加する。
+            ``grammar_file_names``、``segmenter_properties`` など ``d`` パラメータへ入るほかの設定は送信しない。
+            ``domain_id`` に同じパラメータが含まれていても重複を検出しないため、両方に指定すると 2 つ送信される。
+        selected_channel: 認識対象チャネル番号または混合するチャネル範囲（HRP 専用）。
+        audio_filter_properties: 音声フィルタプロパティのraw文字列（HRP 専用）。
         confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）。
         no_input_timeout: 無入力タイムアウト（ミリ秒）（WRP 専用）。
         complete_timeout: ルールグラマの確定待ちタイムアウト（ミリ秒） 0 以上
@@ -306,8 +396,8 @@ class AmiVoiceClient:
         # HTTP 認識
         client = AmiVoiceClient(
             api_key="...",
-            grammar_file_names="-a-general",
-            codec="16K",
+            grammar_file_names=Engine.A_GENERAL,
+            codec=Codec.HEADER_16K,
         )
         result = client.transcribe(
             "audio.wav"
@@ -340,7 +430,7 @@ class AmiVoiceClient:
         api_key: str | None = None,
         *,
         grammar_file_names: str | None = None,
-        codec: str | None = None,
+        codec: Codec | str | None = None,
         result_type: str | None = None,
         proxy_server_name: str | None = None,
         connect_timeout: int = 0,
@@ -352,6 +442,8 @@ class AmiVoiceClient:
         segmenter_type: str | None = None,
         segmenter: SegmenterProperties | None = None,
         segmenter_properties: str | None = None,
+        selected_channel: int | tuple[int, int] | None = None,
+        audio_filter_properties: str | None = None,
         confidence_level: float | None = None,
         keep_filler_token: bool | None = None,
         result_updated_interval: int | None = None,
@@ -382,19 +474,21 @@ class AmiVoiceClient:
         Args:
             api_key (str | None): 認証情報。省略時は環境変数 ``AMIVOICE_API_KEY`` を使用する
             grammar_file_names (str | None): 接続エンジン名
-            codec (str | None): 音声コーデック
+            codec (Codec | str | None): 音声コーデック
             result_type (str | None): 認識結果タイプ
             proxy_server_name (str | None): プロキシサーバ名
             connect_timeout (int): 接続タイムアウト（ミリ秒）。0 は無制限
             receive_timeout (int): 受信タイムアウト（ミリ秒）。0 は無制限
             mode (str | None): 認識モード
-            profile_id (str | None): プロファイル ID
+            profile_id (str | None): プロファイル ID。先頭に ``:`` がなければ警告する
             profile_words (str | Sequence[ProfileWord] | None): セッション単語登録リスト
             logging_opt_out (bool): ログを保存しないエンドポイントを使用するか。カスタム URL は書き換えず、
                 ログ保存なしのパスでなければエラーにする
             segmenter_type (str | None): セグメンタータイプ
             segmenter (SegmenterProperties | None): 型付きセグメンター設定
             segmenter_properties (str | None): セグメンター設定
+            selected_channel (int | tuple[int, int] | None): 認識対象チャネル番号または混合するチャネル範囲
+            audio_filter_properties (str | None): 音声フィルタプロパティの raw 文字列
             confidence_level (float | None): 発話区間の信頼度しきい値
             keep_filler_token (bool | None): フィラー単語を出力するか
             result_updated_interval (int | None): 途中結果の発行間隔（ミリ秒）
@@ -413,7 +507,7 @@ class AmiVoiceClient:
             accept_topic (str | None): HTTP ``Accept-Topic`` ヘッダ（HRP 専用）
             content_type (str | None): HTTP ``Content-Type`` ヘッダ（HRP 専用）
             accept (str | None): HTTP ``Accept`` ヘッダ（HRP 専用）
-            domain_id (str | None): ドメイン ID（HRP 専用）
+            domain_id (str | None): ドメイン ID（HRP 専用）、``d`` パラメータへ追加される設定はクラスの docstring を参照
             no_input_timeout (int | None): 無入力タイムアウト（ミリ秒）（WRP 専用）
             http_api_url (str | _UnsetType): HRP API エンドポイント URL。``UNSET`` は既定 URL を使用する
             ws_api_url (str | _UnsetType): WRP API エンドポイント URL。``UNSET`` は既定 URL を使用する
@@ -433,6 +527,7 @@ class AmiVoiceClient:
 
         resolved_segmenter_properties = _resolve_segmenter_properties(segmenter, segmenter_properties)
         resolved_profile_words = _resolve_profile_words(profile_words)
+        resolved_audio_filter_properties = _resolve_audio_filter_properties(selected_channel, audio_filter_properties)
         self._api_key: str = resolved_key
         self._params = RecognitionParams(
             grammar_file_names=grammar_file_names,
@@ -446,6 +541,7 @@ class AmiVoiceClient:
             profile_words=resolved_profile_words,
             segmenter_type=segmenter_type,
             segmenter_properties=resolved_segmenter_properties,
+            audio_filter_properties=resolved_audio_filter_properties,
             keep_filler_token=keep_filler_token,
             result_updated_interval=result_updated_interval,
             extension=extension,
@@ -492,7 +588,7 @@ class AmiVoiceClient:
         audio: AudioSource,
         *,
         grammar_file_names: str | None | _UnsetType = UNSET,
-        codec: str | None | _UnsetType = UNSET,
+        codec: Codec | str | None | _UnsetType = UNSET,
         result_type: str | None | _UnsetType = UNSET,
         proxy_server_name: str | None | _UnsetType = UNSET,
         connect_timeout: int | _UnsetType = UNSET,
@@ -503,6 +599,8 @@ class AmiVoiceClient:
         segmenter_type: str | None | _UnsetType = UNSET,
         segmenter: SegmenterProperties | None | _UnsetType = UNSET,
         segmenter_properties: str | None | _UnsetType = UNSET,
+        selected_channel: int | tuple[int, int] | None | _UnsetType = UNSET,
+        audio_filter_properties: str | None | _UnsetType = UNSET,
         confidence_level: float | None | _UnsetType = UNSET,
         keep_filler_token: bool | None | _UnsetType = UNSET,
         result_updated_interval: int | None | _UnsetType = UNSET,
@@ -541,7 +639,7 @@ class AmiVoiceClient:
             connect_timeout: 接続タイムアウト（ミリ秒）の呼び出し時 override。
             receive_timeout: 受信タイムアウト（ミリ秒）の呼び出し時 override。
             mode: 認識モードの呼び出し時 override。
-            profile_id: プロファイル ID の呼び出し時 override。
+            profile_id: プロファイル ID の呼び出し時 override。先頭に ``:`` がなければ警告する。
             profile_words: ワイヤー形式文字列または ``ProfileWord`` シーケンスの呼び出し時 override。
             segmenter_type: セグメンタータイプの呼び出し時 override。
             segmenter: 型付きセグメンター設定の呼び出し時 override。
@@ -563,7 +661,9 @@ class AmiVoiceClient:
             accept_topic: HTTP ``Accept-Topic`` ヘッダの呼び出し時 override。
             content_type: HTTP ``Content-Type`` ヘッダの呼び出し時 override。
             accept: HTTP ``Accept`` ヘッダの呼び出し時 override。
-            domain_id: ドメイン ID の呼び出し時 override。
+            domain_id: ドメイン ID の呼び出し時 override。``d`` パラメータへ追加される設定はクラスの docstring を参照。
+            selected_channel: 認識対象チャネル番号または混合するチャネル範囲の呼び出し時 override。
+            audio_filter_properties: 音声フィルタプロパティraw文字列の呼び出し時 override。
             confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）の呼び出し時 override。
             raise_on_error: エラー結果の場合に ``RecognitionError`` を送出するか否か。
             api_url: HRP API エンドポイント URL の呼び出し時 override。指定時はカスタムURLとして扱う。
@@ -584,6 +684,10 @@ class AmiVoiceClient:
         """
         resolved_segmenter_properties = _resolve_segmenter_override(segmenter, segmenter_properties)
         resolved_profile_words = _resolve_profile_words_override(profile_words)
+        resolved_audio_filter_properties = _resolve_audio_filter_properties_override(
+            selected_channel,
+            audio_filter_properties,
+        )
         params = merge_params(
             self._params,
             grammar_file_names=grammar_file_names,
@@ -597,6 +701,7 @@ class AmiVoiceClient:
             profile_words=resolved_profile_words,
             segmenter_type=segmenter_type,
             segmenter_properties=resolved_segmenter_properties,
+            audio_filter_properties=resolved_audio_filter_properties,
             keep_filler_token=keep_filler_token,
             result_updated_interval=result_updated_interval,
             extension=extension,
@@ -678,6 +783,7 @@ class AmiVoiceClient:
         wildcard_model_penalty = None if params.wildcard_model_penalty is None else repr(params.wildcard_model_penalty)
         _set_optional_transport_parameter(hrp, "setCompleteTimeout", complete_timeout)
         _set_optional_transport_parameter(hrp, "setWildcardModelPenalty", wildcard_model_penalty)
+        _set_optional_transport_parameter(hrp, "setAudioFilterProperties", params.audio_filter_properties)
         optional_setters: "tuple[tuple[Callable[[str | None], None], str | None], ...]" = (
             (hrp.setGrammarFileNames, params.grammar_file_names),
             (hrp.setCodec, params.codec),
@@ -772,7 +878,7 @@ class AmiVoiceClient:
         self,
         *,
         grammar_file_names: str | None | _UnsetType = UNSET,
-        codec: str | None | _UnsetType = UNSET,
+        codec: Codec | str | None | _UnsetType = UNSET,
         result_type: str | None | _UnsetType = UNSET,
         proxy_server_name: str | None | _UnsetType = UNSET,
         connect_timeout: int | _UnsetType = UNSET,
@@ -814,7 +920,7 @@ class AmiVoiceClient:
             connect_timeout: 接続タイムアウト（ミリ秒）の呼び出し時 override。
             receive_timeout: 受信タイムアウト（ミリ秒）の呼び出し時 override。
             mode: 認識モードの呼び出し時 override。
-            profile_id: プロファイル ID の呼び出し時 override。
+            profile_id: プロファイル ID の呼び出し時 override。先頭に ``:`` がなければ警告する。
             profile_words: ワイヤー形式文字列または ``ProfileWord`` シーケンスの呼び出し時 override。
             segmenter_type: セグメンタータイプの呼び出し時 override。
             segmenter: 型付きセグメンター設定の呼び出し時 override。
@@ -846,6 +952,8 @@ class AmiVoiceClient:
                 ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合。
                 ``logging_opt_out`` が bool でない場合。
                 ``api_url`` が文字列でない場合。
+                コンストラクタで ``selected_channel`` または ``audio_filter_properties`` を指定した場合。
+                WebSocket インタフェースはチャネル選択に対応せず、1 チャネル目だけを認識するため。
 
         Example::
 
@@ -862,6 +970,11 @@ class AmiVoiceClient:
                         )
                 session.end()
         """
+        if self._params.audio_filter_properties is not None:
+            raise ConfigurationError(
+                "selected_channel and audio_filter_properties are not supported by stream(); "
+                "the WebSocket interface recognizes only the first channel"
+            )
         resolved_segmenter_properties = _resolve_segmenter_override(segmenter, segmenter_properties)
         resolved_profile_words = _resolve_profile_words_override(profile_words)
         params = merge_params(
@@ -920,7 +1033,7 @@ def transcribe(  # noqa: PLR0913
     api_url: str | _UnsetType = UNSET,
     logging_opt_out: bool = False,
     grammar_file_names: str | None = None,
-    codec: str | None = None,
+    codec: Codec | str | None = None,
     result_type: str | None = None,
     proxy_server_name: str | None = None,
     connect_timeout: int = 0,
@@ -931,6 +1044,8 @@ def transcribe(  # noqa: PLR0913
     segmenter_type: str | None = None,
     segmenter: SegmenterProperties | None = None,
     segmenter_properties: str | None = None,
+    selected_channel: int | tuple[int, int] | None = None,
+    audio_filter_properties: str | None = None,
     confidence_level: float | None = None,
     keep_filler_token: bool | None = None,
     result_updated_interval: int | None = None,
@@ -964,13 +1079,13 @@ def transcribe(  # noqa: PLR0913
         api_url: AmiVoice API の接続先 URL。カスタムURLは ``logging_opt_out`` で書き換えない。
         logging_opt_out: ログを保存しない既定エンドポイントを使用するか。
         grammar_file_names: 接続エンジン名。
-        codec: 音声コーデック（例: ``"16K"``, ``"8K"``）。
+        codec: 音声コーデック（例: ``Codec.HEADER_16K``, ``Codec.LSB16K``）。
         result_type: 認識結果タイプ。
         proxy_server_name: プロキシサーバ名。
         connect_timeout: 接続タイムアウト（ミリ秒）。0 は無制限。
         receive_timeout: 受信タイムアウト（ミリ秒）。0 は無制限。
         mode: 認識モード。
-        profile_id: プロファイル ID。
+        profile_id: プロファイル ID。先頭に ``:`` がなければ警告する。
         profile_words: ワイヤー形式文字列または ``ProfileWord`` シーケンスのセッション単語登録リスト。
         segmenter_type: セグメンタータイプ。
         segmenter: 発話検出、話者ダイアライゼーション、言語識別の型付き設定。
@@ -992,7 +1107,9 @@ def transcribe(  # noqa: PLR0913
         accept_topic: HTTP ``Accept-Topic`` ヘッダ。
         content_type: HTTP ``Content-Type`` ヘッダ。
         accept: HTTP ``Accept`` ヘッダ。
-        domain_id: ドメイン ID。
+        domain_id: ドメイン ID。``d`` パラメータへ追加される設定は ``AmiVoiceClient`` の docstring を参照。
+        selected_channel: 認識対象チャネル番号または混合するチャネル範囲。
+        audio_filter_properties: 音声フィルタプロパティraw文字列。
         confidence_level: 発話区間の信頼度しきい値（0.0 以上 1.0 以下）。
         raise_on_error: エラー結果の場合に ``RecognitionError`` を送出するか否か。
         _transport: テスト用 HRP トランスポート注入口（非公開）。
@@ -1027,6 +1144,8 @@ def transcribe(  # noqa: PLR0913
         segmenter_type=segmenter_type,
         segmenter=segmenter,
         segmenter_properties=segmenter_properties,
+        selected_channel=selected_channel,
+        audio_filter_properties=audio_filter_properties,
         keep_filler_token=keep_filler_token,
         result_updated_interval=result_updated_interval,
         extension=extension,

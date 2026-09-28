@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from amivoice import ProfileWord
+from amivoice import Codec, Engine, ProfileWord
 from amivoice._segmenter import SegmenterProperties
 from amivoice._stream import StreamConnectionManager, StreamSession
 from amivoice._transport import HrpTransport
@@ -146,6 +146,31 @@ def test_AmiVoiceClient_transcribe_legacy_hrp_transport_without_rule_grammar_set
 
     # Then: 新setterの属性解決を行わず認識結果を返す
     assert result.data == {"text": "hello"}
+
+
+def test_AmiVoiceClient_transcribe_legacy_hrp_transport_without_audio_filter_setter_succeeds() -> None:
+    """音声フィルタsetterを持たない従来の hrp_transport でも通常の認識が成功することを確認する。"""
+    # Given: setAudioFilterPropertiesを持たない従来のHRPトランスポート
+    mock_hrp = _make_mock_hrp(legacy=True)
+    assert not hasattr(mock_hrp, "setAudioFilterProperties")
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
+
+    # When: 音声フィルタを指定せずに認識を実行する
+    result = client.transcribe(b"audio-data")
+
+    # Then: 新setterの属性解決を行わず認識結果を返す
+    assert result.data == {"text": "hello"}
+
+
+def test_AmiVoiceClient_transcribe_legacy_hrp_transport_with_selected_channel_invalid_raise_AttributeError() -> None:
+    """音声フィルタsetterを持たない hrp_transport でチャネル指定を黙って捨てないことを確認する。"""
+    # Given: setAudioFilterPropertiesを持たない従来のHRPトランスポートとチャネル指定
+    mock_hrp = _make_mock_hrp(legacy=True)
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, selected_channel=1)
+
+    # When / Then: 未対応のsetterとしてAttributeErrorが送出される
+    with pytest.raises(AttributeError, match="setAudioFilterProperties"):
+        client.transcribe(b"audio-data")
 
 
 def test_AmiVoiceClient_transcribe_success_returns_result() -> None:
@@ -802,6 +827,25 @@ def test_AmiVoiceClient_transcribe_call_args_override_instance_defaults() -> Non
     mock_hrp.setExtension.assert_called_once_with("override-tag")
 
 
+def test_AmiVoiceClient_transcribe_constant_params_valid_return_wire_values() -> None:
+    """CodecとEngineの定数を指定した場合にAPIへ送る文字列がsetterへ渡されることを確認する。"""
+    # Given: 定数で既定値を保持したクライアントと注入済み HRP トランスポート
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(
+        api_key="key",
+        grammar_file_names=Engine.A_GENERAL,
+        codec=Codec.HEADER_16K,
+        hrp_transport=mock_hrp,
+    )
+
+    # When: 呼び出し時にcodecを定数で上書きして transcribe する
+    client.transcribe(b"audio-data", codec=Codec.LSB8K)
+
+    # Then: 定数の値が文字列として setter に渡される
+    mock_hrp.setGrammarFileNames.assert_called_once_with("-a-general")
+    mock_hrp.setCodec.assert_called_once_with("LSB8K")
+
+
 def test_AmiVoiceClient_transcribe_omitted_args_use_instance_defaults() -> None:
     """transcribe() で引数を省略した場合にインスタンス既定値が使われることを確認する。"""
     # Given: 既定値を保持したクライアントと注入済み HRP トランスポート
@@ -938,6 +982,24 @@ def test_AmiVoiceClient_stream_returns_stream_connection_manager() -> None:
 
     # Then: StreamConnectionManager が返る
     assert isinstance(manager, StreamConnectionManager)
+
+
+@pytest.mark.parametrize(
+    "audio_filter_kwargs",
+    [{"selected_channel": 1}, {"audio_filter_properties": "selectedChannel=1"}],
+)
+def test_AmiVoiceClient_stream_audio_filter_configured_invalid_raise_ConfigurationError(
+    audio_filter_kwargs: dict[str, object],
+) -> None:
+    """コンストラクタの音声フィルタ設定がstream()で黙って捨てられないことを確認する"""
+    # Given: チャネル選択を設定したWRPクライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp, **audio_filter_kwargs)  # type: ignore[arg-type]
+
+    # When / Then: stream()はWebSocket非対応の設定としてConfigurationErrorを送出する
+    with pytest.raises(ConfigurationError, match="not supported by stream"):
+        client.stream()
+    mock_wrp.connect.assert_not_called()
 
 
 def test_AmiVoiceClient_stream_context_manager_returns_stream_session() -> None:
@@ -1554,6 +1616,137 @@ def test_AmiVoiceClient_stream_rule_grammar_parameter_override_passes_string(
     getattr(mock_wrp, setter_name).assert_called_once_with(expected)
 
 
+@pytest.mark.parametrize(
+    ("selected_channel", "expected"),
+    [(0, "selectedChannel=0"), ((0, 1), "selectedChannel=0-1")],
+)
+def test_AmiVoiceClient_transcribe_selected_channel_valid_passes_audio_filter_properties(
+    selected_channel: int | tuple[int, int],
+    expected: str,
+) -> None:
+    """selected_channelの単一・範囲指定がHRPへ渡ることを確認する"""
+    # Given: 型付きチャネル指定を設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, selected_channel=selected_channel)
+
+    # When: HTTP認識を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: audioFilterPropertiesのselectedChannel形式がHRP setterへ渡る
+    mock_hrp.setAudioFilterProperties.assert_called_once_with(expected)
+
+
+def test_AmiVoiceClient_transcribe_audio_filter_properties_raw_valid_passes_unchanged() -> None:
+    """rawのaudio_filter_propertiesがHRPへそのまま渡ることを確認する"""
+    # Given: raw音声フィルタプロパティを設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(
+        api_key="key",
+        hrp_transport=mock_hrp,
+        audio_filter_properties="selectedChannel=0-1",
+    )
+
+    # When: HTTP認識を実行する
+    client.transcribe(b"audio-data")
+
+    # Then: raw文字列がHRP setterへ渡る
+    mock_hrp.setAudioFilterProperties.assert_called_once_with("selectedChannel=0-1")
+
+
+def test_AmiVoiceClient_transcribe_selected_channel_override_valid_passes_audio_filter_properties() -> None:
+    """transcribeのselected_channel overrideがHRPへ渡ることを確認する"""
+    # Given: 音声フィルタプロパティを指定していないHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
+
+    # When: 呼び出し時にチャネル範囲を指定してHTTP認識を実行する
+    client.transcribe(b"audio-data", selected_channel=(1, 2))
+
+    # Then: overrideのselectedChannel形式がHRP setterへ渡る
+    mock_hrp.setAudioFilterProperties.assert_called_once_with("selectedChannel=1-2")
+
+
+def test_AmiVoiceClient_transcribe_selected_channel_override_none_valid_clears_constructor_setting() -> None:
+    """transcribeのselected_channel=Noneでコンストラクタの指定が解除されることを確認する"""
+    # Given: コンストラクタでチャネルを指定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, selected_channel=1)
+
+    # When: 呼び出し時にselected_channel=Noneを指定してHTTP認識を実行する
+    client.transcribe(b"audio-data", selected_channel=None)
+
+    # Then: 音声フィルタプロパティはHRPへ渡らない
+    mock_hrp.setAudioFilterProperties.assert_not_called()
+
+
+def test_AmiVoiceClient_transcribe_audio_filter_properties_override_valid_replaces_selected_channel() -> None:
+    """transcribeのraw文字列overrideでコンストラクタのselected_channelが上書きされることを確認する"""
+    # Given: コンストラクタでチャネルを指定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, selected_channel=1)
+
+    # When: 呼び出し時にraw文字列を指定してHTTP認識を実行する
+    client.transcribe(b"audio-data", audio_filter_properties="selectedChannel=2")
+
+    # Then: 呼び出し時のraw文字列だけがHRP setterへ渡る
+    mock_hrp.setAudioFilterProperties.assert_called_once_with("selectedChannel=2")
+
+
+def test_AmiVoiceClient_transcribe_audio_filter_properties_override_none_valid_clears_constructor_setting() -> None:
+    """transcribeのaudio_filter_properties=Noneでコンストラクタの指定が解除されることを確認する"""
+    # Given: コンストラクタでraw文字列を指定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, audio_filter_properties="selectedChannel=1")
+
+    # When: 呼び出し時にaudio_filter_properties=Noneを指定してHTTP認識を実行する
+    client.transcribe(b"audio-data", audio_filter_properties=None)
+
+    # Then: 音声フィルタプロパティはHRPへ渡らない
+    mock_hrp.setAudioFilterProperties.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "selected_channel",
+    [-1, (-1, 0), (1, 0), (0, 0), (2, 2), (0, 1, 2), True],
+)
+def test_AmiVoiceClient_selected_channel_invalid_raise_ConfigurationError(selected_channel: object) -> None:
+    """不正なselected_channelでConfigurationErrorが送出されることを確認する"""
+    # Given: 不正なチャネル番号または範囲
+    # When / Then: クライアント生成でConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match="selected_channel"):
+        AmiVoiceClient(api_key="key", selected_channel=selected_channel)  # type: ignore[arg-type]
+
+
+def test_AmiVoiceClient_transcribe_selected_channel_same_range_override_invalid_raise_ConfigurationError() -> None:
+    """transcribeの開始と終了が同じチャネル範囲でConfigurationErrorが送出されることを確認する"""
+    # Given: 音声フィルタ指定を持たないHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
+
+    # When / Then: 呼び出し時に(0, 0)を指定すると送信前にConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="start and end must be different"):
+        client.transcribe(b"audio-data", selected_channel=(0, 0))
+    mock_hrp.setAudioFilterProperties.assert_not_called()
+
+
+def test_AmiVoiceClient_selected_channel_and_raw_properties_invalid_raise_ConfigurationError() -> None:
+    """selected_channelとraw文字列の同時指定でConfigurationErrorが送出されることを確認する"""
+    # Given: 型付き指定とraw指定を同時に指定したクライアント設定
+    # When / Then: クライアント生成でConfigurationErrorが送出される
+    with pytest.raises(ConfigurationError, match="selected_channel and audio_filter_properties"):
+        AmiVoiceClient(api_key="key", selected_channel=0, audio_filter_properties="selectedChannel=1")
+
+
+def test_AmiVoiceClient_transcribe_selected_channel_and_raw_override_invalid_raise_ConfigurationError() -> None:
+    """transcribeの型付き指定とraw指定の同時指定でConfigurationErrorが送出されることを確認する"""
+    # Given: 音声フィルタ指定を持たないクライアント
+    client = AmiVoiceClient(api_key="key")
+
+    # When / Then: 呼び出し時に型付き指定とraw指定を同時に指定するとエラーになる
+    with pytest.raises(ConfigurationError, match="selected_channel and audio_filter_properties"):
+        client.transcribe(b"audio-data", selected_channel=0, audio_filter_properties="selectedChannel=1")
+
+
 def test_AmiVoiceClient_transcribe_profile_words_sequence_valid_passes_serialized_string() -> None:
     """コンストラクタのProfileWordシーケンスがHRPへシリアライズされることを確認する"""
     # Given: ProfileWordシーケンスを設定したHRPクライアント
@@ -1650,3 +1843,50 @@ def test_AmiVoiceClient_stream_profile_words_sequence_valid_passes_serialized_st
 
     # Then: profileWordsのワイヤー形式がWRP setterへ渡る
     mock_wrp.setProfileWords.assert_called_once_with("AmiVoice あみぼいす")
+
+
+def test_AmiVoiceClient_transcribe_profile_id_without_colon_warns_and_passes_as_is() -> None:
+    """コロンなしのprofile_idで警告し、値を書き換えずに送ることを確認する"""
+    # Given: コロンなしのprofile_idを設定したHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    with pytest.warns(UserWarning, match="profile_id"):
+        client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, profile_id="myprofile")
+
+    # When: HTTP認識を実行する
+    with pytest.warns(UserWarning, match="profile_id"):
+        client.transcribe(b"audio-data")
+
+    # Then: profileIdはコロンを付与せずHRP setterへ渡る
+    mock_hrp.setProfileId.assert_called_once_with("myprofile")
+
+
+def test_AmiVoiceClient_transcribe_profile_id_override_without_colon_warns() -> None:
+    """transcribeのコロンなしprofile_id overrideで警告することを確認する"""
+    # Given: コロン付きの既定profile_idを持つHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, profile_id=":default-profile")
+
+    # When: コロンなしのprofile_idでHTTP認識時の設定を上書きする
+    with pytest.warns(UserWarning, match="profile_id"):
+        client.transcribe(b"audio-data", profile_id="override-profile")
+
+    # Then: override値は書き換えられずHRP setterへ渡る
+    mock_hrp.setProfileId.assert_called_once_with("override-profile")
+
+
+@pytest.mark.filterwarnings("error")
+def test_AmiVoiceClient_stream_profile_id_with_colon_no_warning_passes_as_is() -> None:
+    """streamのコロン付きprofile_idが警告なしでWRPへ渡ることを確認する"""
+    # Given: コロン付きのprofile_idを設定したクライアント
+    mock_wrp = _make_mock_wrp()
+    client = AmiVoiceClient(api_key="key", profile_id=":myprofile")
+
+    # When: ストリーミングセッションを開始する
+    with (
+        patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
+        client.stream() as session,
+    ):
+        session.end()
+
+    # Then: profileIdがそのままWRP setterへ渡る
+    mock_wrp.setProfileId.assert_called_once_with(":myprofile")
