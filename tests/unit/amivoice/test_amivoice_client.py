@@ -1688,7 +1688,7 @@ def test_AmiVoiceClient_transcribe_audio_filter_properties_override_none_valid_c
 
 @pytest.mark.parametrize(
     "selected_channel",
-    [-1, (-1, 0), (1, 0), (0, 1, 2), True],
+    [-1, (-1, 0), (1, 0), (0, 0), (2, 2), (0, 1, 2), True],
 )
 def test_AmiVoiceClient_selected_channel_invalid_raise_ConfigurationError(selected_channel: object) -> None:
     """不正なselected_channelでConfigurationErrorが送出されることを確認する"""
@@ -1696,6 +1696,18 @@ def test_AmiVoiceClient_selected_channel_invalid_raise_ConfigurationError(select
     # When / Then: クライアント生成でConfigurationErrorが送出される
     with pytest.raises(ConfigurationError, match="selected_channel"):
         AmiVoiceClient(api_key="key", selected_channel=selected_channel)  # type: ignore[arg-type]
+
+
+def test_AmiVoiceClient_transcribe_selected_channel_same_range_override_invalid_raise_ConfigurationError() -> None:
+    """transcribeの開始と終了が同じチャネル範囲でConfigurationErrorが送出されることを確認する"""
+    # Given: 音声フィルタ指定を持たないHRPクライアント
+    mock_hrp = _make_mock_hrp()
+    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
+
+    # When / Then: 呼び出し時に(0, 0)を指定すると送信前にConfigurationErrorになる
+    with pytest.raises(ConfigurationError, match="start and end must be different"):
+        client.transcribe(b"audio-data", selected_channel=(0, 0))
+    mock_hrp.setAudioFilterProperties.assert_not_called()
 
 
 def test_AmiVoiceClient_selected_channel_and_raw_properties_invalid_raise_ConfigurationError() -> None:

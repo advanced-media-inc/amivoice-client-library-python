@@ -191,7 +191,7 @@ def _build_selected_channel_properties(selected_channel: int | tuple[int, int]) 
         ``audioFilterProperties``へ渡すselectedChannel文字列
 
     Raises:
-        ConfigurationError: チャネル番号または範囲が不正な場合
+        ConfigurationError: チャネル番号または範囲が不正な場合、範囲の開始と終了が同じ場合
     """
     if isinstance(selected_channel, bool):
         raise ConfigurationError("selected_channel must be a non-negative integer or a pair of integers")
@@ -214,6 +214,10 @@ def _build_selected_channel_properties(selected_channel: int | tuple[int, int]) 
         raise ConfigurationError("selected_channel range must contain non-negative integers")
     if start_channel > end_channel:
         raise ConfigurationError("selected_channel range start must not be greater than end")
+    if start_channel == end_channel:
+        raise ConfigurationError(
+            "selected_channel range start and end must be different; use an integer to select a single channel"
+        )
     return f"selectedChannel={start_channel}-{end_channel}"
 
 
