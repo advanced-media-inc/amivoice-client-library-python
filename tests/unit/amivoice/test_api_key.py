@@ -104,7 +104,15 @@ def test_api_key_issuance_client_issue_bearer_valid_sends_authorization_and_retu
 
 @pytest.mark.parametrize(
     ("expires_in", "expected"),
-    [(1234, "1234"), ("2h", "2h"), (timedelta(milliseconds=1500), "1500")],
+    [
+        (1234, "1234"),
+        (1, "1"),
+        ("2h", "2h"),
+        (timedelta(milliseconds=1500), "1500"),
+        (timedelta(milliseconds=1001), "1001"),
+        (timedelta(milliseconds=1, microseconds=999), "1"),
+        (timedelta(days=100), "8640000000"),
+    ],
 )
 def test_api_key_issuance_client_issue_expires_in_valid_serializes_value(
     expires_in: int | str | timedelta,
@@ -120,6 +128,25 @@ def test_api_key_issuance_client_issue_expires_in_valid_serializes_value(
 
     # Then: epiが指定値へ変換される
     assert parse_qs(transport.requests[0][3].decode("utf-8")) == {"epi": [expected]}
+
+
+@pytest.mark.parametrize(
+    "expires_in",
+    [0, -5, timedelta(0), timedelta(microseconds=999), timedelta(milliseconds=-1)],
+)
+def test_api_key_issuance_client_issue_expires_in_not_positive_invalid_raise_ConfigurationError(
+    expires_in: int | timedelta,
+) -> None:
+    """1ミリ秒未満の整数または期間でConfigurationErrorが送出され送信しないことを確認する。"""
+    # Given: APIキーを返すフェイクトランスポート
+    transport = FakeApiKeyIssuanceTransport(responses=[(200, b"issued-key")])
+    client = ApiKeyIssuanceClient(api_key="issuer-key", transport=transport)
+
+    # When / Then: 0以下の有効期限が拒否される
+    with pytest.raises(ConfigurationError, match="at least 1 millisecond"):
+        client.issue(expires_in=expires_in)
+
+    assert transport.requests == []
 
 
 def test_api_key_issuance_client_issue_allowed_ip_addresses_string_invalid_raise_ConfigurationError() -> None:

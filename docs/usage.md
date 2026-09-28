@@ -44,7 +44,7 @@ issued_api_key = api_key_issuance_client.issue(
 )
 ```
 
-API キーをコンストラクタへ渡さない場合は、`AMIVOICE_ISSUER_API_KEY`の環境変数を使用します。音声認識用の`AMIVOICE_API_KEY`は使用しません。`expires_in`にはミリ秒の整数、`2h`などの API 形式の文字列、`timedelta`を指定できます。
+API キーをコンストラクタへ渡さない場合は、`AMIVOICE_ISSUER_API_KEY`の環境変数を使用します。音声認識用の`AMIVOICE_API_KEY`は使用しません。`expires_in`にはミリ秒の整数、`2h`などの API 形式の文字列、`timedelta`を指定できます。整数と`timedelta`は 1 ミリ秒以上を指定してください。1 ミリ秒未満の`timedelta`の端数は切り捨てます。
 `allowed_ip_addresses`には、IPv4 アドレスまたは IPv4 CIDR を文字列、`ipaddress.IPv4Address`、`ipaddress.IPv4Network`で指定します。IPv6 アドレスや空の一覧を指定すると`ConfigurationError`が送出されます。接続元 IP アドレスを制限しない場合は`allowed_ip_addresses`を省略してください。
 
 ## HTTP音声認識

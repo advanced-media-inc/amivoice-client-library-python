@@ -156,17 +156,24 @@ def _serialize_expires_in(expires_in: int | str | timedelta | None) -> str | Non
         API の ``epi`` パラメータへ渡す文字列。未指定の場合は ``None``
 
     Raises:
-        ConfigurationError: 有効期限の型が対応していない場合
+        ConfigurationError: 有効期限の型が対応していない場合、または整数か期間が 1 ミリ秒未満の場合
     """
     if expires_in is None:
         return None
     if isinstance(expires_in, bool):
         raise ConfigurationError("expires_in must be an integer, string, or timedelta")
-    if isinstance(expires_in, int | str):
-        return str(expires_in)
-    if isinstance(expires_in, timedelta):
-        return str(int(expires_in.total_seconds() * 1000))
-    raise ConfigurationError("expires_in must be an integer, string, or timedelta")
+    if isinstance(expires_in, str):
+        return expires_in
+    if isinstance(expires_in, int):
+        expires_in_milliseconds = expires_in
+    elif isinstance(expires_in, timedelta):
+        # total_seconds() の浮動小数では 1001 ミリ秒が 1000 になるため、整数のまま計算する
+        expires_in_milliseconds = expires_in // timedelta(milliseconds=1)
+    else:
+        raise ConfigurationError("expires_in must be an integer, string, or timedelta")
+    if expires_in_milliseconds <= 0:
+        raise ConfigurationError("expires_in must be at least 1 millisecond")
+    return str(expires_in_milliseconds)
 
 
 def _serialize_allowed_ip_address(allowed_ip_address: _AllowedIpAddress) -> str:
@@ -316,7 +323,7 @@ class ApiKeyIssuanceClient:
         Raises:
             ApiKeyIssuanceApiError: API がエラーを返した場合、またはレスポンスが空の場合
             ConnectionFailedError: 通信に失敗した場合
-            ConfigurationError: 有効期限の型が対応していない場合、または接続元 IP 制限が不正な場合
+            ConfigurationError: 有効期限の型が対応していない場合、有効期限が 1 ミリ秒未満の場合、または接続元 IP 制限が不正な場合
         """
         form: dict[str, str] = {}
         serialized_expires_in = _serialize_expires_in(expires_in)
