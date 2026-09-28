@@ -33,7 +33,7 @@ def build_grammar_file_names(
 
     Args:
         *grammars: URL または GZIP + Base64 済みのグラマ本文
-        engine: 接続エンジン名
+        engine: 接続エンジン名、グラマファイルを使えるのは ``Engine.A_RULE_INPUT_PRIVATE`` だけ
         fallback: グラマ間をフォールバック区切りで連結するか
 
     Returns:

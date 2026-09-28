@@ -62,7 +62,7 @@ print(result.text)
 
 `Codec`は音声フォーマット名の定数です。`Codec.HEADER_16K`は`"16K"`と同じ値として扱われ、`Codec("lsb16k")`のように大文字小文字を区別せずに解決できます。文字列が有効な音声フォーマット名かを判定するときは、`"lsb16k" in Codec`ではなく`Codec(value)`を呼び、`ValueError`を捕捉してください。`in`演算子の結果は Python のバージョンによって異なります。音声ファイルのヘッダにフォーマット情報がある場合は、HTTP 音声認識では`codec`の指定を省略できます。ヘッダ付き音声で明示的に指定する場合は、8kHz または 11.025kHz なら`Codec.HEADER_8K`、16kHz 以上なら`Codec.HEADER_16K`を使用してください。ヘッダなし PCM では`Codec.LSB16K`や`Codec.MSB16K`など、エンディアンとサンプリングレートに合った定数を指定します。ヘッダなし音声に`Codec.HEADER_8K`や`Codec.HEADER_16K`を指定すると、ヘッダの読み込みに失敗して`LSB16K`として扱われます。詳細は[AmiVoice APIの音声フォーマット](https://docs.amivoice.com/amivoice-api/manual/audio-format)を参照してください。
 
-`Engine`は接続エンジン名の定数です。定数名は、公式ドキュメントの接続エンジン名から先頭の`-`を除き、`-`を`_`に置き換えて大文字にしたものです（例：`-a2-ja-general`は`Engine.A2_JA_GENERAL`）。会話用の汎用エンジンは`Engine.A_GENERAL`、音声入力用は`Engine.A_GENERAL_INPUT`、AmiVoice API Private のルールエンジンは`Engine.A_RULE_INPUT_PRIVATE`で指定できます。ルールグラマを使う場合も、これらの定数とグラマファイルを`build_grammar_file_names()`で組み合わせられます。
+`Engine`は接続エンジン名の定数です。定数名は、公式ドキュメントの接続エンジン名から先頭の`-`を除き、`-`を`_`に置き換えて大文字にしたものです（例：`-a2-ja-general`は`Engine.A2_JA_GENERAL`）。会話用の汎用エンジンは`Engine.A_GENERAL`、音声入力用は`Engine.A_GENERAL_INPUT`、AmiVoice API Private のルールエンジンは`Engine.A_RULE_INPUT_PRIVATE`で指定できます。グラマファイルを使うルールグラマは`Engine.A_RULE_INPUT_PRIVATE`専用で、ほかのエンジンとは組み合わせられません（[ルールグラマ](https://docs.amivoice.com/amivoice-api/manual/rule-grammar)）。
 
 エンジンごとに対応するサンプリングレートとインタフェースが異なるため、`Engine`と`Codec`を組み合わせるときは[AmiVoice APIの音声認識エンジン一覧](https://docs.amivoice.com/amivoice-api/manual/engines#list)を確認してください。特に次の制約があります。
 
@@ -236,7 +236,7 @@ result = client.transcribe("audio.wav")
 
 ### ルールグラマ
 
-AmiVoice API Private の「音声入力_ルール」エンジンを使う場合は、`build_grammar_file_names()`で接続エンジン名とグラマ指定を組み立てます。この機能は通常の AmiVoice API 環境では利用できません。
+AmiVoice API Private の「音声入力_ルール」エンジン（`Engine.A_RULE_INPUT_PRIVATE`）を使う場合は、`build_grammar_file_names()`で接続エンジン名とグラマ指定を組み立てます。グラマファイルを使えるのはこのエンジンだけで、`build_grammar_file_names()`も既定でこのエンジンを使います。この機能は通常の AmiVoice API 環境では利用できません。
 
 グラマ本文を直接指定するときは、`encode_grammar()`で GZIP 圧縮と Base64 エンコードを行います。URL とエンコード済み本文は混在でき、ヘルパーは URL エンコードを追加しません。
 
