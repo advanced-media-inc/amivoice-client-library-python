@@ -1,5 +1,6 @@
 """API キー発行 API クライアントのユニットテスト。"""
 
+import ipaddress
 from dataclasses import dataclass, field
 from datetime import timedelta
 from urllib.parse import parse_qs
@@ -127,6 +128,53 @@ def test_api_key_client_issue_allowed_ip_addresses_string_invalid_raise_Configur
     # When / Then: 単一文字列のIPアドレス制限が拒否される
     with pytest.raises(ConfigurationError, match="allowed_ip_addresses"):
         client.issue(allowed_ip_addresses="203.0.113.1")
+
+    assert transport.requests == []
+
+
+def test_api_key_client_issue_allowed_ip_addresses_ipaddress_objects_valid_serializes_value() -> None:
+    """ipaddressのIPv4オブジェクトをIP制限として送信できることを確認する。"""
+    # Given: APIキーを返すフェイクトランスポート
+    transport = FakeApiKeyTransport(responses=[(200, b"issued-key")])
+    client = ApiKeyClient(api_key="issuer-key", transport=transport)
+
+    # When: IPv4アドレスとIPv4ネットワークのオブジェクトを指定してAPIキーを発行する
+    client.issue(
+        allowed_ip_addresses=(ipaddress.IPv4Address("203.0.113.1"), ipaddress.IPv4Network("198.51.100.0/24")),
+    )
+
+    # Then: ipaが文字列表現のカンマ区切りになる
+    assert parse_qs(transport.requests[0][3].decode("utf-8")) == {"ipa": ["203.0.113.1,198.51.100.0/24"]}
+
+
+def test_api_key_client_issue_allowed_ip_addresses_empty_invalid_raise_ConfigurationError() -> None:
+    """空のIP制限一覧でConfigurationErrorが送出され送信しないことを確認する。"""
+    # Given: APIキーを返すフェイクトランスポート
+    transport = FakeApiKeyTransport(responses=[(200, b"issued-key")])
+    client = ApiKeyClient(api_key="issuer-key", transport=transport)
+
+    # When / Then: 空の一覧が拒否される
+    with pytest.raises(ConfigurationError, match="must not be empty"):
+        client.issue(allowed_ip_addresses=[])
+
+    assert transport.requests == []
+
+
+@pytest.mark.parametrize(
+    "allowed_ip_address",
+    ["::1", "2001:db8::/32", "not-an-ip", "203.0.113.1 198.51.100.1", "", "203.0.113.0/33", 1, ipaddress.IPv6Address("::1")],
+)
+def test_api_key_client_issue_allowed_ip_addresses_non_ipv4_invalid_raise_ConfigurationError(
+    allowed_ip_address: object,
+) -> None:
+    """IPv4アドレスまたはIPv4 CIDRでない値でConfigurationErrorが送出され送信しないことを確認する。"""
+    # Given: APIキーを返すフェイクトランスポート
+    transport = FakeApiKeyTransport(responses=[(200, b"issued-key")])
+    client = ApiKeyClient(api_key="issuer-key", transport=transport)
+
+    # When / Then: 不正な値を含むIP制限が拒否される
+    with pytest.raises(ConfigurationError, match="allowed_ip_addresses"):
+        client.issue(allowed_ip_addresses=["203.0.113.1", allowed_ip_address])  # type: ignore[list-item]
 
     assert transport.requests == []
 

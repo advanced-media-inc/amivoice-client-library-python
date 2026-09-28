@@ -1,6 +1,7 @@
 """AmiVoice API キー発行 API の高レベルクライアント。"""
 
 import http.client
+import ipaddress
 import os
 import ssl
 from collections.abc import Sequence
@@ -15,6 +16,9 @@ __all__ = ["ApiKeyClient", "ApiKeyTransport"]
 _DEFAULT_BASE_URL = "https://acp-api.amivoice.com"
 _ISSUE_API_PATH = "/issue_service_authorization"
 _ISSUER_API_KEY_ENVIRONMENT_VARIABLE = "AMIVOICE_ISSUER_API_KEY"
+
+# API キーを利用できる接続元 IPv4 アドレスまたは IPv4 CIDR の指定
+_AllowedIpAddress = str | ipaddress.IPv4Address | ipaddress.IPv4Network
 
 
 class ApiKeyTransport(Protocol):
@@ -165,6 +169,53 @@ def _serialize_expires_in(expires_in: int | str | timedelta | None) -> str | Non
     raise ConfigurationError("expires_in must be an integer, string, or timedelta")
 
 
+def _serialize_allowed_ip_address(allowed_ip_address: _AllowedIpAddress) -> str:
+    """接続元 IP 制限の 1 要素を検証して API の文字列表現へ変換する。
+
+    Args:
+        allowed_ip_address: IPv4 アドレス、IPv4 CIDR の文字列、または ipaddress の IPv4 オブジェクト
+
+    Returns:
+        API の ``ipa`` パラメータへ渡す 1 要素分の文字列
+
+    Raises:
+        ConfigurationError: IPv4 アドレスまたは IPv4 CIDR として解釈できない場合
+    """
+    if isinstance(allowed_ip_address, ipaddress.IPv4Address | ipaddress.IPv4Network):
+        return str(allowed_ip_address)
+    if not isinstance(allowed_ip_address, str):
+        raise ConfigurationError("allowed_ip_addresses must contain IPv4 address or IPv4 CIDR values")
+    try:
+        # API は IPv4 CIDR だけを受け付けるため、IPv6 や区切り文字を含む値は送信前に拒否する
+        ipaddress.IPv4Network(allowed_ip_address, strict=False)
+    except ValueError as exc:
+        message = f"allowed_ip_addresses contains an invalid IPv4 address or CIDR: {allowed_ip_address!r}"
+        raise ConfigurationError(message) from exc
+    return allowed_ip_address
+
+
+def _serialize_allowed_ip_addresses(allowed_ip_addresses: Sequence[_AllowedIpAddress] | None) -> str | None:
+    """接続元 IP 制限を検証して API の文字列表現へ変換する。
+
+    Args:
+        allowed_ip_addresses: API キーを利用できる接続元 IPv4 アドレスまたは CIDR の一覧
+
+    Returns:
+        API の ``ipa`` パラメータへ渡すカンマ区切り文字列。未指定の場合は ``None``
+
+    Raises:
+        ConfigurationError: 単一文字列、空の一覧、または IPv4 として不正な値を指定した場合
+    """
+    if allowed_ip_addresses is None:
+        return None
+    if isinstance(allowed_ip_addresses, str):
+        raise ConfigurationError("allowed_ip_addresses must be a sequence of strings, not a string")
+    if len(allowed_ip_addresses) == 0:
+        # 空の一覧は ipa= となり、制限したつもりで制限なしのキーが発行されるため拒否する
+        raise ConfigurationError("allowed_ip_addresses must not be empty; omit it to issue an API key without IP restriction")
+    return ",".join(_serialize_allowed_ip_address(allowed_ip_address) for allowed_ip_address in allowed_ip_addresses)
+
+
 def _contains_control_character(value: str) -> bool:
     """文字列が HTTP ヘッダー値に使えない制御文字を含むかを判定する。
 
@@ -251,13 +302,13 @@ class ApiKeyClient:
         self,
         *,
         expires_in: int | str | timedelta | None = None,
-        allowed_ip_addresses: Sequence[str] | None = None,
+        allowed_ip_addresses: Sequence[_AllowedIpAddress] | None = None,
     ) -> str:
         """有効期限と接続元IP制限を指定してAPIキーを発行する。
 
         Args:
             expires_in: 有効期限。整数はミリ秒、文字列は ``2h`` などの API 形式、期間はミリ秒へ変換する
-            allowed_ip_addresses: API キーを利用できる接続元 IP アドレスまたは CIDR の一覧
+            allowed_ip_addresses: API キーを利用できる接続元 IPv4 アドレスまたは IPv4 CIDR の一覧。省略時は制限しない
 
         Returns:
             発行された API キー文字列
@@ -265,17 +316,15 @@ class ApiKeyClient:
         Raises:
             ApiKeyApiError: API がエラーを返した場合、またはレスポンスが空の場合
             ConnectionFailedError: 通信に失敗した場合
-            ConfigurationError: 有効期限の型が対応していない場合
+            ConfigurationError: 有効期限の型が対応していない場合、または接続元 IP 制限が不正な場合
         """
-        if isinstance(allowed_ip_addresses, str):
-            raise ConfigurationError("allowed_ip_addresses must be a sequence of strings, not a string")
-
         form: dict[str, str] = {}
         serialized_expires_in = _serialize_expires_in(expires_in)
         if serialized_expires_in is not None:
             form["epi"] = serialized_expires_in
-        if allowed_ip_addresses is not None:
-            form["ipa"] = ",".join(allowed_ip_addresses)
+        serialized_allowed_ip_addresses = _serialize_allowed_ip_addresses(allowed_ip_addresses)
+        if serialized_allowed_ip_addresses is not None:
+            form["ipa"] = serialized_allowed_ip_addresses
 
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
