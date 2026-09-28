@@ -48,6 +48,34 @@ def test_api_key_client_base_url_with_query_or_fragment_invalid_raise_Configurat
         ApiKeyClient(api_key="issuer-key", base_url=base_url)
 
 
+@pytest.mark.parametrize("api_key", ["secret-issuer-key\n", "secret-issuer-key\r\n", "secret\x00issuer-key"])
+def test_api_key_client_api_key_control_character_invalid_raise_ConfigurationError_without_key(api_key: str) -> None:
+    """制御文字を含むAPIキーを値を表示せずにConfigurationErrorで拒否することを確認する。"""
+    # Given: 送信されると記録されるフェイクトランスポート
+    transport = FakeApiKeyTransport(responses=[(200, b"issued-key")])
+
+    # When / Then: クライアント生成が拒否され、例外メッセージにキーが含まれない
+    with pytest.raises(ConfigurationError, match="control characters") as exc_info:
+        ApiKeyClient(api_key=api_key, transport=transport)
+
+    assert "secret" not in str(exc_info.value)
+    assert transport.requests == []
+
+
+def test_api_key_client_environment_api_key_control_character_invalid_raise_ConfigurationError(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """環境変数のAPIキーが改行を含む場合もConfigurationErrorで拒否することを確認する。"""
+    # Given: 末尾に改行を含むAPIキーの環境変数
+    monkeypatch.setenv("AMIVOICE_API_KEY", "secret-issuer-key\n")
+
+    # When / Then: クライアント生成が拒否され、例外メッセージにキーが含まれない
+    with pytest.raises(ConfigurationError, match="control characters") as exc_info:
+        ApiKeyClient()
+
+    assert "secret" not in str(exc_info.value)
+
+
 def test_api_key_client_issue_bearer_valid_sends_authorization_and_returns_key() -> None:
     """Bearer認証でAPIキーを発行し、レスポンス本文を返すことを確認する。"""
     # Given: Bearer認証とAPIキーを返すフェイクトランスポート

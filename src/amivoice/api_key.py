@@ -164,6 +164,18 @@ def _serialize_expires_in(expires_in: int | str | timedelta | None) -> str | Non
     raise ConfigurationError("expires_in must be an integer, string, or timedelta")
 
 
+def _contains_control_character(value: str) -> bool:
+    """文字列が HTTP ヘッダー値に使えない制御文字を含むかを判定する。
+
+    Args:
+        value: 判定する文字列
+
+    Returns:
+        CR、LF などの ASCII 制御文字を含む場合は ``True``
+    """
+    return any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
+
+
 def _resolve_api_key_authentication(api_key: str | None) -> str:
     """引数と環境変数からAPIキー発行APIの認証情報を解決する。
 
@@ -175,10 +187,14 @@ def _resolve_api_key_authentication(api_key: str | None) -> str:
 
     Raises:
         AuthenticationError: API キーが指定されていない場合
+        ConfigurationError: API キーが制御文字を含む場合
     """
     resolved_api_key = api_key if api_key is not None else os.environ.get("AMIVOICE_API_KEY")
     if resolved_api_key is None:
         raise AuthenticationError("AMIVOICE_API_KEY is not set")
+    if _contains_control_character(resolved_api_key):
+        # 値を例外メッセージへ含めると発行権限付きキーがログへ漏れるため、理由だけを伝える
+        raise ConfigurationError("api_key must not contain control characters such as CR or LF")
     return resolved_api_key
 
 
@@ -195,7 +211,7 @@ class ApiKeyClient:
 
     Raises:
         AuthenticationError: API キーが指定されていない場合
-        ConfigurationError: ベース URL が不正な場合
+        ConfigurationError: API キーが制御文字を含む場合、またはベース URL が不正な場合
     """
 
     def __init__(
@@ -216,7 +232,7 @@ class ApiKeyClient:
 
         Raises:
             AuthenticationError: API キーが指定されていない場合
-            ConfigurationError: ベース URL が不正な場合
+            ConfigurationError: API キーが制御文字を含む場合、またはベース URL が不正な場合
         """
         resolved_api_key = _resolve_api_key_authentication(api_key)
         parsed_base_url = urlsplit(base_url)
