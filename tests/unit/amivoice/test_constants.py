@@ -2,7 +2,7 @@
 
 import pytest
 
-from amivoice import Codec, Engines
+from amivoice import Codec, Engine
 
 
 @pytest.mark.parametrize(
@@ -67,7 +67,7 @@ def test_codec_invalid_value_raise_ValueError() -> None:
         Codec("unknown")
 
 
-def test_engines_values_valid_match_supported_engine_names() -> None:
+def test_engine_values_valid_match_supported_engine_names() -> None:
     """Enginesの公式エンジン名定数が正しい値を持つことを確認する。"""
     # Given: 公式ドキュメントに記載された接続エンジン名
     expected_values = {
@@ -94,16 +94,41 @@ def test_engines_values_valid_match_supported_engine_names() -> None:
     }
 
     # When: Enginesの各定数を参照する
-    actual_values = {name: getattr(Engines, name) for name in expected_values}
+    actual_values = {name: getattr(Engine, name) for name in expected_values}
 
     # Then: 公式エンジン名と一致する
     assert actual_values == expected_values
 
 
 @pytest.mark.parametrize("name", ["E2E_JA_GENERAL", "HYBRID_GENERAL", "PRIVATE_RULE_INPUT"])
-def test_engines_alias_name_invalid_raise_AttributeError(name: str) -> None:
+def test_engine_alias_name_invalid_raise_AttributeError(name: str) -> None:
     """Enginesが接続エンジン名から導けない別名を持たないことを確認する。"""
     # Given: 接続エンジン名から導けない以前の別名
     # When / Then: 別名を参照できない
     with pytest.raises(AttributeError):
-        getattr(Engines, name)
+        getattr(Engine, name)
+
+
+def test_engine_member_valid_return_str_value() -> None:
+    """Engineの各定数が接続エンジン名の文字列として扱えることを確認する。"""
+    # Given: 会話_汎用エンジンの定数
+    engine = Engine.A_GENERAL
+
+    # When: 文字列として展開する
+    formatted = f"{engine}"
+
+    # Then: 接続エンジン名の文字列と一致する
+    assert isinstance(engine, str)
+    assert engine == "-a-general"
+    assert formatted == "-a-general"
+    assert Engine("-a-general") is Engine.A_GENERAL
+
+
+def test_engine_member_reassign_invalid_raise_AttributeError() -> None:
+    """Engineの定数を書き換えられないことを確認する。"""
+    # Given: 定義済みのEngine定数
+    # When / Then: 再代入が拒否される
+    with pytest.raises(AttributeError):
+        Engine.A_GENERAL = "-bogus"  # type: ignore[misc]
+
+    assert Engine.A_GENERAL == "-a-general"

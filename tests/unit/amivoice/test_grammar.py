@@ -5,7 +5,7 @@ import gzip
 
 import pytest
 
-from amivoice import Engines, build_grammar_file_names, encode_grammar
+from amivoice import Engine, build_grammar_file_names, encode_grammar
 from amivoice.exceptions import ConfigurationError
 
 
@@ -45,7 +45,7 @@ def test_build_grammar_file_names_single_grammar_returns_engine_and_grammar() ->
     result = build_grammar_file_names("encoded-grammar")
 
     # Then: エンジン名とグラマが区切り文字で連結される
-    assert result == f"{Engines.A_RULE_INPUT_PRIVATE}|encoded-grammar"
+    assert result == f"{Engine.A_RULE_INPUT_PRIVATE}|encoded-grammar"
 
 
 def test_build_grammar_file_names_multiple_grammars_uses_pipe_separator() -> None:
@@ -56,7 +56,7 @@ def test_build_grammar_file_names_multiple_grammars_uses_pipe_separator() -> Non
     result = build_grammar_file_names("grammar-1", "https://example.com/grammar-2")
 
     # Then: グラマが単一パイプで連結される
-    assert result == f"{Engines.A_RULE_INPUT_PRIVATE}|grammar-1|https://example.com/grammar-2"
+    assert result == f"{Engine.A_RULE_INPUT_PRIVATE}|grammar-1|https://example.com/grammar-2"
 
 
 def test_build_grammar_file_names_fallback_uses_double_pipe_separator() -> None:
@@ -67,7 +67,7 @@ def test_build_grammar_file_names_fallback_uses_double_pipe_separator() -> None:
     result = build_grammar_file_names("grammar-1", "grammar-2", fallback=True)
 
     # Then: グラマが二重パイプで連結される
-    assert result == f"{Engines.A_RULE_INPUT_PRIVATE}|grammar-1||grammar-2"
+    assert result == f"{Engine.A_RULE_INPUT_PRIVATE}|grammar-1||grammar-2"
 
 
 def test_build_grammar_file_names_accepts_custom_engine_and_mixed_grammars() -> None:

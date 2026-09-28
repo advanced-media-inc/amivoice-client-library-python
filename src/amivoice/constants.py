@@ -3,7 +3,7 @@
 from enum import StrEnum
 from typing import Self
 
-__all__ = ["Codec", "Engines"]
+__all__ = ["Codec", "Engine"]
 
 
 class Codec(StrEnum):
@@ -43,7 +43,7 @@ class Codec(StrEnum):
         return None
 
 
-class Engines:
+class Engine(StrEnum):
     """AmiVoice APIで指定できる接続エンジン名
 
     定数名は、公式ドキュメントの「接続エンジン名」から先頭の ``-`` を除き、
@@ -55,6 +55,10 @@ class Engines:
 
     分類と並び順は、公式ドキュメントの音声認識エンジン一覧に従う
     https://docs.amivoice.com/amivoice-api/manual/engines#list
+
+    ``StrEnum`` のため各定数は ``str`` として扱える。接続エンジン名を受け取る
+    引数の型は ``str`` なので、ここにないAmiVoice API Privateの独自エンジン名も
+    文字列で指定できる
     """
 
     # End to End エンジン

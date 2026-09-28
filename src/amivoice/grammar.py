@@ -3,7 +3,7 @@
 import base64
 import gzip
 
-from .constants import Engines
+from .constants import Engine
 from .exceptions import ConfigurationError
 
 
@@ -22,7 +22,7 @@ def encode_grammar(grammar: str | bytes) -> str:
 
 def build_grammar_file_names(
     *grammars: str,
-    engine: str = Engines.A_RULE_INPUT_PRIVATE,
+    engine: str = Engine.A_RULE_INPUT_PRIVATE,
     fallback: bool = False,
 ) -> str:
     """GrammarFileNames に渡すルールグラマ指定文字列を構築する

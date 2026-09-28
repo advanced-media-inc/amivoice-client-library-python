@@ -50,10 +50,10 @@ API キーをコンストラクタへ渡さない場合は、`AMIVOICE_ISSUER_AP
 ## HTTP音声認識
 
 ```python
-from amivoice import AmiVoiceClient, Codec, Engines
+from amivoice import AmiVoiceClient, Codec, Engine
 
 client = AmiVoiceClient(
-    grammar_file_names=Engines.A_GENERAL,
+    grammar_file_names=Engine.A_GENERAL,
     codec=Codec.HEADER_16K,
 )
 result = client.transcribe("audio.wav")
@@ -62,14 +62,14 @@ print(result.text)
 
 `Codec`は音声フォーマット名の定数です。`Codec.HEADER_16K`は`"16K"`と同じ値として扱われ、`Codec("lsb16k")`のように大文字小文字を区別せずに解決できます。音声ファイルのヘッダにフォーマット情報がある場合は、HTTP 音声認識では`codec`の指定を省略できます。ヘッダ付き音声で明示的に指定する場合は、8kHz または 11.025kHz なら`Codec.HEADER_8K`、16kHz 以上なら`Codec.HEADER_16K`を使用してください。ヘッダなし PCM では`Codec.LSB16K`や`Codec.MSB16K`など、エンディアンとサンプリングレートに合った定数を指定します。ヘッダなし音声に`Codec.HEADER_8K`や`Codec.HEADER_16K`を指定すると、ヘッダの読み込みに失敗して`LSB16K`として扱われます。詳細は[AmiVoice APIの音声フォーマット](https://docs.amivoice.com/amivoice-api/manual/audio-format)を参照してください。
 
-`Engines`は接続エンジン名の定数です。定数名は、公式ドキュメントの接続エンジン名から先頭の`-`を除き、`-`を`_`に置き換えて大文字にしたものです（例：`-a2-ja-general`は`Engines.A2_JA_GENERAL`）。会話用の汎用エンジンは`Engines.A_GENERAL`、音声入力用は`Engines.A_GENERAL_INPUT`、AmiVoice API Private のルールエンジンは`Engines.A_RULE_INPUT_PRIVATE`で指定できます。ルールグラマを使う場合も、これらの定数とグラマファイルを`build_grammar_file_names()`で組み合わせられます。
+`Engine`は接続エンジン名の定数です。定数名は、公式ドキュメントの接続エンジン名から先頭の`-`を除き、`-`を`_`に置き換えて大文字にしたものです（例：`-a2-ja-general`は`Engine.A2_JA_GENERAL`）。会話用の汎用エンジンは`Engine.A_GENERAL`、音声入力用は`Engine.A_GENERAL_INPUT`、AmiVoice API Private のルールエンジンは`Engine.A_RULE_INPUT_PRIVATE`で指定できます。ルールグラマを使う場合も、これらの定数とグラマファイルを`build_grammar_file_names()`で組み合わせられます。
 
-エンジンごとに対応するサンプリングレートとインタフェースが異なるため、`Engines`と`Codec`を組み合わせるときは[AmiVoice APIの音声認識エンジン一覧](https://docs.amivoice.com/amivoice-api/manual/engines#list)を確認してください。特に次の制約があります。
+エンジンごとに対応するサンプリングレートとインタフェースが異なるため、`Engine`と`Codec`を組み合わせるときは[AmiVoice APIの音声認識エンジン一覧](https://docs.amivoice.com/amivoice-api/manual/engines#list)を確認してください。特に次の制約があります。
 
-- すべてのエンジンは 16kHz に対応するが、8kHz または 11.025kHz に対応するのは一部のエンジンだけである。例えば、`Engines.A_GENERAL`は 8kHz と 16kHz に対応し、`Engines.A_MEDICAL`と`Engines.A_RULE_INPUT_PRIVATE`は 16kHz に対応する。
-- `Engines.A_NAME_INPUT_PRIVATE`、`Engines.A_ADDRESS_INPUT_PRIVATE`、`Engines.A_RULE_INPUT_PRIVATE`は AmiVoice API Private 向けのエンジンで、非同期 HTTP インタフェースでは利用できない。
+- すべてのエンジンは 16kHz に対応するが、8kHz または 11.025kHz に対応するのは一部のエンジンだけである。例えば、`Engine.A_GENERAL`は 8kHz と 16kHz に対応し、`Engine.A_MEDICAL`と`Engine.A_RULE_INPUT_PRIVATE`は 16kHz に対応する。
+- `Engine.A_NAME_INPUT_PRIVATE`、`Engine.A_ADDRESS_INPUT_PRIVATE`、`Engine.A_RULE_INPUT_PRIVATE`は AmiVoice API Private 向けのエンジンで、非同期 HTTP インタフェースでは利用できない。
 
-`Engines`と`Codec`のすべての組み合わせが有効とは限らないため、利用するインタフェース、エンジン、音声のサンプリングレートの対応を公式一覧で確認してください。
+`Engine`と`Codec`のすべての組み合わせが有効とは限らないため、利用するインタフェース、エンジン、音声のサンプリングレートの対応を公式一覧で確認してください。
 
 `transcribe()`には、ファイルパス、`pathlib.Path`、`bytes`、バイナリファイルオブジェクトを渡せます。
 
@@ -342,10 +342,10 @@ user_dictionary.register_words(
 登録した単語を音声認識で利用する場合は、登録時と同じ接続エンジン名を指定し、`profile_id` の先頭に `:` を付けます。`:` 付きのプロファイル ID は、プロファイルを参照だけする指定です。`:` を付けないと、セッション終了時にプロファイルを上書きする場合があります（[プロファイルの利用](https://docs.amivoice.com/amivoice-api/manual/user-dictionary-use-profile)）。ライブラリは値を書き換えず、先頭に `:` がない場合は `UserWarning` を出します。
 
 ```python
-from amivoice import AmiVoiceClient, Codec, Engines
+from amivoice import AmiVoiceClient, Codec, Engine
 
 recognition_client = AmiVoiceClient(
-    grammar_file_names=Engines.A_GENERAL,
+    grammar_file_names=Engine.A_GENERAL,
     codec=Codec.HEADER_16K,
     profile_id=":user01",
 )
@@ -355,9 +355,9 @@ result = recognition_client.transcribe("audio.wav")
 ## WebSocketストリーミング認識
 
 ```python
-from amivoice import AmiVoiceClient, Codec, Engines
+from amivoice import AmiVoiceClient, Codec, Engine
 
-client = AmiVoiceClient(grammar_file_names=Engines.A_GENERAL, codec=Codec.HEADER_16K)
+client = AmiVoiceClient(grammar_file_names=Engine.A_GENERAL, codec=Codec.HEADER_16K)
 
 with client.stream() as session:
     session.write(audio_chunk)
