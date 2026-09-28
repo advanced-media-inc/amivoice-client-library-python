@@ -28,35 +28,35 @@ def test_codec_case_insensitive_value_valid_returns_member(value: str, expected:
     assert codec.value == expected.value
 
 
-def test_codec_values_valid_include_all_supported_formats() -> None:
-    """CodecがAPIの全音声フォーマットを保持することを確認する。"""
-    # Given: APIで指定できる音声フォーマット名
-    expected_values = {
-        "8K",
-        "16K",
-        "LSB8K",
-        "LSB11K",
-        "LSB16K",
-        "LSB22K",
-        "LSB32K",
-        "LSB44K",
-        "LSB48K",
-        "MSB8K",
-        "MSB11K",
-        "MSB16K",
-        "MSB22K",
-        "MSB32K",
-        "MSB44K",
-        "MSB48K",
-        "MULAW",
-        "ALAW",
+def test_codec_members_valid_return_all_supported_formats() -> None:
+    """Codecの公開メンバーがAPIの全音声フォーマットと過不足なく一致することを確認する。"""
+    # Given: APIで指定できる音声フォーマット名と定数名
+    expected_members = {
+        "HEADER_8K": "8K",
+        "HEADER_16K": "16K",
+        "LSB8K": "LSB8K",
+        "LSB11K": "LSB11K",
+        "LSB16K": "LSB16K",
+        "LSB22K": "LSB22K",
+        "LSB32K": "LSB32K",
+        "LSB44K": "LSB44K",
+        "LSB48K": "LSB48K",
+        "MSB8K": "MSB8K",
+        "MSB11K": "MSB11K",
+        "MSB16K": "MSB16K",
+        "MSB22K": "MSB22K",
+        "MSB32K": "MSB32K",
+        "MSB44K": "MSB44K",
+        "MSB48K": "MSB48K",
+        "MULAW": "MULAW",
+        "ALAW": "ALAW",
     }
 
-    # When: Codecの値を列挙する
-    actual_values = {codec.value for codec in Codec}
+    # When: 別名を含むCodecの全メンバーを列挙する
+    actual_members = {name: member.value for name, member in Codec.__members__.items()}
 
-    # Then: サポート対象と一致する
-    assert actual_values == expected_values
+    # Then: 余分な定数や別名がなく、各定数が正しい値を持つ
+    assert actual_members == expected_members
 
 
 def test_codec_invalid_value_raise_ValueError() -> None:
@@ -67,10 +67,10 @@ def test_codec_invalid_value_raise_ValueError() -> None:
         Codec("unknown")
 
 
-def test_engine_values_valid_match_supported_engine_names() -> None:
-    """Enginesの公式エンジン名定数が正しい値を持つことを確認する。"""
+def test_engine_members_valid_return_official_engine_names() -> None:
+    """Engineの公開メンバーが公式の接続エンジン名と過不足なく一致することを確認する。"""
     # Given: 公式ドキュメントに記載された接続エンジン名
-    expected_values = {
+    expected_members = {
         "A2_JA_GENERAL": "-a2-ja-general",
         "A2_ZH_GENERAL": "-a2-zh-general",
         "A2_MULTI_GENERAL": "-a2-multi-general",
@@ -93,16 +93,28 @@ def test_engine_values_valid_match_supported_engine_names() -> None:
         "A_RULE_INPUT_PRIVATE": "-a-rule-input-private",
     }
 
-    # When: Enginesの各定数を参照する
-    actual_values = {name: getattr(Engine, name) for name in expected_values}
+    # When: 別名を含むEngineの全メンバーを列挙する
+    actual_members = {name: member.value for name, member in Engine.__members__.items()}
 
-    # Then: 公式エンジン名と一致する
-    assert actual_values == expected_values
+    # Then: 余分な定数や別名がなく、各定数が正しい値を持つ
+    assert actual_members == expected_members
+
+
+def test_engine_member_names_valid_return_name_derived_from_value() -> None:
+    """Engineの定数名が接続エンジン名から命名規則どおりに導けることを確認する。"""
+    # Given: Engineの全メンバー
+    members = Engine.__members__.items()
+
+    # When: 接続エンジン名から先頭の-を除き、-を_に置き換えて大文字にする
+    derived_names = {name: member.value.removeprefix("-").replace("-", "_").upper() for name, member in members}
+
+    # Then: 定数名と一致する
+    assert all(name == derived for name, derived in derived_names.items())
 
 
 @pytest.mark.parametrize("name", ["E2E_JA_GENERAL", "HYBRID_GENERAL", "PRIVATE_RULE_INPUT"])
 def test_engine_alias_name_invalid_raise_AttributeError(name: str) -> None:
-    """Enginesが接続エンジン名から導けない別名を持たないことを確認する。"""
+    """Engineが接続エンジン名から導けない別名を持たないことを確認する。"""
     # Given: 接続エンジン名から導けない以前の別名
     # When / Then: 別名を参照できない
     with pytest.raises(AttributeError):
