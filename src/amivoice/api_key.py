@@ -9,9 +9,9 @@ from datetime import timedelta
 from typing import NoReturn, Protocol
 from urllib.parse import urlencode, urlsplit
 
-from .exceptions import ApiKeyApiError, AuthenticationError, ConfigurationError, ConnectionFailedError
+from .exceptions import ApiKeyIssuanceApiError, AuthenticationError, ConfigurationError, ConnectionFailedError
 
-__all__ = ["ApiKeyClient", "ApiKeyTransport"]
+__all__ = ["ApiKeyIssuanceClient", "ApiKeyIssuanceTransport"]
 
 _DEFAULT_BASE_URL = "https://acp-api.amivoice.com"
 _ISSUE_API_PATH = "/issue_service_authorization"
@@ -21,7 +21,7 @@ _ISSUER_API_KEY_ENVIRONMENT_VARIABLE = "AMIVOICE_ISSUER_API_KEY"
 _AllowedIpAddress = str | ipaddress.IPv4Address | ipaddress.IPv4Network
 
 
-class ApiKeyTransport(Protocol):
+class ApiKeyIssuanceTransport(Protocol):
     """API キー発行 API への HTTP リクエストを実行するトランスポート。"""
 
     def request(
@@ -45,7 +45,7 @@ class ApiKeyTransport(Protocol):
         ...
 
 
-class _HttpApiKeyTransport:
+class _HttpApiKeyIssuanceTransport:
     """標準ライブラリで実装した API キー発行 API トランスポート。"""
 
     def __init__(self, timeout: float) -> None:
@@ -103,7 +103,7 @@ def _response_body_text(body: bytes) -> str:
     return body.decode("utf-8", errors="replace")
 
 
-def _decode_api_key_response_body(body: bytes, status_code: int) -> str:
+def _decode_api_key_issuance_response_body(body: bytes, status_code: int) -> str:
     """API キー発行 API の成功本文を厳密な UTF-8 としてデコードする。
 
     Args:
@@ -114,20 +114,20 @@ def _decode_api_key_response_body(body: bytes, status_code: int) -> str:
         UTF-8 としてデコードしたレスポンス本文
 
     Raises:
-        ApiKeyApiError: レスポンス本文が UTF-8 として不正な場合
+        ApiKeyIssuanceApiError: レスポンス本文が UTF-8 として不正な場合
     """
     try:
         return body.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
-        raise ApiKeyApiError(
-            f"API key API returned invalid UTF-8 response: {exc}",
+        raise ApiKeyIssuanceApiError(
+            f"API key issuance API returned invalid UTF-8 response: {exc}",
             status_code=status_code,
             body=_response_body_text(body),
             raw_body=body,
         ) from exc
 
 
-def _raise_invalid_api_key_response(message: str, status_code: int, body: bytes) -> NoReturn:
+def _raise_invalid_api_key_issuance_response(message: str, status_code: int, body: bytes) -> NoReturn:
     """不正な API キー発行 API レスポンスを例外として送出する。
 
     Args:
@@ -136,10 +136,10 @@ def _raise_invalid_api_key_response(message: str, status_code: int, body: bytes)
         body: レスポンス本文
 
     Raises:
-        ApiKeyApiError: レスポンスが API の期待形式でない場合
+        ApiKeyIssuanceApiError: レスポンスが API の期待形式でない場合
     """
-    raise ApiKeyApiError(
-        f"API key API returned an invalid response: {message}",
+    raise ApiKeyIssuanceApiError(
+        f"API key issuance API returned an invalid response: {message}",
         status_code=status_code,
         body=_response_body_text(body),
         raw_body=body,
@@ -228,7 +228,7 @@ def _contains_control_character(value: str) -> bool:
     return any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
 
 
-def _resolve_api_key_authentication(api_key: str | None) -> str:
+def _resolve_api_key_issuance_authentication(api_key: str | None) -> str:
     """引数と環境変数からAPIキー発行APIの認証情報を解決する。
 
     Args:
@@ -251,7 +251,7 @@ def _resolve_api_key_authentication(api_key: str | None) -> str:
     return resolved_api_key
 
 
-class ApiKeyClient:
+class ApiKeyIssuanceClient:
     """AmiVoice API キー発行 API のクライアント。
 
     API キー発行機能付き API キーによる Bearer 認証を使用して API キーを発行する。
@@ -273,7 +273,7 @@ class ApiKeyClient:
         *,
         base_url: str = _DEFAULT_BASE_URL,
         timeout: float = 30.0,
-        transport: ApiKeyTransport | None = None,
+        transport: ApiKeyIssuanceTransport | None = None,
     ) -> None:
         """クライアント設定とトランスポートを初期化する。
 
@@ -287,7 +287,7 @@ class ApiKeyClient:
             AuthenticationError: API キーが指定されていない場合
             ConfigurationError: API キーが制御文字を含む場合、またはベース URL が不正な場合
         """
-        resolved_api_key = _resolve_api_key_authentication(api_key)
+        resolved_api_key = _resolve_api_key_issuance_authentication(api_key)
         parsed_base_url = urlsplit(base_url)
         if parsed_base_url.scheme != "https" or not parsed_base_url.netloc:
             raise ConfigurationError("base_url must be an absolute HTTPS URL")
@@ -296,7 +296,7 @@ class ApiKeyClient:
 
         self._api_key = resolved_api_key
         self._endpoint_url = f"{base_url.rstrip('/')}{_ISSUE_API_PATH}"
-        self._transport = transport if transport is not None else _HttpApiKeyTransport(timeout)
+        self._transport = transport if transport is not None else _HttpApiKeyIssuanceTransport(timeout)
 
     def issue(
         self,
@@ -314,7 +314,7 @@ class ApiKeyClient:
             発行された API キー文字列
 
         Raises:
-            ApiKeyApiError: API がエラーを返した場合、またはレスポンスが空の場合
+            ApiKeyIssuanceApiError: API がエラーを返した場合、またはレスポンスが空の場合
             ConnectionFailedError: 通信に失敗した場合
             ConfigurationError: 有効期限の型が対応していない場合、または接続元 IP 制限が不正な場合
         """
@@ -335,17 +335,17 @@ class ApiKeyClient:
         try:
             status_code, response_body = self._transport.request("POST", self._endpoint_url, headers, body)
         except (OSError, http.client.HTTPException) as exc:
-            raise ConnectionFailedError(f"API key API connection failed: {exc}") from exc
+            raise ConnectionFailedError(f"API key issuance API connection failed: {exc}") from exc
         if not 200 <= status_code < 300:
             body_text = _response_body_text(response_body)
-            raise ApiKeyApiError(
-                f"API key API request failed with HTTP {status_code}: {body_text}",
+            raise ApiKeyIssuanceApiError(
+                f"API key issuance API request failed with HTTP {status_code}: {body_text}",
                 status_code=status_code,
                 body=body_text,
                 raw_body=response_body,
             )
 
-        api_key_text = _decode_api_key_response_body(response_body, status_code).strip()
+        api_key_text = _decode_api_key_issuance_response_body(response_body, status_code).strip()
         if not api_key_text:
-            _raise_invalid_api_key_response("response body must contain an API key", status_code, response_body)
+            _raise_invalid_api_key_issuance_response("response body must contain an API key", status_code, response_body)
         return api_key_text

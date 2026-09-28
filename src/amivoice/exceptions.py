@@ -85,7 +85,7 @@ class ConfigurationError(AmiVoiceError):
     """設定が不正な場合に送出される例外。"""
 
 
-class ApiKeyApiError(AmiVoiceError):
+class ApiKeyIssuanceApiError(AmiVoiceError):
     """API キー発行 API がエラーを返した場合に送出される例外"""
 
     def __init__(

@@ -5,12 +5,12 @@ from importlib.metadata import PackageNotFoundError, version
 from ._billing import build_billing_extension
 from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager, StreamSession
-from .api_key import ApiKeyClient
+from .api_key import ApiKeyIssuanceClient
 from .client import AmiVoiceClient, transcribe
 from .dictionary import ProfileWord, UserDictionaryClient, build_profile_words
 from .exceptions import (
     AmiVoiceError,
-    ApiKeyApiError,
+    ApiKeyIssuanceApiError,
     AuthenticationError,
     ConfigurationError,
     ConnectionFailedError,
@@ -29,8 +29,8 @@ __all__ = [
     "RULE_GRAMMAR_ENGINE",
     "AmiVoiceClient",
     "AmiVoiceError",
-    "ApiKeyApiError",
-    "ApiKeyClient",
+    "ApiKeyIssuanceApiError",
+    "ApiKeyIssuanceClient",
     "AuthenticationError",
     "ConfigurationError",
     "ConnectionFailedError",
