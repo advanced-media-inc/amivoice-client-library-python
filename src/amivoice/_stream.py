@@ -229,11 +229,10 @@ class StreamSession:
                 self._receiver.join(timeout=2)
 
 
-def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) -> WebSocketTransport:
+def _connect_websocket_transport(api_url: str, params: RecognitionParams) -> WebSocketTransport:
     """接続設定だけを汎用 WebSocket 層へ渡し接続する
 
     Args:
-        api_key (str): 互換用引数、認証は開始コマンドで送る
         api_url (str): ws / wss エンドポイント
         params (RecognitionParams): 解決済み認識設定
 
@@ -283,9 +282,7 @@ class StreamConnectionManager:
         if self._session is not None:
             raise RecognitionError("Stream manager is already entered")
         transport = (
-            self._wrp_transport
-            if self._wrp_transport is not None
-            else _build_wrp_transport(self._api_key, self._api_url, self._params)
+            self._wrp_transport if self._wrp_transport is not None else _connect_websocket_transport(self._api_url, self._params)
         )
         session = StreamSession(
             transport, finalize_timeout_ms=self._params.receive_timeout if self._params.receive_timeout > 0 else 60_000

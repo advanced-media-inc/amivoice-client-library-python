@@ -26,7 +26,7 @@ def _construct_hrp_transport() -> HttpRecognitionTransport:
     """HRP ライブラリのトランスポートを生成する。
 
     Returns:
-        HrpTransport: 生成した HRP トランスポート
+        HttpRecognitionTransport: 生成した HRP トランスポート
     """
     return HttpRecognitionTransport()
 
@@ -141,7 +141,7 @@ def _resolve_endpoint_url(
 def _resolve_profile_words(profile_words: str | Sequence[ProfileWord] | None) -> str | None:
     """ProfileWord シーケンスまたは既存の文字列を profileWords 文字列へ解決する
 
-    空の ProfileWord シーケンスは ``setProfileWords("")`` で空のパラメータを送らないよう None として扱う
+    空の ProfileWord シーケンスは空のパラメータを送らないよう None として扱う
 
     Args:
         profile_words (str | Sequence[ProfileWord] | None): 既存の wire format 文字列またはシリアライズする ProfileWord シーケンス
@@ -479,8 +479,8 @@ class AmiVoiceClient:
             no_input_timeout (int | None): 無入力タイムアウト（ミリ秒）（WRP 専用）
             http_api_url (str | _UnsetType): HRP API エンドポイント URL。``UNSET`` は既定 URL を使用する
             ws_api_url (str | _UnsetType): WRP API エンドポイント URL。``UNSET`` は既定 URL を使用する
-            hrp_transport (HrpTransport | None): テスト用 HRP トランスポート注入口
-            wrp_transport (WrpTransport | None): テスト用 WRP トランスポート注入口
+            hrp_transport (HttpRecognitionTransport | None): テスト用 HRP トランスポート注入口
+            wrp_transport (WebSocketTransport | None): テスト用 WRP トランスポート注入口
 
         Raises:
             AuthenticationError: ``api_key`` が指定されず環境変数も設定されていない場合

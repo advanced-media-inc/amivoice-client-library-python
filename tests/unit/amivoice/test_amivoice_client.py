@@ -101,8 +101,8 @@ def test_AmiVoiceClient_transcribe_success_returns_result() -> None:
     assert result == RecognitionResult(raw='{"text": "hello world"}', data={"text": "hello world"})
 
 
-def test_AmiVoiceClient_transcribe_does_not_call_connect_on_transport() -> None:
-    """注入された hrp_transport では connect/disconnect が呼ばれないことを確認する。"""
+def test_AmiVoiceClient_transcribe_injected_transport_valid_call_direct_boundary() -> None:
+    """注入された HTTP 認識境界を直接一回呼び出すことを確認する。"""
     # Given: テスト注入パスでは connect/disconnect 不要
     mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
@@ -286,7 +286,7 @@ def test_AmiVoiceClient_stream_api_url_none_invalid_raise_ConfigurationError() -
 
     # When / Then: Noneを既定URLへ置き換えずConfigurationErrorになる
     with (
-        patch("amivoice._stream._build_wrp_transport") as mock_build,
+        patch("amivoice._stream._connect_websocket_transport") as mock_build,
         pytest.raises(ConfigurationError, match="Invalid api_url"),
     ):
         client.stream(api_url=None)  # pyright: ignore[reportArgumentType]
@@ -300,11 +300,11 @@ def test_AmiVoiceClient_stream_logging_opt_out_constructor_valid_uses_nolog_url(
     client = AmiVoiceClient(api_key="key", logging_opt_out=True)
 
     # When: ストリーミングセッションを開始する
-    with patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build, client.stream() as session:
+    with patch("amivoice._stream._connect_websocket_transport", return_value=mock_wrp) as mock_build, client.stream() as session:
         session.end()
 
     # Then: nologエンドポイントがWRPへ渡る
-    assert mock_build.call_args.args[1] == "wss://acp-api.amivoice.com/v1/nolog/"
+    assert mock_build.call_args.args[0] == "wss://acp-api.amivoice.com/v1/nolog/"
 
 
 @pytest.mark.parametrize(
@@ -330,11 +330,11 @@ def test_AmiVoiceClient_stream_logging_opt_out_nolog_custom_url_valid_keeps_cust
     client = AmiVoiceClient(api_key="key", ws_api_url=custom, logging_opt_out=True)
 
     # When: ストリーミングセッションを開始する
-    with patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build, client.stream() as session:
+    with patch("amivoice._stream._connect_websocket_transport", return_value=mock_wrp) as mock_build, client.stream() as session:
         session.end()
 
     # Then: カスタムURLがそのままWRPへ渡る
-    assert mock_build.call_args.args[1] == custom
+    assert mock_build.call_args.args[0] == custom
 
 
 def test_AmiVoiceClient_stream_logging_opt_out_override_logged_custom_url_invalid_raise_ConfigurationError() -> None:
@@ -366,13 +366,13 @@ def test_AmiVoiceClient_stream_logging_opt_out_override_valid_uses_expected_url(
 
     # When: 呼び出し時にlogging_opt_outを上書きしてストリーミングを開始する
     with (
-        patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build,
+        patch("amivoice._stream._connect_websocket_transport", return_value=mock_wrp) as mock_build,
         client.stream(logging_opt_out=override_value) as session,
     ):
         session.end()
 
     # Then: overrideに対応するエンドポイントがWRPへ渡る
-    assert mock_build.call_args.args[1] == expected_url
+    assert mock_build.call_args.args[0] == expected_url
 
 
 @pytest.mark.parametrize("value", [None, "false", 1])
@@ -910,7 +910,7 @@ def test_AmiVoiceClient_stream_context_manager_returns_stream_session() -> None:
 
 
 def test_AmiVoiceClient_stream_write_and_end_sends_audio() -> None:
-    """session.write() でデータが feedData に渡されることを確認する。"""
+    """session.write() でデータが バイナリメッセージに渡されることを確認する。"""
     # Given: モック WRP トランスポートを注入した AmiVoiceClient
     mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
@@ -920,7 +920,7 @@ def test_AmiVoiceClient_stream_write_and_end_sends_audio() -> None:
         session.write(b"chunk1")
         session.end()
 
-    # Then: feedData に正しい引数で呼び出されている
+    # Then: バイナリメッセージに正しい引数で呼び出されている
     mock_wrp.send_binary.assert_called_once_with(b"pchunk1")
 
 
@@ -982,14 +982,14 @@ def test_AmiVoiceClient_stream_uses_default_wrp_url() -> None:
     client = AmiVoiceClient(api_key="key")
 
     # When: api_url を省略して stream() を開く
-    with patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build, client.stream() as session:
+    with patch("amivoice._stream._connect_websocket_transport", return_value=mock_wrp) as mock_build, client.stream() as session:
         session.end()
 
-    # Then: ファクトリの第2引数（api_url）に _DEFAULT_WRP_URL が渡されている
+    # Then: ファクトリの第1引数（api_url）に _DEFAULT_WRP_URL が渡されている
     _, _kwargs = mock_build.call_args
-    # 第1引数は api_key、第2引数は api_url
+    # 第1引数は api_url、第2引数は params
     positional = mock_build.call_args.args
-    assert positional[1] == _DEFAULT_WRP_URL
+    assert positional[0] == _DEFAULT_WRP_URL
 
 
 def test_AmiVoiceClient_stream_uses_custom_api_url() -> None:
@@ -1001,14 +1001,14 @@ def test_AmiVoiceClient_stream_uses_custom_api_url() -> None:
 
     # When: カスタム URL を渡して stream() を開く
     with (
-        patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build,
+        patch("amivoice._stream._connect_websocket_transport", return_value=mock_wrp) as mock_build,
         client.stream(api_url=custom) as session,
     ):
         session.end()
 
-    # Then: ファクトリの第2引数にカスタム URL が渡されている
+    # Then: ファクトリの第1引数にカスタム URL が渡されている
     positional = mock_build.call_args.args
-    assert positional[1] == custom
+    assert positional[0] == custom
 
 
 def test_AmiVoiceClient_stream_uses_constructor_ws_api_url() -> None:
@@ -1020,13 +1020,13 @@ def test_AmiVoiceClient_stream_uses_constructor_ws_api_url() -> None:
 
     # When: api_url を省略して stream() を開く
     with (
-        patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build,
+        patch("amivoice._stream._connect_websocket_transport", return_value=mock_wrp) as mock_build,
         client.stream() as session,
     ):
         session.end()
 
-    # Then: コンストラクタの ws_api_url が第2引数に渡される
-    assert mock_build.call_args.args[1] == custom
+    # Then: コンストラクタの ws_api_url が第1引数に渡される
+    assert mock_build.call_args.args[0] == custom
 
 
 def test_AmiVoiceClient_stream_segmenter_valid_passes_generated_parameter() -> None:
@@ -1138,7 +1138,7 @@ def test_AmiVoiceClient_stream_call_args_override_instance_defaults() -> None:
 
     # When: 呼び出し時に一部設定を上書きして stream() を開く
     with (
-        patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build,
+        patch("amivoice._stream._connect_websocket_transport", return_value=mock_wrp) as mock_build,
         client.stream(
             grammar_file_names="-a-medical",
             codec="8K",
@@ -1152,7 +1152,7 @@ def test_AmiVoiceClient_stream_call_args_override_instance_defaults() -> None:
         session.end()
 
     # Then: 呼び出し時引数が RecognitionParams として WRP transport builder に渡される
-    params = mock_build.call_args.args[2]
+    params = mock_build.call_args.args[1]
     assert params.grammar_file_names == "-a-medical"
     assert params.codec == "8K"
     assert params.keep_filler_token is False
@@ -1178,11 +1178,11 @@ def test_AmiVoiceClient_stream_omitted_args_use_instance_defaults() -> None:
     )
 
     # When: override を渡さず stream() を開く
-    with patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp) as mock_build, client.stream() as session:
+    with patch("amivoice._stream._connect_websocket_transport", return_value=mock_wrp) as mock_build, client.stream() as session:
         session.end()
 
     # Then: コンストラクタ既定値が RecognitionParams として WRP transport builder に渡される
-    params = mock_build.call_args.args[2]
+    params = mock_build.call_args.args[1]
     assert params.grammar_file_names == "-a-general"
     assert params.codec == "16K"
     assert params.keep_filler_token is True
@@ -1199,7 +1199,7 @@ def test_AmiVoiceClient_stream_connection_failed_raises_error() -> None:
 
     # When / Then: stream() の with ブロック入口で ConnectionFailedError が送出される
     with (
-        patch("amivoice._stream._build_wrp_transport", side_effect=ConnectionFailedError("connect failed")),
+        patch("amivoice._stream._connect_websocket_transport", side_effect=ConnectionFailedError("connect failed")),
         pytest.raises(ConnectionFailedError),
         client.stream(),
     ):

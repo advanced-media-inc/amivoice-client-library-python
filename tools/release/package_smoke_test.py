@@ -6,8 +6,6 @@ from importlib import metadata
 from pathlib import Path
 
 import amivoice
-import com.amivoice.hrp as hrp_package
-import com.amivoice.wrp as wrp_package
 from amivoice import AmiVoiceClient
 
 
@@ -32,9 +30,7 @@ def run_package_smoke_test(distribution_name: str, expected_version: str) -> Non
     if installed_version != expected_version:
         raise PackageSmokeTestError(f"Installed distribution version mismatch: {installed_version} != {expected_version}")
 
-    imported_packages = (amivoice, hrp_package, wrp_package)
-    expected_module_names = {"amivoice", "com.amivoice.hrp", "com.amivoice.wrp"}
-    if {package.__name__ for package in imported_packages} != expected_module_names:
+    if amivoice.__name__ != "amivoice" or any(not hasattr(amivoice, name) for name in amivoice.__all__):
         raise PackageSmokeTestError("One or more public package imports failed")
 
     amivoice_package_root = Path(next(iter(amivoice.__path__)))

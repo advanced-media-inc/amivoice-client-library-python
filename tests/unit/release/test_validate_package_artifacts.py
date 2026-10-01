@@ -23,7 +23,6 @@ def create_valid_artifacts(dist_dir: Path) -> None:
     with zipfile.ZipFile(wheel_path, mode="w") as wheel_archive:
         for member_name in (
             "amivoice/py.typed",
-            "com/__init__.py",
             "amivoice_api_client-1.0.0.dist-info/METADATA",
             "amivoice_api_client-1.0.0.dist-info/RECORD",
         ):
@@ -38,7 +37,6 @@ def create_valid_artifacts(dist_dir: Path) -> None:
             f"{archive_prefix}/README.md",
             f"{archive_prefix}/pyproject.toml",
             f"{archive_prefix}/src/amivoice/py.typed",
-            f"{archive_prefix}/src/com/__init__.py",
             f"{archive_prefix}/src/amivoice_api_client.egg-info/PKG-INFO",
         ):
             write_tar_member(sdist_archive, member_name)
@@ -58,7 +56,10 @@ def test_validate_package_artifacts_valid_returns_artifact_paths(tmp_path: Path)
     assert {path.suffix for path in artifact_paths} == {".whl", ".gz"}
 
 
-def test_validate_package_artifacts_unexpected_wheel_file_invalid_raise_PackageArtifactError(tmp_path: Path) -> None:
+@pytest.mark.parametrize("unexpected_file", ["tests/test_unpublished.py", "com/__init__.py"])
+def test_validate_package_artifacts_unexpected_wheel_file_invalid_raise_PackageArtifactError(
+    tmp_path: Path, unexpected_file: str
+) -> None:
     """A wheel file outside the package allowlist is rejected"""
     # Given: valid artifacts with an unexpected wheel file
     dist_dir = tmp_path / "dist"
@@ -66,7 +67,7 @@ def test_validate_package_artifacts_unexpected_wheel_file_invalid_raise_PackageA
     create_valid_artifacts(dist_dir)
     wheel_path = dist_dir / "amivoice_api_client-1.0.0-py3-none-any.whl"
     with zipfile.ZipFile(wheel_path, mode="a") as wheel_archive:
-        wheel_archive.writestr("tests/test_unpublished.py", "")
+        wheel_archive.writestr(unexpected_file, "")
 
     # When: package artifacts are validated
     with pytest.raises(PackageArtifactError):
@@ -75,7 +76,10 @@ def test_validate_package_artifacts_unexpected_wheel_file_invalid_raise_PackageA
     # Then: the unsafe package is not accepted
 
 
-def test_validate_package_artifacts_unexpected_sdist_file_invalid_raise_PackageArtifactError(tmp_path: Path) -> None:
+@pytest.mark.parametrize("unexpected_file", ["docs/internal.md", "src/com/__init__.py"])
+def test_validate_package_artifacts_unexpected_sdist_file_invalid_raise_PackageArtifactError(
+    tmp_path: Path, unexpected_file: str
+) -> None:
     """A source distribution file outside the package allowlist is rejected"""
     # Given: valid artifacts with an unexpected source distribution file
     dist_dir = tmp_path / "dist"
@@ -90,9 +94,8 @@ def test_validate_package_artifacts_unexpected_sdist_file_invalid_raise_PackageA
             f"{archive_prefix}/README.md",
             f"{archive_prefix}/pyproject.toml",
             f"{archive_prefix}/src/amivoice/py.typed",
-            f"{archive_prefix}/src/com/__init__.py",
             f"{archive_prefix}/src/amivoice_api_client.egg-info/PKG-INFO",
-            f"{archive_prefix}/docs/internal.md",
+            f"{archive_prefix}/{unexpected_file}",
         ):
             write_tar_member(sdist_archive, member_name)
 

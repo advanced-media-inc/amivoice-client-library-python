@@ -39,7 +39,7 @@ def _validate_wheel_contents(wheel_path: Path, distribution_name: str, expected_
 
     for member_name in members:
         _validate_archive_member_path(member_name)
-        if not (member_name.startswith("amivoice/") or member_name.startswith("com/") or member_name.startswith(metadata_prefix)):
+        if not (member_name.startswith("amivoice/") or member_name.startswith(metadata_prefix)):
             raise PackageArtifactError(f"Wheel contains a file outside the package allowlist: {member_name}")
 
     if not required_paths.issubset(members):
@@ -54,7 +54,6 @@ def _validate_sdist_contents(sdist_path: Path, distribution_name: str, expected_
     allowed_root_files = {"LICENSE", "PKG-INFO", "README.md", "pyproject.toml", "setup.cfg"}
     allowed_source_prefixes = (
         f"{archive_prefix}/src/amivoice",
-        f"{archive_prefix}/src/com",
         f"{archive_prefix}/src/{distribution_prefix}.egg-info",
     )
 

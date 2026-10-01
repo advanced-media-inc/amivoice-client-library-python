@@ -298,7 +298,7 @@ def parse_result(raw: str, raise_on_error: bool = True) -> RecognitionResult:
     """AmiVoice の生レスポンスを ``RecognitionResult`` に変換する。
 
     Args:
-        raw: Hrp/Wrp ライブラリが返す生のレスポンステキスト。
+        raw: AmiVoice API が返す生の認識結果テキスト。
         raise_on_error: エラー結果の場合に ``RecognitionError`` を送出するか否か。
 
     Returns:
