@@ -11,7 +11,6 @@ import pytest
 from amivoice import Codec, Engine, ProfileWord
 from amivoice._segmenter import SegmenterProperties
 from amivoice._stream import StreamConnectionManager, StreamSession
-from amivoice._transport import HrpTransport
 from amivoice.client import (
     _DEFAULT_HRP_URL,
     _DEFAULT_WRP_URL,
@@ -25,33 +24,11 @@ from amivoice.exceptions import (
 )
 from amivoice.models import RecognitionResult
 
+from ._recognition_fakes import http_wire_values, make_http_transport
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_mock_hrp(result_json: str = '{"text": "hello"}', *, connect_ok: bool = True, legacy: bool = False) -> MagicMock:
-    """テスト用のモック HRP トランスポートを生成する。
-
-    ``feedDataPause`` を呼び出すと ``setListener`` で登録されたリスナーに
-    ``resultFinalized`` を送信してから True を返す。
-    """
-    mock_hrp = MagicMock(spec=HrpTransport) if legacy else MagicMock()
-    mock_hrp.connect.return_value = connect_ok
-    mock_hrp.feedDataResume.return_value = True
-    mock_hrp.feedData.return_value = True
-    mock_hrp.getLastMessage.return_value = "error"
-
-    def set_listener(listener: object) -> None:
-        mock_hrp._listener = listener
-
-    def finalize_result() -> bool:
-        mock_hrp._listener.resultFinalized(result_json)
-        return True
-
-    mock_hrp.setListener.side_effect = set_listener
-    mock_hrp.feedDataPause.side_effect = finalize_result
-    return mock_hrp
 
 
 def _make_mock_wrp(results: list[str] | None = None, *, connect_ok: bool = True) -> MagicMock:
@@ -135,48 +112,10 @@ def test_AmiVoiceClient_construction_segmenter_and_raw_properties_invalid_raise_
 # ---------------------------------------------------------------------------
 
 
-def test_AmiVoiceClient_transcribe_legacy_hrp_transport_without_rule_grammar_setters_succeeds() -> None:
-    """新setterを持たない従来の hrp_transport でも通常の認識が成功することを確認する。"""
-    # Given: ルールグラマ用の新setterを持たない従来のHRPトランスポート
-    mock_hrp = _make_mock_hrp(legacy=True)
-    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
-
-    # When: ルールグラマ専用パラメータを指定せずに認識を実行する
-    result = client.transcribe(b"audio-data")
-
-    # Then: 新setterの属性解決を行わず認識結果を返す
-    assert result.data == {"text": "hello"}
-
-
-def test_AmiVoiceClient_transcribe_legacy_hrp_transport_without_audio_filter_setter_succeeds() -> None:
-    """音声フィルタsetterを持たない従来の hrp_transport でも通常の認識が成功することを確認する。"""
-    # Given: setAudioFilterPropertiesを持たない従来のHRPトランスポート
-    mock_hrp = _make_mock_hrp(legacy=True)
-    assert not hasattr(mock_hrp, "setAudioFilterProperties")
-    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
-
-    # When: 音声フィルタを指定せずに認識を実行する
-    result = client.transcribe(b"audio-data")
-
-    # Then: 新setterの属性解決を行わず認識結果を返す
-    assert result.data == {"text": "hello"}
-
-
-def test_AmiVoiceClient_transcribe_legacy_hrp_transport_with_selected_channel_invalid_raise_AttributeError() -> None:
-    """音声フィルタsetterを持たない hrp_transport でチャネル指定を黙って捨てないことを確認する。"""
-    # Given: setAudioFilterPropertiesを持たない従来のHRPトランスポートとチャネル指定
-    mock_hrp = _make_mock_hrp(legacy=True)
-    client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, selected_channel=1)
-
-    # When / Then: 未対応のsetterとしてAttributeErrorが送出される
-    with pytest.raises(AttributeError, match="setAudioFilterProperties"):
-        client.transcribe(b"audio-data")
-
-
 def test_AmiVoiceClient_transcribe_success_returns_result() -> None:
     """Transcribe が正常終了したとき RecognitionResult が返ることを確認する。"""
     # Given
-    mock_hrp = _make_mock_hrp('{"text": "hello world"}')
+    mock_hrp = make_http_transport('{"text": "hello world"}')
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
 
     # When
@@ -189,21 +128,20 @@ def test_AmiVoiceClient_transcribe_success_returns_result() -> None:
 def test_AmiVoiceClient_transcribe_does_not_call_connect_on_transport() -> None:
     """注入された hrp_transport では connect/disconnect が呼ばれないことを確認する。"""
     # Given: テスト注入パスでは connect/disconnect 不要
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
 
     # When
     client.transcribe(b"audio-data")
 
     # Then: transport injection 経路では connect/disconnect を呼ばない
-    mock_hrp.connect.assert_not_called()
-    mock_hrp.disconnect.assert_not_called()
+    mock_hrp.transcribe.assert_called_once()
 
 
 def test_AmiVoiceClient_transcribe_uses_default_hrp_url() -> None:
-    """api_url を省略したとき _DEFAULT_HRP_URL が setServerURL に渡されることを確認する。"""
+    """api_url を省略したとき _DEFAULT_HRP_URL が HTTP境界 に渡されることを確認する。"""
     # Given
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key")
 
     # When
@@ -211,13 +149,13 @@ def test_AmiVoiceClient_transcribe_uses_default_hrp_url() -> None:
         client.transcribe(b"audio-data")
 
     # Then
-    mock_hrp.setServerURL.assert_called_once_with(_DEFAULT_HRP_URL)
+    assert mock_hrp.transcribe.call_args.args[0] == _DEFAULT_HRP_URL
 
 
 def test_AmiVoiceClient_transcribe_uses_custom_api_url() -> None:
     """transcribe(api_url=...) でカスタム URL が使われることを確認する。"""
     # Given
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     custom = "https://custom.example.com/recognize"
     client = AmiVoiceClient(api_key="key")
 
@@ -226,13 +164,13 @@ def test_AmiVoiceClient_transcribe_uses_custom_api_url() -> None:
         client.transcribe(b"audio-data", api_url=custom)
 
     # Then
-    mock_hrp.setServerURL.assert_called_once_with(custom)
+    assert mock_hrp.transcribe.call_args.args[0] == custom
 
 
 def test_AmiVoiceClient_transcribe_uses_constructor_http_api_url() -> None:
     """コンストラクタで http_api_url を指定したとき transcribe がそれを使うことを確認する。"""
     # Given: http_api_url をコンストラクタで指定したクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     custom = "https://constructor.example.com/recognize"
     client = AmiVoiceClient(api_key="key", http_api_url=custom)
 
@@ -241,7 +179,7 @@ def test_AmiVoiceClient_transcribe_uses_constructor_http_api_url() -> None:
         client.transcribe(b"audio-data")
 
     # Then: コンストラクタの http_api_url が使われる
-    mock_hrp.setServerURL.assert_called_once_with(custom)
+    assert mock_hrp.transcribe.call_args.args[0] == custom
 
 
 @pytest.mark.parametrize("parameter_name", ["http_api_url", "ws_api_url"])
@@ -255,26 +193,26 @@ def test_AmiVoiceClient_endpoint_url_none_invalid_raise_ConfigurationError(param
 def test_AmiVoiceClient_transcribe_api_url_none_invalid_raise_ConfigurationError() -> None:
     """transcribeのapi_urlにNoneを渡すと送信前にConfigurationErrorになることを確認する。"""
     # Given: HRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
 
     # When / Then: Noneを既定URLへ置き換えずConfigurationErrorになる
     with pytest.raises(ConfigurationError, match="Invalid api_url"):
         client.transcribe(b"audio-data", api_url=None)  # pyright: ignore[reportArgumentType]
-    mock_hrp.setServerURL.assert_not_called()
+    mock_hrp.transcribe.assert_not_called()
 
 
 def test_AmiVoiceClient_transcribe_logging_opt_out_constructor_valid_uses_nolog_url() -> None:
     """コンストラクタのlogging_opt_outで既定HRP URLがnolog URLへ切り替わることを確認する。"""
     # Given: ログ保存なしを指定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, logging_opt_out=True)
 
     # When: HTTP認識を実行する
     client.transcribe(b"audio-data")
 
     # Then: nologエンドポイントがHRPへ渡る
-    mock_hrp.setServerURL.assert_called_once_with("https://acp-api.amivoice.com/v1/nolog/recognize")
+    assert mock_hrp.transcribe.call_args.args[0] == "https://acp-api.amivoice.com/v1/nolog/recognize"
 
 
 @pytest.mark.parametrize(
@@ -295,20 +233,20 @@ def test_AmiVoiceClient_transcribe_logging_opt_out_nolog_custom_url_valid_keeps_
     """ログ保存なしのパスを持つカスタムHRP URLをそのまま使うことを確認する。"""
     # Given: PrivateLinkのログ保存なしURLとログ保存なしを指定したクライアント
     custom = "https://acp-api-private.amivoice.com/v1/nolog/recognize"
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, http_api_url=custom, logging_opt_out=True)
 
     # When: HTTP認識を実行する
     client.transcribe(b"audio-data")
 
     # Then: カスタムURLがそのままHRPへ渡る
-    mock_hrp.setServerURL.assert_called_once_with(custom)
+    assert mock_hrp.transcribe.call_args.args[0] == custom
 
 
 def test_AmiVoiceClient_transcribe_logging_opt_out_override_logged_custom_url_invalid_raise_ConfigurationError() -> None:
     """呼び出し時にログ保存ありのカスタムURLとlogging_opt_outを併用するとエラーになることを確認する。"""
     # Given: ログ保存ありのカスタムURLを設定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(
         api_key="key",
         hrp_transport=mock_hrp,
@@ -324,21 +262,21 @@ def test_AmiVoiceClient_transcribe_logging_opt_out_override_logged_custom_url_in
             api_url="https://acp-api.amivoice.com/v1/recognize",
             logging_opt_out=True,
         )
-    mock_hrp.setServerURL.assert_not_called()
+    mock_hrp.transcribe.assert_not_called()
 
 
 def test_AmiVoiceClient_transcribe_logging_opt_out_override_nolog_custom_url_valid_uses_custom_url() -> None:
     """呼び出し時のログ保存なしカスタムURLとlogging_opt_outを併用できることを確認する。"""
     # Given: ログ保存なしを指定したHRPクライアント
     custom = "https://acp-api-private.amivoice.com/v1/nolog/recognize"
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, logging_opt_out=True)
 
     # When: ログ保存なしのカスタムURLを指定してHTTP認識を実行する
     client.transcribe(b"audio-data", api_url=custom)
 
     # Then: カスタムURLがそのままHRPへ渡る
-    mock_hrp.setServerURL.assert_called_once_with(custom)
+    assert mock_hrp.transcribe.call_args.args[0] == custom
 
 
 @pytest.mark.parametrize(
@@ -355,14 +293,14 @@ def test_AmiVoiceClient_transcribe_logging_opt_out_override_valid_uses_expected_
 ) -> None:
     """transcribeのlogging_opt_out overrideがコンストラクタ設定を上書きすることを確認する。"""
     # Given: logging_opt_outの既定値を設定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, logging_opt_out=constructor_value)
 
     # When: 呼び出し時にlogging_opt_outを上書きしてHTTP認識を実行する
     client.transcribe(b"audio-data", logging_opt_out=override_value)
 
     # Then: overrideに対応するエンドポイントがHRPへ渡る
-    mock_hrp.setServerURL.assert_called_once_with(expected_url)
+    assert mock_hrp.transcribe.call_args.args[0] == expected_url
 
 
 def test_AmiVoiceClient_stream_api_url_none_invalid_raise_ConfigurationError() -> None:
@@ -473,13 +411,13 @@ def test_AmiVoiceClient_logging_opt_out_not_bool_invalid_raise_ConfigurationErro
 def test_AmiVoiceClient_transcribe_logging_opt_out_override_not_bool_invalid_raise_ConfigurationError(value: object) -> None:
     """transcribeのlogging_opt_out overrideがboolでない場合に送信前にエラーになることを確認する。"""
     # Given: ログ保存なしを指定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, logging_opt_out=True)
 
     # When / Then: bool以外のoverrideはFalseとして扱わずConfigurationErrorになる
     with pytest.raises(ConfigurationError, match="logging_opt_out"):
         client.transcribe(b"audio-data", logging_opt_out=value)  # pyright: ignore[reportArgumentType]
-    mock_hrp.setServerURL.assert_not_called()
+    mock_hrp.transcribe.assert_not_called()
 
 
 @pytest.mark.parametrize("value", [None, "false", 0])
@@ -493,97 +431,97 @@ def test_AmiVoiceClient_stream_logging_opt_out_override_not_bool_invalid_raise_C
         client.stream(logging_opt_out=value)  # pyright: ignore[reportArgumentType]
 
 
-def test_AmiVoiceClient_transcribe_recognition_timeout_passed_to_setter() -> None:
-    """recognition_timeout が setRecognitionTimeout に文字列で渡されることを確認する。"""
+def test_AmiVoiceClient_transcribe_recognition_timeout_passed_to_protocol() -> None:
+    """recognition_timeout が recognitionTimeout に文字列で渡されることを確認する。"""
     # Given
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, recognition_timeout=30000)
 
     # When
     client.transcribe(b"audio-data")
 
     # Then
-    mock_hrp.setRecognitionTimeout.assert_called_once_with("30000")
+    assert http_wire_values(mock_hrp)["recognitionTimeout"] == "30000"
 
 
 @pytest.mark.parametrize(
-    ("parameter_name", "setter_name", "value", "expected"),
+    ("parameter_name", "wire_name", "value", "expected"),
     [
-        ("max_decoding_time", "setMaxDecodingTime", 1000, "1000"),
-        ("max_response_time", "setMaxResponseTime", 2000, "2000"),
-        ("max_decoding_rate", "setMaxDecodingRate", 1.25, "1.25"),
-        ("target_response_time", "setTargetResponseTime", 3000, "3000"),
-        ("target_decoding_rate", "setTargetDecodingRate", -1.0, "-1.0"),
+        ("max_decoding_time", "maxDecodingTime", 1000, "1000"),
+        ("max_response_time", "maxResponseTime", 2000, "2000"),
+        ("max_decoding_rate", "maxDecodingRate", 1.25, "1.25"),
+        ("target_response_time", "targetResponseTime", 3000, "3000"),
+        ("target_decoding_rate", "targetDecodingRate", -1.0, "-1.0"),
     ],
 )
 def test_AmiVoiceClient_transcribe_processing_parameter_constructor_default_valid_passes_string(
     parameter_name: str,
-    setter_name: str,
+    wire_name: str,
     value: int | float,
     expected: str,
 ) -> None:
-    """コンストラクタの処理時間制御パラメータが HRP setter に文字列で渡ることを確認する"""
+    """コンストラクタの処理時間制御パラメータが HRP 電文境界 に文字列で渡ることを確認する"""
     # Given: 処理時間制御パラメータを設定した HRP クライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, **{parameter_name: value})
 
     # When: transcribe を実行する
     client.transcribe(b"audio-data")
 
-    # Then: 対応する setter に文字列で値が渡る
-    getattr(mock_hrp, setter_name).assert_called_once_with(expected)
+    # Then: 対応する 電文境界 に文字列で値が渡る
+    assert http_wire_values(mock_hrp)[wire_name] == expected
 
 
 @pytest.mark.parametrize(
-    ("parameter_name", "setter_name", "default_value", "override_value", "expected"),
+    ("parameter_name", "wire_name", "default_value", "override_value", "expected"),
     [
-        ("max_decoding_time", "setMaxDecodingTime", 1000, 2000, "2000"),
-        ("max_response_time", "setMaxResponseTime", 2000, 3000, "3000"),
-        ("max_decoding_rate", "setMaxDecodingRate", 1.25, 2.5, "2.5"),
-        ("target_response_time", "setTargetResponseTime", 3000, 4000, "4000"),
-        ("target_decoding_rate", "setTargetDecodingRate", -1.0, 0.75, "0.75"),
+        ("max_decoding_time", "maxDecodingTime", 1000, 2000, "2000"),
+        ("max_response_time", "maxResponseTime", 2000, 3000, "3000"),
+        ("max_decoding_rate", "maxDecodingRate", 1.25, 2.5, "2.5"),
+        ("target_response_time", "targetResponseTime", 3000, 4000, "4000"),
+        ("target_decoding_rate", "targetDecodingRate", -1.0, 0.75, "0.75"),
     ],
 )
 def test_AmiVoiceClient_transcribe_processing_parameter_call_override_valid_passes_string(
     parameter_name: str,
-    setter_name: str,
+    wire_name: str,
     default_value: int | float,
     override_value: int | float,
     expected: str,
 ) -> None:
     """Transcribe の処理時間制御パラメータ override が既定値を上書きすることを確認する"""
     # Given: 処理時間制御パラメータの既定値を設定した HRP クライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, **{parameter_name: default_value})
 
     # When: 呼び出し時に処理時間制御パラメータを上書きして transcribe を実行する
     client.transcribe(b"audio-data", **{parameter_name: override_value})
 
-    # Then: override の値が対応する setter に文字列で渡る
-    getattr(mock_hrp, setter_name).assert_called_once_with(expected)
+    # Then: override の値が対応する 電文境界 に文字列で渡る
+    assert http_wire_values(mock_hrp)[wire_name] == expected
 
 
 @pytest.mark.parametrize(
-    "setter_name",
+    "wire_name",
     [
-        "setMaxDecodingTime",
-        "setMaxResponseTime",
-        "setMaxDecodingRate",
-        "setTargetResponseTime",
-        "setTargetDecodingRate",
+        "maxDecodingTime",
+        "maxResponseTime",
+        "maxDecodingRate",
+        "targetResponseTime",
+        "targetDecodingRate",
     ],
 )
-def test_AmiVoiceClient_transcribe_processing_parameter_omitted_valid_not_set(setter_name: str) -> None:
-    """処理時間制御パラメータ未指定時に HRP setter が呼ばれないことを確認する"""
+def test_AmiVoiceClient_transcribe_processing_parameter_omitted_valid_not_set(wire_name: str) -> None:
+    """処理時間制御パラメータ未指定時に HRP 電文境界 が呼ばれないことを確認する"""
     # Given: 処理時間制御パラメータを指定していない HRP クライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
 
     # When: transcribe を実行する
     client.transcribe(b"audio-data")
 
-    # Then: サーバー側のデフォルトに委ねるため setter は呼ばれない
-    getattr(mock_hrp, setter_name).assert_not_called()
+    # Then: サーバー側のデフォルトに委ねるため 電文境界 は呼ばれない
+    assert wire_name not in http_wire_values(mock_hrp)
 
 
 @pytest.mark.parametrize(
@@ -675,66 +613,66 @@ def test_AmiVoiceClient_stream_processing_parameter_omitted_valid_not_set(setter
 def test_AmiVoiceClient_transcribe_confidence_level_constructor_default_valid_passes_repr() -> None:
     """コンストラクタの confidence_level が repr 文字列で HRP に渡ることを確認する。"""
     # Given: confidence_level を設定した HRP クライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, confidence_level=0.3)
 
     # When: transcribe を実行する
     client.transcribe(b"audio-data")
 
-    # Then: 小数表記を維持した文字列が setter に渡される
-    mock_hrp.setConfidenceLevel.assert_called_once_with("0.3")
+    # Then: 小数表記を維持した文字列が 電文境界 に渡される
+    assert http_wire_values(mock_hrp)["confidenceLevel"] == "0.3"
 
 
 def test_AmiVoiceClient_transcribe_confidence_level_call_override_valid_passes_repr() -> None:
     """Transcribe の confidence_level override がインスタンス既定値を上書きすることを確認する。"""
     # Given: confidence_level の既定値を設定した HRP クライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, confidence_level=0.3)
 
     # When: 呼び出し時に confidence_level を上書きして transcribe を実行する
     client.transcribe(b"audio-data", confidence_level=0.7)
 
-    # Then: override の値が repr 文字列で setter に渡される
-    mock_hrp.setConfidenceLevel.assert_called_once_with("0.7")
+    # Then: override の値が repr 文字列で 電文境界 に渡される
+    assert http_wire_values(mock_hrp)["confidenceLevel"] == "0.7"
 
 
 def test_AmiVoiceClient_transcribe_confidence_level_omitted_valid_not_set() -> None:
-    """confidence_level 未指定時に HRP の setter が呼ばれないことを確認する。"""
+    """confidence_level 未指定時に HRP の 電文境界 が呼ばれないことを確認する。"""
     # Given: confidence_level を指定していない HRP クライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
 
     # When: transcribe を実行する
     client.transcribe(b"audio-data")
 
-    # Then: サーバー側のデフォルトに委ねるため setter は呼ばれない
-    mock_hrp.setConfidenceLevel.assert_not_called()
+    # Then: サーバー側のデフォルトに委ねるため 電文境界 は呼ばれない
+    assert "confidenceLevel" not in http_wire_values(mock_hrp)
 
 
 def test_AmiVoiceClient_transcribe_billing_key_constructor_default_valid_passes_extension() -> None:
-    """コンストラクタの billing_key が HRP の extension setter に渡ることを確認する"""
+    """コンストラクタの billing_key が HRP の extension 電文境界 に渡ることを確認する"""
     # Given: billing_key を設定した HRP クライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, billing_key="user01")
 
     # When: transcribe を実行する
     client.transcribe(b"audio-data")
 
-    # Then: billing_key 用のコンパクト JSON が extension setter に渡る
-    mock_hrp.setExtension.assert_called_once_with('{"client_info":{"billing_key":"user01"}}')
+    # Then: billing_key 用のコンパクト JSON が extension 電文境界 に渡る
+    assert http_wire_values(mock_hrp)["extension"] == '{"client_info":{"billing_key":"user01"}}'
 
 
 def test_AmiVoiceClient_transcribe_billing_key_call_override_valid_passes_extension() -> None:
     """Transcribe の billing_key override がインスタンス既定値を上書きすることを確認する"""
     # Given: billing_key の既定値を設定した HRP クライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, billing_key="default")
 
     # When: 呼び出し時に billing_key を上書きして transcribe を実行する
     client.transcribe(b"audio-data", billing_key="override")
 
     # Then: override の billing_key から生成した JSON が渡る
-    mock_hrp.setExtension.assert_called_once_with('{"client_info":{"billing_key":"override"}}')
+    assert http_wire_values(mock_hrp)["extension"] == '{"client_info":{"billing_key":"override"}}'
 
 
 def test_AmiVoiceClient_transcribe_extension_and_billing_key_invalid_raise_ConfigurationError() -> None:
@@ -748,9 +686,9 @@ def test_AmiVoiceClient_transcribe_extension_and_billing_key_invalid_raise_Confi
 
 
 def test_AmiVoiceClient_transcribe_segmenter_valid_passes_generated_parameter() -> None:
-    """型付き segmenter 設定が HRP の setter に渡されることを確認する。"""
+    """型付き segmenter 設定が HRP の 電文境界 に渡されることを確認する。"""
     # Given: 型付きセグメンター設定と注入済み HRP トランスポート
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(
         api_key="key",
         hrp_transport=mock_hrp,
@@ -760,21 +698,21 @@ def test_AmiVoiceClient_transcribe_segmenter_valid_passes_generated_parameter() 
     # When: transcribe を実行する
     client.transcribe(b"audio-data")
 
-    # Then: 生成された segmenterProperties 文字列が setter に渡される
-    mock_hrp.setSegmenterProperties.assert_called_once_with("useDiarizer=1 diarizerAlpha=1e-20")
+    # Then: 生成された segmenterProperties 文字列が 電文境界 に渡される
+    assert http_wire_values(mock_hrp)["segmenterProperties"] == "useDiarizer=1 diarizerAlpha=1e-20"
 
 
 def test_AmiVoiceClient_transcribe_raw_segmenter_properties_valid_passes_unchanged() -> None:
     """既存の生 segmenter_properties 文字列がそのまま HRP に渡ることを確認する。"""
     # Given: 生文字列を指定したクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, segmenter_properties="threshold=5000")
 
     # When: transcribe を実行する
     client.transcribe(b"audio-data")
 
-    # Then: 生文字列が変更されず setter に渡される
-    mock_hrp.setSegmenterProperties.assert_called_once_with("threshold=5000")
+    # Then: 生文字列が変更されず 電文境界 に渡される
+    assert http_wire_values(mock_hrp)["segmenterProperties"] == "threshold=5000"
 
 
 def test_AmiVoiceClient_transcribe_segmenter_and_raw_properties_invalid_raise_ConfigurationError() -> None:
@@ -795,7 +733,7 @@ def test_AmiVoiceClient_transcribe_segmenter_and_raw_properties_invalid_raise_Co
 def test_AmiVoiceClient_transcribe_call_args_override_instance_defaults() -> None:
     """transcribe() の呼び出し時引数が同名のインスタンス既定値を上書きすることを確認する。"""
     # Given: 既定値を保持したクライアントと注入済み HRP トランスポート
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(
         api_key="key",
         grammar_file_names="-a-general",
@@ -818,19 +756,19 @@ def test_AmiVoiceClient_transcribe_call_args_override_instance_defaults() -> Non
         extension="override-tag",
     )
 
-    # Then: 呼び出し時引数が setter に渡される
-    mock_hrp.setGrammarFileNames.assert_called_once_with("-a-medical")
-    mock_hrp.setCodec.assert_called_once_with("8K")
-    mock_hrp.setKeepFillerToken.assert_called_once_with("false")
-    mock_hrp.setConnectTimeout.assert_called_once_with(3000)
-    mock_hrp.setReceiveTimeout.assert_called_once_with(4000)
-    mock_hrp.setExtension.assert_called_once_with("override-tag")
+    # Then: 呼び出し時引数が 電文境界 に渡される
+    assert http_wire_values(mock_hrp)["grammarFileNames"] == "-a-medical"
+    assert http_wire_values(mock_hrp)["codec"] == "8K"
+    assert http_wire_values(mock_hrp)["keepFillerToken"] == "false"
+    assert http_wire_values(mock_hrp)["connectTimeout"] == 3000
+    assert http_wire_values(mock_hrp)["receiveTimeout"] == 4000
+    assert http_wire_values(mock_hrp)["extension"] == "override-tag"
 
 
 def test_AmiVoiceClient_transcribe_constant_params_valid_return_wire_values() -> None:
-    """CodecとEngineの定数を指定した場合にAPIへ送る文字列がsetterへ渡されることを確認する。"""
+    """CodecとEngineの定数を指定した場合にAPIへ送る文字列が電文境界へ渡されることを確認する。"""
     # Given: 定数で既定値を保持したクライアントと注入済み HRP トランスポート
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(
         api_key="key",
         grammar_file_names=Engine.A_GENERAL,
@@ -841,15 +779,15 @@ def test_AmiVoiceClient_transcribe_constant_params_valid_return_wire_values() ->
     # When: 呼び出し時にcodecを定数で上書きして transcribe する
     client.transcribe(b"audio-data", codec=Codec.LSB8K)
 
-    # Then: 定数の値が文字列として setter に渡される
-    mock_hrp.setGrammarFileNames.assert_called_once_with("-a-general")
-    mock_hrp.setCodec.assert_called_once_with("LSB8K")
+    # Then: 定数の値が文字列として 電文境界 に渡される
+    assert http_wire_values(mock_hrp)["grammarFileNames"] == "-a-general"
+    assert http_wire_values(mock_hrp)["codec"] == "LSB8K"
 
 
 def test_AmiVoiceClient_transcribe_omitted_args_use_instance_defaults() -> None:
     """transcribe() で引数を省略した場合にインスタンス既定値が使われることを確認する。"""
     # Given: 既定値を保持したクライアントと注入済み HRP トランスポート
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(
         api_key="key",
         grammar_file_names="-a-general",
@@ -864,19 +802,19 @@ def test_AmiVoiceClient_transcribe_omitted_args_use_instance_defaults() -> None:
     # When: override を渡さず transcribe する
     client.transcribe(b"audio-data")
 
-    # Then: コンストラクタ既定値が setter に渡される
-    mock_hrp.setGrammarFileNames.assert_called_once_with("-a-general")
-    mock_hrp.setCodec.assert_called_once_with("16K")
-    mock_hrp.setKeepFillerToken.assert_called_once_with("true")
-    mock_hrp.setConnectTimeout.assert_called_once_with(1000)
-    mock_hrp.setReceiveTimeout.assert_called_once_with(2000)
-    mock_hrp.setExtension.assert_called_once_with("default-tag")
+    # Then: コンストラクタ既定値が 電文境界 に渡される
+    assert http_wire_values(mock_hrp)["grammarFileNames"] == "-a-general"
+    assert http_wire_values(mock_hrp)["codec"] == "16K"
+    assert http_wire_values(mock_hrp)["keepFillerToken"] == "true"
+    assert http_wire_values(mock_hrp)["connectTimeout"] == 1000
+    assert http_wire_values(mock_hrp)["receiveTimeout"] == 2000
+    assert http_wire_values(mock_hrp)["extension"] == "default-tag"
 
 
 def test_AmiVoiceClient_transcribe_connect_fails_raises_connection_error() -> None:
     """実 transport で接続失敗のとき ConnectionFailedError が送出されることを確認する。"""
     # Given
-    mock_hrp = _make_mock_hrp(connect_ok=False)
+    mock_hrp = make_http_transport(connect_ok=False)
     client = AmiVoiceClient(api_key="key")
 
     # When / Then
@@ -887,7 +825,7 @@ def test_AmiVoiceClient_transcribe_connect_fails_raises_connection_error() -> No
 def test_AmiVoiceClient_transcribe_server_error_raises_recognition_error() -> None:
     """サーバーエラーレスポンスのとき RecognitionError が送出されることを確認する。"""
     # Given
-    mock_hrp = _make_mock_hrp('\x01\x01\x01\x01\x01{"code": "E001", "message": "bad request"}')
+    mock_hrp = make_http_transport('\x01\x01\x01\x01\x01{"code": "E001", "message": "bad request"}')
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
 
     # When / Then
@@ -901,7 +839,7 @@ def test_AmiVoiceClient_transcribe_server_error_raises_recognition_error() -> No
 def test_AmiVoiceClient_transcribe_raise_on_error_false_returns_error_result() -> None:
     """raise_on_error=False のときエラー結果が例外なく返ることを確認する。"""
     # Given
-    mock_hrp = _make_mock_hrp('\x01\x01\x01\x01\x01{"code": "E001", "message": "bad request"}')
+    mock_hrp = make_http_transport('\x01\x01\x01\x01\x01{"code": "E001", "message": "bad request"}')
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
 
     # When
@@ -910,24 +848,6 @@ def test_AmiVoiceClient_transcribe_raise_on_error_false_returns_error_result() -
     # Then
     assert result.is_error is True
     assert result.data == {"code": "E001", "message": "bad request"}
-
-
-def test_AmiVoiceClient_transcribe_disconnect_called_on_error() -> None:
-    """FeedDataResume 失敗後も disconnect が呼ばれることを確認する（リソースリークなし）。"""
-    # Given: feedDataResume が失敗するモック
-    mock_hrp = MagicMock()
-    mock_hrp.connect.return_value = True
-    mock_hrp.feedDataResume.return_value = False
-    mock_hrp.getLastMessage.return_value = "resume failed"
-
-    client = AmiVoiceClient(api_key="key")
-
-    # When
-    with patch("amivoice.client._construct_hrp_transport", return_value=mock_hrp), pytest.raises(RecognitionError):
-        client.transcribe(b"audio-data")
-
-    # Then
-    mock_hrp.disconnect.assert_called_once()
 
 
 def test_AmiVoiceClient_transcribe_concurrent_calls_are_independent() -> None:
@@ -942,7 +862,7 @@ def test_AmiVoiceClient_transcribe_concurrent_calls_are_independent() -> None:
         nonlocal call_count
         with lock:
             call_count += 1
-        return _make_mock_hrp(f'{{"text": "result-{call_count}"}}')
+        return make_http_transport(f'{{"text": "result-{call_count}"}}')
 
     def worker() -> None:
         try:
@@ -1510,54 +1430,54 @@ def test_AmiVoiceClient_stream_end_timeout_raises_when_results_pending() -> None
 
 
 @pytest.mark.parametrize(
-    ("parameter_name", "setter_name", "value", "expected"),
+    ("parameter_name", "wire_name", "value", "expected"),
     [
-        ("complete_timeout", "setCompleteTimeout", 5000, "5000"),
-        ("wildcard_model_penalty", "setWildcardModelPenalty", 4.0, "4.0"),
+        ("complete_timeout", "completeTimeout", 5000, "5000"),
+        ("wildcard_model_penalty", "wildcardModelPenalty", 4.0, "4.0"),
     ],
 )
 def test_AmiVoiceClient_transcribe_rule_grammar_parameter_constructor_default_passes_string(
     parameter_name: str,
-    setter_name: str,
+    wire_name: str,
     value: int | float,
     expected: str,
 ) -> None:
-    """コンストラクタのルールグラマ専用パラメータが HRP setter に渡ることを確認する"""
+    """コンストラクタのルールグラマ専用パラメータが HRP 電文境界 に渡ることを確認する"""
     # Given: ルールグラマ専用パラメータを設定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, **{parameter_name: value})
 
     # When: 音声認識を実行する
     client.transcribe(b"audio-data")
 
-    # Then: 対応するHRP setterへ文字列値が渡る
-    getattr(mock_hrp, setter_name).assert_called_once_with(expected)
+    # Then: 対応するHRP 電文境界へ文字列値が渡る
+    assert http_wire_values(mock_hrp)[wire_name] == expected
 
 
 @pytest.mark.parametrize(
-    ("parameter_name", "setter_name", "default_value", "override_value", "expected"),
+    ("parameter_name", "wire_name", "default_value", "override_value", "expected"),
     [
-        ("complete_timeout", "setCompleteTimeout", 5000, 7000, "7000"),
-        ("wildcard_model_penalty", "setWildcardModelPenalty", 4.0, 5.5, "5.5"),
+        ("complete_timeout", "completeTimeout", 5000, 7000, "7000"),
+        ("wildcard_model_penalty", "wildcardModelPenalty", 4.0, 5.5, "5.5"),
     ],
 )
 def test_AmiVoiceClient_transcribe_rule_grammar_parameter_override_passes_string(
     parameter_name: str,
-    setter_name: str,
+    wire_name: str,
     default_value: int | float,
     override_value: int | float,
     expected: str,
 ) -> None:
     """Transcribe のルールグラマ専用パラメータ override が既定値を上書きすることを確認する"""
     # Given: 既定値を設定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, **{parameter_name: default_value})
 
     # When: 音声認識時にルールグラマ専用パラメータを上書きする
     client.transcribe(b"audio-data", **{parameter_name: override_value})
 
-    # Then: 上書きした文字列値が対応するHRP setterへ渡る
-    getattr(mock_hrp, setter_name).assert_called_once_with(expected)
+    # Then: 上書きした文字列値が対応するHRP 電文境界へ渡る
+    assert http_wire_values(mock_hrp)[wire_name] == expected
 
 
 @pytest.mark.parametrize(
@@ -1626,20 +1546,20 @@ def test_AmiVoiceClient_transcribe_selected_channel_valid_passes_audio_filter_pr
 ) -> None:
     """selected_channelの単一・範囲指定がHRPへ渡ることを確認する"""
     # Given: 型付きチャネル指定を設定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, selected_channel=selected_channel)
 
     # When: HTTP認識を実行する
     client.transcribe(b"audio-data")
 
-    # Then: audioFilterPropertiesのselectedChannel形式がHRP setterへ渡る
-    mock_hrp.setAudioFilterProperties.assert_called_once_with(expected)
+    # Then: audioFilterPropertiesのselectedChannel形式がHRP 電文境界へ渡る
+    assert http_wire_values(mock_hrp)["audioFilterProperties"] == expected
 
 
 def test_AmiVoiceClient_transcribe_audio_filter_properties_raw_valid_passes_unchanged() -> None:
     """rawのaudio_filter_propertiesがHRPへそのまま渡ることを確認する"""
     # Given: raw音声フィルタプロパティを設定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(
         api_key="key",
         hrp_transport=mock_hrp,
@@ -1649,60 +1569,60 @@ def test_AmiVoiceClient_transcribe_audio_filter_properties_raw_valid_passes_unch
     # When: HTTP認識を実行する
     client.transcribe(b"audio-data")
 
-    # Then: raw文字列がHRP setterへ渡る
-    mock_hrp.setAudioFilterProperties.assert_called_once_with("selectedChannel=0-1")
+    # Then: raw文字列がHRP 電文境界へ渡る
+    assert http_wire_values(mock_hrp)["audioFilterProperties"] == "selectedChannel=0-1"
 
 
 def test_AmiVoiceClient_transcribe_selected_channel_override_valid_passes_audio_filter_properties() -> None:
     """transcribeのselected_channel overrideがHRPへ渡ることを確認する"""
     # Given: 音声フィルタプロパティを指定していないHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
 
     # When: 呼び出し時にチャネル範囲を指定してHTTP認識を実行する
     client.transcribe(b"audio-data", selected_channel=(1, 2))
 
-    # Then: overrideのselectedChannel形式がHRP setterへ渡る
-    mock_hrp.setAudioFilterProperties.assert_called_once_with("selectedChannel=1-2")
+    # Then: overrideのselectedChannel形式がHRP 電文境界へ渡る
+    assert http_wire_values(mock_hrp)["audioFilterProperties"] == "selectedChannel=1-2"
 
 
 def test_AmiVoiceClient_transcribe_selected_channel_override_none_valid_clears_constructor_setting() -> None:
     """transcribeのselected_channel=Noneでコンストラクタの指定が解除されることを確認する"""
     # Given: コンストラクタでチャネルを指定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, selected_channel=1)
 
     # When: 呼び出し時にselected_channel=Noneを指定してHTTP認識を実行する
     client.transcribe(b"audio-data", selected_channel=None)
 
     # Then: 音声フィルタプロパティはHRPへ渡らない
-    mock_hrp.setAudioFilterProperties.assert_not_called()
+    assert "audioFilterProperties" not in http_wire_values(mock_hrp)
 
 
 def test_AmiVoiceClient_transcribe_audio_filter_properties_override_valid_replaces_selected_channel() -> None:
     """transcribeのraw文字列overrideでコンストラクタのselected_channelが上書きされることを確認する"""
     # Given: コンストラクタでチャネルを指定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, selected_channel=1)
 
     # When: 呼び出し時にraw文字列を指定してHTTP認識を実行する
     client.transcribe(b"audio-data", audio_filter_properties="selectedChannel=2")
 
-    # Then: 呼び出し時のraw文字列だけがHRP setterへ渡る
-    mock_hrp.setAudioFilterProperties.assert_called_once_with("selectedChannel=2")
+    # Then: 呼び出し時のraw文字列だけがHRP 電文境界へ渡る
+    assert http_wire_values(mock_hrp)["audioFilterProperties"] == "selectedChannel=2"
 
 
 def test_AmiVoiceClient_transcribe_audio_filter_properties_override_none_valid_clears_constructor_setting() -> None:
     """transcribeのaudio_filter_properties=Noneでコンストラクタの指定が解除されることを確認する"""
     # Given: コンストラクタでraw文字列を指定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, audio_filter_properties="selectedChannel=1")
 
     # When: 呼び出し時にaudio_filter_properties=Noneを指定してHTTP認識を実行する
     client.transcribe(b"audio-data", audio_filter_properties=None)
 
     # Then: 音声フィルタプロパティはHRPへ渡らない
-    mock_hrp.setAudioFilterProperties.assert_not_called()
+    assert "audioFilterProperties" not in http_wire_values(mock_hrp)
 
 
 @pytest.mark.parametrize(
@@ -1720,13 +1640,13 @@ def test_AmiVoiceClient_selected_channel_invalid_raise_ConfigurationError(select
 def test_AmiVoiceClient_transcribe_selected_channel_same_range_override_invalid_raise_ConfigurationError() -> None:
     """transcribeの開始と終了が同じチャネル範囲でConfigurationErrorが送出されることを確認する"""
     # Given: 音声フィルタ指定を持たないHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp)
 
     # When / Then: 呼び出し時に(0, 0)を指定すると送信前にConfigurationErrorになる
     with pytest.raises(ConfigurationError, match="start and end must be different"):
         client.transcribe(b"audio-data", selected_channel=(0, 0))
-    mock_hrp.setAudioFilterProperties.assert_not_called()
+    mock_hrp.transcribe.assert_not_called()
 
 
 def test_AmiVoiceClient_selected_channel_and_raw_properties_invalid_raise_ConfigurationError() -> None:
@@ -1750,7 +1670,7 @@ def test_AmiVoiceClient_transcribe_selected_channel_and_raw_override_invalid_rai
 def test_AmiVoiceClient_transcribe_profile_words_sequence_valid_passes_serialized_string() -> None:
     """コンストラクタのProfileWordシーケンスがHRPへシリアライズされることを確認する"""
     # Given: ProfileWordシーケンスを設定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(
         api_key="key",
         hrp_transport=mock_hrp,
@@ -1760,14 +1680,14 @@ def test_AmiVoiceClient_transcribe_profile_words_sequence_valid_passes_serialize
     # When: HTTP認識を実行する
     client.transcribe(b"audio-data")
 
-    # Then: profileWordsのワイヤー形式がHRP setterへ渡る
-    mock_hrp.setProfileWords.assert_called_once_with("AmiVoice あみぼいす")
+    # Then: profileWordsのワイヤー形式がHRP 電文境界へ渡る
+    assert http_wire_values(mock_hrp)["profileWords"] == "AmiVoice あみぼいす"
 
 
 def test_AmiVoiceClient_transcribe_profile_words_override_valid_passes_serialized_string() -> None:
     """transcribeのProfileWordシーケンスoverrideがHRPへシリアライズされることを確認する"""
     # Given: 既定のprofile_wordsを持つHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(
         api_key="key",
         hrp_transport=mock_hrp,
@@ -1780,35 +1700,35 @@ def test_AmiVoiceClient_transcribe_profile_words_override_valid_passes_serialize
         profile_words=(ProfileWord(written="WWW", spoken="とりぷるだぶる"),),
     )
 
-    # Then: overrideのワイヤー形式がHRP setterへ渡る
-    mock_hrp.setProfileWords.assert_called_once_with("WWW とりぷるだぶる")
+    # Then: overrideのワイヤー形式がHRP 電文境界へ渡る
+    assert http_wire_values(mock_hrp)["profileWords"] == "WWW とりぷるだぶる"
 
 
 @pytest.mark.parametrize("empty_words", [(), []])
-def test_AmiVoiceClient_transcribe_profile_words_empty_sequence_valid_skip_setter(empty_words: Sequence[ProfileWord]) -> None:
+def test_AmiVoiceClient_transcribe_profile_words_empty_sequence_valid_skip_parameter(empty_words: Sequence[ProfileWord]) -> None:
     """空のProfileWordシーケンスでHRPのprofileWordsを設定しないことを確認する"""
     # Given: 空のProfileWordシーケンスを設定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, profile_words=empty_words)
 
     # When: HTTP認識を実行する
     client.transcribe(b"audio-data")
 
     # Then: 空文字列のprofileWordsは送られない
-    mock_hrp.setProfileWords.assert_not_called()
+    assert "profileWords" not in http_wire_values(mock_hrp)
 
 
 def test_AmiVoiceClient_transcribe_profile_words_empty_override_valid_clear_default() -> None:
     """空のProfileWordシーケンスoverrideが既定のprofile_wordsを送らないことを確認する"""
     # Given: 既定のprofile_wordsを持つHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, profile_words="default word")
 
     # When: 空のProfileWordシーケンスでHTTP認識時の設定を上書きする
     client.transcribe(b"audio-data", profile_words=())
 
-    # Then: 既定値も空文字列もHRP setterへ渡らない
-    mock_hrp.setProfileWords.assert_not_called()
+    # Then: 既定値も空文字列もHRP 電文境界へ渡らない
+    assert "profileWords" not in http_wire_values(mock_hrp)
 
 
 def test_AmiVoiceClient_stream_profile_words_empty_sequence_valid_skip_setter() -> None:
@@ -1848,7 +1768,7 @@ def test_AmiVoiceClient_stream_profile_words_sequence_valid_passes_serialized_st
 def test_AmiVoiceClient_transcribe_profile_id_without_colon_warns_and_passes_as_is() -> None:
     """コロンなしのprofile_idで警告し、値を書き換えずに送ることを確認する"""
     # Given: コロンなしのprofile_idを設定したHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     with pytest.warns(UserWarning, match="profile_id"):
         client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, profile_id="myprofile")
 
@@ -1856,22 +1776,22 @@ def test_AmiVoiceClient_transcribe_profile_id_without_colon_warns_and_passes_as_
     with pytest.warns(UserWarning, match="profile_id"):
         client.transcribe(b"audio-data")
 
-    # Then: profileIdはコロンを付与せずHRP setterへ渡る
-    mock_hrp.setProfileId.assert_called_once_with("myprofile")
+    # Then: profileIdはコロンを付与せずHRP 電文境界へ渡る
+    assert http_wire_values(mock_hrp)["profileId"] == "myprofile"
 
 
 def test_AmiVoiceClient_transcribe_profile_id_override_without_colon_warns() -> None:
     """transcribeのコロンなしprofile_id overrideで警告することを確認する"""
     # Given: コロン付きの既定profile_idを持つHRPクライアント
-    mock_hrp = _make_mock_hrp()
+    mock_hrp = make_http_transport()
     client = AmiVoiceClient(api_key="key", hrp_transport=mock_hrp, profile_id=":default-profile")
 
     # When: コロンなしのprofile_idでHTTP認識時の設定を上書きする
     with pytest.warns(UserWarning, match="profile_id"):
         client.transcribe(b"audio-data", profile_id="override-profile")
 
-    # Then: override値は書き換えられずHRP setterへ渡る
-    mock_hrp.setProfileId.assert_called_once_with("override-profile")
+    # Then: override値は書き換えられずHRP 電文境界へ渡る
+    assert http_wire_values(mock_hrp)["profileId"] == "override-profile"
 
 
 @pytest.mark.filterwarnings("error")

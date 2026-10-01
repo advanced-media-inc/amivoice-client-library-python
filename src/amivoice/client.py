@@ -1,30 +1,20 @@
 """AmiVoice 高レベルクライアント。HTTP 認識 (transcribe) と WebSocket ストリーミング (stream) を提供する。"""
 
 import os
-import threading
 from collections.abc import Sequence
-from contextlib import suppress
-from dataclasses import replace
-from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-from com.amivoice.hrp.Hrp import Hrp as _Hrp
-from com.amivoice.hrp.HrpListener import HrpListener
-
 from ._audio import resolve_audio
-from ._billing import resolve_billing_extension
+from ._http_recognition import HttpRecognitionTransport
 from ._params import UNSET, RecognitionParams, _UnsetType, merge_params
 from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager
-from ._transport import HrpTransport, WrpTransport, _set_optional_transport_parameter, bool_string
+from ._transport import WrpTransport
 from ._types import AudioSource
 from .constants import Codec
 from .dictionary import ProfileWord, build_profile_words
-from .exceptions import AuthenticationError, ConfigurationError, ConnectionFailedError, RecognitionError
-from .models import RecognitionResult, parse_result
+from .exceptions import AuthenticationError, ConfigurationError
+from .models import RecognitionResult
 
 _DEFAULT_HRP_URL: str = "https://acp-api.amivoice.com/v1/recognize"
 _DEFAULT_WRP_URL: str = "wss://acp-api.amivoice.com/v1/"
@@ -32,13 +22,13 @@ _DEFAULT_NOLOG_HRP_URL: str = "https://acp-api.amivoice.com/v1/nolog/recognize"
 _DEFAULT_NOLOG_WRP_URL: str = "wss://acp-api.amivoice.com/v1/nolog/"
 
 
-def _construct_hrp_transport() -> HrpTransport:
+def _construct_hrp_transport() -> HttpRecognitionTransport:
     """HRP ライブラリのトランスポートを生成する。
 
     Returns:
         HrpTransport: 生成した HRP トランスポート
     """
-    return _Hrp.construct()
+    return HttpRecognitionTransport()
 
 
 def _validate_custom_url_logging_opt_out(url: str, nolog_url: str) -> None:
@@ -310,28 +300,6 @@ def _resolve_segmenter_override(
     return segmenter.to_parameter() if segmenter is not None else None
 
 
-class _HrpListenerAdapter(HrpListener):
-    """HRP ライブラリのコールバックを受け取る内部アダプター。
-
-    コールバックのメソッド名は override 元の ``HrpListener``（上流ライブラリ）に合わせる。
-    引数名は snake_case にするが、上流はキャメルケースの引数を位置引数で渡すため、
-    引数名不一致による ``reportIncompatibleMethodOverride`` を抑制する。
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.session_id: str | None = None
-        self.raw_result: str | None = None
-        self.finalized_event = threading.Event()
-
-    def resultCreated(self, session_id: str) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
-        self.session_id = session_id
-
-    def resultFinalized(self, result: str) -> None:
-        self.raw_result = result
-        self.finalized_event.set()
-
-
 class AmiVoiceClient:
     """AmiVoice API の高レベルクライアント。
 
@@ -466,7 +434,7 @@ class AmiVoiceClient:
         no_input_timeout: int | None = None,
         http_api_url: str | _UnsetType = UNSET,
         ws_api_url: str | _UnsetType = UNSET,
-        hrp_transport: HrpTransport | None = None,
+        hrp_transport: HttpRecognitionTransport | None = None,
         wrp_transport: WrpTransport | None = None,
     ) -> None:
         """クライアント設定を保持し、未指定時は環境変数から API キーを解決する。
@@ -731,144 +699,8 @@ class AmiVoiceClient:
             resolved_logging_opt_out,
         )
 
-        # 注入されたトランスポートでは connect/disconnect を呼ばない
-        injected = self._hrp_transport is not None
-        hrp = self._hrp_transport if self._hrp_transport is not None else _construct_hrp_transport()
-        adapter = self._setup_hrp(hrp, resolved_url, params)
-        if not injected and not hrp.connect():
-            raise ConnectionFailedError(hrp.getLastMessage())
-
-        try:
-            return self._run_hrp_transcribe(
-                hrp,
-                adapter,
-                audio,
-                raise_on_error=raise_on_error,
-                receive_timeout=params.receive_timeout,
-            )
-        finally:
-            if not injected:
-                # 実 transport は disconnect で後始末する
-                with suppress(Exception):
-                    hrp.disconnect()
-
-    def _setup_hrp(self, hrp: HrpTransport, api_url: str, params: RecognitionParams) -> _HrpListenerAdapter:
-        """HRP トランスポートに接続パラメータを設定し、結果を受け取るアダプターを返す。
-
-        Args:
-            hrp (HrpTransport): パラメータを設定する HRP トランスポート
-            api_url (str): 接続先の HRP API エンドポイント URL
-            params (RecognitionParams): HRP に適用する認識パラメータ
-
-        Returns:
-            _HrpListenerAdapter: 認識結果を受け取るリスナーアダプター
-        """
-        adapter = _HrpListenerAdapter()
-        hrp.setListener(adapter)
-
-        hrp.setServerURL(api_url)
-        hrp.setServiceAuthorization(self._api_key)
-
-        keep_filler = None if params.keep_filler_token is None else bool_string(params.keep_filler_token)
-        interval = None if params.result_updated_interval is None else str(params.result_updated_interval)
-        recognition_timeout = None if params.recognition_timeout is None else str(params.recognition_timeout)
-        max_decoding_time = None if params.max_decoding_time is None else str(params.max_decoding_time)
-        max_response_time = None if params.max_response_time is None else str(params.max_response_time)
-        max_decoding_rate = None if params.max_decoding_rate is None else repr(params.max_decoding_rate)
-        target_response_time = None if params.target_response_time is None else str(params.target_response_time)
-        target_decoding_rate = None if params.target_decoding_rate is None else repr(params.target_decoding_rate)
-        confidence_level = None if params.confidence_level is None else repr(params.confidence_level)
-        extension = resolve_billing_extension(params.extension, params.billing_key)
-        complete_timeout = None if params.complete_timeout is None else str(params.complete_timeout)
-        wildcard_model_penalty = None if params.wildcard_model_penalty is None else repr(params.wildcard_model_penalty)
-        _set_optional_transport_parameter(hrp, "setCompleteTimeout", complete_timeout)
-        _set_optional_transport_parameter(hrp, "setWildcardModelPenalty", wildcard_model_penalty)
-        _set_optional_transport_parameter(hrp, "setAudioFilterProperties", params.audio_filter_properties)
-        optional_setters: "tuple[tuple[Callable[[str | None], None], str | None], ...]" = (
-            (hrp.setGrammarFileNames, params.grammar_file_names),
-            (hrp.setCodec, params.codec),
-            (hrp.setResultType, params.result_type),
-            (hrp.setProxyServerName, params.proxy_server_name),
-            (hrp.setResultEncoding, params.result_encoding),
-            (hrp.setVoiceDetection, params.voice_detection),
-            (hrp.setAcceptTopic, params.accept_topic),
-            (hrp.setContentType, params.content_type),
-            (hrp.setAccept, params.accept),
-            (hrp.setDomainId, params.domain_id),
-            (hrp.setConfidenceLevel, confidence_level),
-            (hrp.setMode, params.mode),
-            (hrp.setProfileId, params.profile_id),
-            (hrp.setProfileWords, params.profile_words),
-            (hrp.setSegmenterType, params.segmenter_type),
-            (hrp.setSegmenterProperties, params.segmenter_properties),
-            (hrp.setExtension, extension),
-            (hrp.setKeepFillerToken, keep_filler),
-            (hrp.setResultUpdatedInterval, interval),
-            (hrp.setRecognitionTimeout, recognition_timeout),
-            (hrp.setMaxDecodingTime, max_decoding_time),
-            (hrp.setMaxResponseTime, max_response_time),
-            (hrp.setMaxDecodingRate, max_decoding_rate),
-            (hrp.setTargetResponseTime, target_response_time),
-            (hrp.setTargetDecodingRate, target_decoding_rate),
-        )
-        for setter, value in optional_setters:
-            if value is not None:
-                setter(value)
-
-        if params.connect_timeout > 0:
-            hrp.setConnectTimeout(params.connect_timeout)
-        if params.receive_timeout > 0:
-            hrp.setReceiveTimeout(params.receive_timeout)
-
-        return adapter
-
-    def _run_hrp_transcribe(
-        self,
-        hrp: HrpTransport,
-        adapter: _HrpListenerAdapter,
-        audio: AudioSource,
-        *,
-        raise_on_error: bool,
-        receive_timeout: int,
-    ) -> RecognitionResult:
-        """HRP トランスポートに音声を送信し認識結果を返す。
-
-        Args:
-            hrp (HrpTransport): 音声を送信する HRP トランスポート
-            adapter (_HrpListenerAdapter): 認識結果を受け取るリスナーアダプター
-            audio (AudioSource): 送信する音声ソース
-            raise_on_error (bool): エラー結果で ``RecognitionError`` を送出するかどうか
-            receive_timeout (int): 認識結果を待機するタイムアウト（ミリ秒）。0 は無制限
-
-        Returns:
-            RecognitionResult: 解析された認識結果
-
-        Raises:
-            RecognitionError: 音声送信または認識結果の取得に失敗した場合
-        """
-        audio_bytes = resolve_audio(audio)
-
-        if not hrp.feedDataResume():
-            raise RecognitionError(hrp.getLastMessage())
-
-        for offset in range(0, len(audio_bytes), 4096):
-            chunk = audio_bytes[offset : offset + 4096]
-            if not hrp.feedData(chunk, 0, len(chunk)):
-                raise RecognitionError(hrp.getLastMessage())
-
-        if not hrp.feedDataPause():
-            raise RecognitionError(hrp.getLastMessage())
-
-        timeout_sec = (receive_timeout / 1000.0) if receive_timeout > 0 else None
-        completed = adapter.finalized_event.wait(timeout=timeout_sec)
-        if not completed:
-            raise RecognitionError("Timed out waiting for recognition result")
-        if adapter.raw_result is None:
-            raise RecognitionError("No recognition result was finalized")
-        result = parse_result(adapter.raw_result, raise_on_error=raise_on_error)
-        if adapter.session_id is not None:
-            result = replace(result, session_id=adapter.session_id)
-        return result
+        transport = self._hrp_transport if self._hrp_transport is not None else _construct_hrp_transport()
+        return transport.transcribe(resolved_url, self._api_key, params, resolve_audio(audio), raise_on_error=raise_on_error)
 
     # ------------------------------------------------------------------
     # WRP: stream()
@@ -1066,7 +898,7 @@ def transcribe(  # noqa: PLR0913
     accept: str | None = None,
     domain_id: str | None = None,
     raise_on_error: bool = True,
-    _transport: HrpTransport | None = None,
+    _transport: HttpRecognitionTransport | None = None,
 ) -> RecognitionResult:
     """音声を AmiVoice HTTP API に送信し、認識結果を返す（モジュールレベル便利関数）。
 
