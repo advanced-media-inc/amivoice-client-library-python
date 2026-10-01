@@ -277,14 +277,15 @@ with client.stream() as session:
     session.end()
 ```
 
-`billing_key`は内部で`extension`の専用 JSON 形式に変換されます。既存の`extension`と同時には指定できません。低レベル API に直接渡す場合は、`build_billing_extension()`を使用できます。
+`billing_key`は内部で`extension`の専用 JSON 形式に変換されます。既存の`extension`と同時には指定できません。公開 API の`extension`パラメータへ直接渡す JSON 文字列を生成する場合は、`build_billing_extension()`を使用します（`billing_key`と同時に指定しないでください）。
 
 ```python
-from amivoice import build_billing_extension
-from com.amivoice.hrp.Hrp import Hrp
+from amivoice import AmiVoiceClient, build_billing_extension
 
-hrp = Hrp.construct()
-hrp.setExtension(build_billing_extension("user01"))
+client = AmiVoiceClient(
+    extension=build_billing_extension("user01"),
+)
+result = client.transcribe("audio.wav")
 ```
 
 使用量の確認は、AmiVoice Cloud Platform のマイページにある発話量 CSV を利用してください。
@@ -364,45 +365,82 @@ with client.stream() as session:
     for event in session.poll():
         print(event.text)
     session.end()
+    for event in session.events():
+        print(event.text)
 ```
 
-## 低レベルAPI
+音声チャンクの送信には `write()` を使い、キューへ届いたイベントの随時取得には `poll()` を使用します。音声の送信を終えたら `end()` を呼び出します。`end()` は終了の確認応答と残りの確定認識結果を待ち受けます。呼び出し後もキューに残る確定イベントなどは、`session.events()` で終了まで順次取り出せます。
 
-既存の低レベル API を利用する場合は、次の import パスを使用できます。
+サーバーから届くイベントは `session.poll()` や `session.events()` から受信順に取得できます。サーバーが発話区間を検出して音声認識処理を始めると、`type="recognition_started"` のイベントが届きます。このイベントは検出した区間の認識処理開始を表すもので、セッション自体の開始確認（`s`）や発話区間の開始（`S`）とは異なります。追加の時刻情報は持たず、`text` は空、`result`、`utterance`、`notification` は `None` です。発話終了イベントの前に届く場合もあれば後に届く場合もありますが、クライアントの終了待機などの状態制御には影響しません。
 
 ```python
-from com.amivoice.hrp.Hrp import Hrp
-from com.amivoice.wrp.Wrp import Wrp
+for event in session.poll():
+    if event.type == "recognition_started":
+        print("認識処理を開始しました")
+    elif event.is_final:
+        print(f"確定結果: {event.text}")
 ```
 
-高レベル API の利用を優先し、プロトコルを直接制御する必要がある場合に低レベル API を使用してください。
+### タイムアウト
+
+接続と受信のタイムアウトはミリ秒単位で指定し、ライブラリの既定値はいずれも 0（無制限）です。一方で、`examples` 配下の詳細 CLI スクリプトでは接続タイムアウトの初期値に 5,000 ミリ秒を採用しています。
+
+ストリーミング認識では、`receive_timeout` に 0 より大きい値を指定すると、セッション開始確認や終了確認の待ち時間にもその値が適用されます。`receive_timeout` が 0 の場合でも、セッション開始確認および `end()` の待機時間には既定値として 60 秒が適用されます。
+
+終了処理を明示的に制御する場合は、`end(timeout=...)` に秒単位で上限を指定します。指定した制限時間内に、終了確認と未受信の確定認識結果の双方が揃うまで待機します。
+
+### 例外処理
+
+音声認識の処理中に問題が発生した場合、ライブラリは状況に応じた例外を送出します。
+
+認証に失敗した場合は `AuthenticationError` が送出されます。HTTP 401 や 403 の応答、および WebSocket ハンドシェイク時の 401 や 403 応答がこれに該当します。
+
+接続先に到達できない場合やハンドシェイクが成立しない場合は `ConnectionFailedError` が送出されます。
+
+通信切断やサーバーからの異常応答などの受信エラーは、ストリーミング認識セッションの `write()`、`end()`、`events()`、`poll()` の各呼び出しに `RecognitionError` として伝播します。
+
+## 低レベルAPIの廃止について
+
+旧バージョンで提供されていた `com.amivoice` パッケージ（`Hrp`、`Wrp` など）および低レベル API は廃止されました。すべての音声認識処理には `AmiVoiceClient`、`transcribe()`、`stream()` などの公開 API を使用してください。
 
 ## サンプル
 
-低レベル API を使用したサンプルプログラムは`examples/`にあります。
+公開 API を使用したサンプルプログラムを `examples/` に用意しています。
 
-サンプルの実行には、AmiVoice API キーと音声ファイルが必要です。API キーは環境変数に設定し、各サンプルの引数として渡します。
+サンプルの実行には AmiVoice API キーと音声ファイルが必要です。API キーを CLI 引数へ直接渡す方法は推奨されません。環境変数 `AMIVOICE_API_KEY` を設定して実行してください。
 
 ```bash
 export AMIVOICE_API_KEY="your-api-key"
 
-# HTTP・簡易版
+# HTTP・簡易版（URL 音声ファイル コーデック 接続エンジン名 [APIキー]）
+# APIキー引数を省略すると環境変数 AMIVOICE_API_KEY を使用します
 uv run examples/hrp_simple_tester.py \
   https://acp-api.amivoice.com/v1/recognize \
-  audio/test.wav 16K -a-general "$AMIVOICE_API_KEY"
+  audio/test.wav 16K -a-general
 
-# WebSocket・簡易版
+# WebSocket・簡易版（URL 音声ファイル コーデック 接続エンジン名 [APIキー]）
 uv run examples/wrp_simple_tester.py \
   wss://acp-api.amivoice.com/v1/ \
-  audio/test.wav 16K -a-general "$AMIVOICE_API_KEY"
+  audio/test.wav 16K -a-general
 
-# HTTP・詳細版
+# HTTP・詳細版（URL 音声ファイル一覧 オプション）
 uv run examples/hrp_tester.py \
-  g=-a-general c=16K ou="$AMIVOICE_API_KEY" \
-  https://acp-api.amivoice.com/v1/recognize audio/test.wav
+  https://acp-api.amivoice.com/v1/recognize \
+  audio/test.wav \
+  --grammar-file-names=-a-general \
+  --codec 16K
 
-# WebSocket・詳細版
+# WebSocket・詳細版（URL 音声ファイル一覧 オプション）
 uv run examples/wrp_tester.py \
-  g=-a-general c=16K ou="$AMIVOICE_API_KEY" \
-  wss://acp-api.amivoice.com/v1/ audio/test.wav
+  wss://acp-api.amivoice.com/v1/ \
+  audio/test.wav \
+  --grammar-file-names=-a-general \
+  --codec 16K
+```
+
+利用可能なすべてのコマンドラインオプションや引数の詳細は、各スクリプトに `--help` を指定して確認してください。
+
+```bash
+uv run examples/hrp_tester.py --help
+uv run examples/wrp_tester.py --help
 ```

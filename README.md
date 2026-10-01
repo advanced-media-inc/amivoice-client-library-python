@@ -7,11 +7,18 @@ AmiVoice API を利用して音声認識アプリケーションを開発する�
 
 ```text
 src/
-├── amivoice/            # 高レベルAPI
-└── com/amivoice/
-    ├── hrp/             # HTTP音声認識API（HRP）
-    └── wrp/             # WebSocket音声認識API（WRP）
+└── amivoice/
+    ├── client.py                 # 公開 AmiVoiceClient と transcribe
+    ├── models.py                 # 認識結果とストリームイベントのモデル
+    ├── _recognition_protocol.py  # HTTP リクエスト生成・WebSocket コマンド生成・イベント変換
+    ├── _http_connection.py       # 標準ライブラリによる HTTP/TLS/プロキシ接続
+    ├── _http_recognition.py      # HTTP 音声認識（HRP）の送受信
+    ├── _websocket_transport.py   # 標準 socket による RFC 6455 WebSocket 通信
+    ├── _stream.py                # WebSocket ストリーミング認識セッション管理
+    └── ...                       # 音声検証・辞書・グラマ・設定等の内部モジュール
 ```
+
+本ライブラリは外部ランタイム依存を持たず、Python 標準ライブラリのみで動作します。旧パッケージ構成に含まれていた `com.amivoice` は廃止されました。
 
 高レベル API は次のように利用できます。
 
