@@ -50,7 +50,7 @@ class WebSocketTransport:
         """
         if self._socket is not None:
             raise ConnectionFailedError("WebSocket is already connected")
-        connection, target = create_http_connection(
+        connection, target, _proxy_headers = create_http_connection(
             api_url, connect_timeout_ms=connect_timeout_ms, proxy_server_name=proxy_server_name, websocket=True
         )
         self._connection = connection

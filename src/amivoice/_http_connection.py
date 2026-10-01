@@ -9,7 +9,7 @@ from .exceptions import ConfigurationError
 
 def create_http_connection(
     url: str, *, connect_timeout_ms: int = 0, proxy_server_name: str | None = None, websocket: bool = False
-) -> tuple[http.client.HTTPConnection, str]:
+) -> tuple[http.client.HTTPConnection, str, dict[str, str]]:
     """HTTP 接続とリクエストターゲットを返す（接続はまだ開かない）
 
     Args:
@@ -19,7 +19,7 @@ def create_http_connection(
         websocket (bool): WebSocket の ws / wss URL と CONNECT を許可する
 
     Returns:
-        tuple[http.client.HTTPConnection, str]: 接続とパスまたは絶対 URL
+        tuple[http.client.HTTPConnection, str, dict[str, str]]: 接続、送信先、HTTP 転送プロキシ用のヘッダー
 
     Raises:
         ConfigurationError: URL やプロキシが不正な場合
@@ -49,7 +49,11 @@ def create_http_connection(
         raise ConfigurationError("Invalid recognition endpoint or HTTP proxy") from exc
     connection_type = http.client.HTTPSConnection if secure else http.client.HTTPConnection
     connection = connection_type(host, port, timeout=connect_timeout_ms / 1000 if connect_timeout_ms > 0 else None)
-    if proxy_server_name:
-        # HTTP もトンネルにして、認証ヘッダーをオリジンから隔離する
+    if proxy_server_name and (secure or websocket):
+        # TLS / WebSocket の認証は CONNECT だけへ渡し、オリジンには送らない
         connection.set_tunnel(parsed.hostname, origin_port, headers=proxy_headers)
-    return connection, target
+        proxy_headers = {}
+    elif proxy_server_name:
+        # 平文 HTTP は従来どおり absolute-form で転送する
+        target = url
+    return connection, target, proxy_headers

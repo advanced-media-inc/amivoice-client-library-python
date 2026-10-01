@@ -74,6 +74,21 @@ def test_http_transcribe_network_failure_invalid_raise_public_error(phase: str, 
     connection.close.assert_called_once()
 
 
+def test_http_transcribe_plain_proxy_valid_return_absolute_request() -> None:
+    """平文 HTTP は従来どおり絶対 URL を HTTP プロキシへ転送する"""
+    # Given: CONNECT を許可しない一般的な HTTP 転送プロキシ
+    connection = _http_connection()
+    params = RecognitionParams(proxy_server_name="user:pass@proxy.example:8080")
+    # When: HTTP エンドポイントへ認識リクエストを送る
+    with patch("amivoice._http_connection.http.client.HTTPConnection", return_value=connection) as factory:
+        HttpRecognitionTransport().transcribe("http://example.com/recognize?x=1", "key", params, b"audio")
+    # Then: TLS / WebSocket 以外では CONNECT を要求しない
+    assert factory.call_args.args == ("proxy.example", 8080)
+    connection.set_tunnel.assert_not_called()
+    assert connection.request.call_args.args[:2] == ("POST", "http://example.com/recognize?x=1")
+    assert connection.request.call_args.kwargs["headers"]["Proxy-Authorization"] == "Basic dXNlcjpwYXNz"
+
+
 def test_http_transcribe_proxy_valid_return_tunneled_request() -> None:
     """認証付きプロキシ経由でもオリジンにプロキシ認証を送らない"""
     # Given: 接続先とプロキシを分ける

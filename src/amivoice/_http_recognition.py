@@ -34,7 +34,7 @@ class HttpRecognitionTransport:
             RecognitionError: 送受信または応答解析の失敗
         """
         request = build_hrp_request(params, api_key, audio)
-        connection, target = create_http_connection(
+        connection, target, proxy_headers = create_http_connection(
             api_url, connect_timeout_ms=params.connect_timeout, proxy_server_name=params.proxy_server_name
         )
         try:
@@ -47,7 +47,7 @@ class HttpRecognitionTransport:
             try:
                 # iterable を渡すことでチャンク転送のエンコードは標準ライブラリが担当する
                 chunks = (request.body[offset : offset + 4096] for offset in range(0, len(request.body), 4096))
-                connection.request("POST", target, body=chunks, headers=request.headers, encode_chunked=True)
+                connection.request("POST", target, body=chunks, headers={**request.headers, **proxy_headers}, encode_chunked=True)
                 response = connection.getresponse()
                 if response.status in {401, 403}:
                     raise AuthenticationError(f"HRP authentication failed: HTTP {response.status}")
