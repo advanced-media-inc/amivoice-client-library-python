@@ -139,11 +139,13 @@ def build_wrp_start_command(params: RecognitionParams, api_key: str) -> str:
     values = recognition_wire_values(params)
     values.pop("grammarFileNames", None)
     values.pop("audioFilterProperties", None)
-    if params.voice_detection is not None and params.segmenter_type is None:
+    if params.voice_detection is not None:
         voice = params.voice_detection
-        values["segmenterType"] = "G4"
+        segmenter_type = "G4"
         if len(voice) > 3 and voice[0] == "G" and voice[2] == " ":
-            values["segmenterType"], voice = voice[:2], voice[3:]
+            segmenter_type, voice = voice[:2], voice[3:]
+        if params.segmenter_type is None:
+            values["segmenterType"] = segmenter_type
         if params.segmenter_properties is None:
             values["segmenterProperties"] = voice
     if params.no_input_timeout is not None:

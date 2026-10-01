@@ -72,6 +72,30 @@ def test_build_hrp_request_domain_id_valid_return_only_additional_fields() -> No
     assert "completeTimeout" not in body
 
 
+@pytest.mark.parametrize(
+    ("segmenter_type", "segmenter_properties", "expected_type", "expected_properties"),
+    [
+        (None, None, "G3", "threshold=10"),
+        ("G5", None, "G5", "threshold=10"),
+        (None, "threshold=20", "G3", "threshold=20"),
+        ("G5", "threshold=20", "G5", "threshold=20"),
+    ],
+)
+def test_build_wrp_start_command_voice_detection_valid_return_overrides(
+    segmenter_type: str | None, segmenter_properties: str | None, expected_type: str, expected_properties: str
+) -> None:
+    """voice_detection からの既定値をセグメンター設定が個別に上書きする"""
+    # Given: 従来の voice_detection と任意の明示設定
+    params = RecognitionParams(
+        voice_detection="G3 threshold=10", segmenter_type=segmenter_type, segmenter_properties=segmenter_properties
+    )
+    # When: 開始コマンドを直接生成する
+    command = build_wrp_start_command(params, "key")
+    # Then: type と properties の上書きを独立して維持する
+    assert f" segmenterType={expected_type}" in command
+    assert f" segmenterProperties={expected_properties}" in command
+
+
 def test_build_wrp_start_command_defaults_valid_return_command() -> None:
     """WRP のコーデックとエンジン既定値を維持する"""
     # Given / When: 未指定の認識設定
