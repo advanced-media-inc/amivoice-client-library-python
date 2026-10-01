@@ -105,6 +105,7 @@ def test_build_wrp_start_command_quoting_valid_return_escaped_values() -> None:
     [
         ("S 10", "utterance_started"),
         ("E 20", "utterance_ended"),
+        ("C", "recognition_started"),
         ("U 途中", "partial"),
         ('A {"text":"確定"}', "final"),
         ('R {"code":"E1"}', "final"),
@@ -123,9 +124,25 @@ def test_parse_wrp_message_event_valid_return_stream_event(message: str, event_t
         assert parsed.event.result.is_error
 
 
-@pytest.mark.parametrize("message", ["s", "p", "e", "C", ""])
+def test_parse_wrp_message_recognition_started_valid_return_event_without_payload() -> None:
+    """C は時刻や認識結果を持たない処理開始イベントを返す"""
+    # Given / When: 発話区間の認識処理開始通知
+    parsed = parse_wrp_message("C")
+    # Then: 開始確認応答とは別の公開イベントで、追加データを持たない
+    assert parsed.command == "C"
+    assert parsed.event is not None
+    assert parsed.event.type == "recognition_started"
+    assert parsed.event.text == ""
+    assert parsed.event.result is None
+    assert parsed.event.utterance is None
+    assert parsed.event.notification is None
+    assert not parsed.event.is_partial
+    assert not parsed.event.is_final
+
+
+@pytest.mark.parametrize("message", ["s", "p", "e", ""])
 def test_parse_wrp_message_control_valid_return_no_event(message: str) -> None:
-    """確認応答と結果作成はユーザーイベントを発行しない"""
+    """確認応答と空メッセージはユーザーイベントを発行しない"""
     # Given / When: 制御メッセージ
     parsed = parse_wrp_message(message)
     # Then: 制御情報のみ返す

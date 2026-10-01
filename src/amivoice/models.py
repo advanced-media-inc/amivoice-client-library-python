@@ -16,12 +16,13 @@ __all__ = [
     "UtteranceResult",
 ]
 
-StreamEventType = Literal["partial", "final", "utterance_started", "utterance_ended", "notification"]
+StreamEventType = Literal["partial", "final", "utterance_started", "utterance_ended", "recognition_started", "notification"]
 """``StreamEvent.type`` が取り得る値。
 
 - ``"partial"``: 途中認識結果（``text`` に途中テキスト）。
 - ``"final"``: 確定認識結果（``result`` に ``RecognitionResult``、``text`` に確定テキスト）。
 - ``"utterance_started"`` / ``"utterance_ended"``: 発話境界（``utterance`` に ``UtteranceEvent``）。
+- ``"recognition_started"``: 発話区間の認識処理開始（追加のデータは持たない）
 - ``"notification"``: サービス通知（``notification`` に ``NotificationEvent``）。
 """
 
@@ -113,6 +114,7 @@ class StreamEvent:
     - ``type == "partial"``: ``text`` に途中認識テキスト。
     - ``type == "final"``: ``result`` に確定認識結果、``text`` に確定テキスト。
     - ``type == "utterance_started"`` / ``"utterance_ended"``: ``utterance`` に発話境界イベント。
+    - ``type == "recognition_started"``: 発話区間の認識処理開始（追加のデータは持たない）
     - ``type == "notification"``: ``notification`` にサービス通知イベント。
     """
 

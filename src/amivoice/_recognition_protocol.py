@@ -183,7 +183,7 @@ def parse_wrp_message(message: str) -> WrpMessage:  # noqa: PLR0911
             raise RecognitionError(f"WRP command rejected ({command}): {payload}")
         return WrpMessage(command)
     if command == "C":
-        return WrpMessage(command)
+        return WrpMessage(command, StreamEvent(type="recognition_started"))
     if len(message) < 2 or message[1] != " ":
         raise RecognitionError("Invalid WRP message: missing payload separator")
     if command in {"S", "E"}:

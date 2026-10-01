@@ -24,41 +24,17 @@ from amivoice.exceptions import (
 )
 from amivoice.models import RecognitionResult
 
-from ._recognition_fakes import http_wire_values, make_http_transport
+from ._recognition_fakes import (
+    assert_wrp_parameter,
+    assert_wrp_parameter_absent,
+    http_wire_values,
+    make_http_transport,
+    make_websocket_transport,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_mock_wrp(results: list[str] | None = None, *, connect_ok: bool = True) -> MagicMock:
-    """テスト用のモック WRP トランスポートを生成する。
-
-    ``feedDataPause`` を呼び出すと登録済みリスナーに各 ``resultFinalized`` を送信し、
-    以後 ``getWaitingResults`` が 0 を返す。
-    ``feedDataResume`` は True を返す。
-    """
-    if results is None:
-        results = ['{"text": "stream result"}']
-
-    mock_wrp = MagicMock()
-    mock_wrp.connect.return_value = connect_ok
-    mock_wrp.feedDataResume.return_value = True
-    mock_wrp.feedData.return_value = True
-    mock_wrp.getLastMessage.return_value = "error"
-    mock_wrp.getWaitingResults.return_value = 0
-
-    def set_listener(listener: object) -> None:
-        mock_wrp._listener = listener
-
-    def finalize_all() -> bool:
-        for r in results:
-            mock_wrp._listener.resultFinalized(r)
-        return True
-
-    mock_wrp.setListener.side_effect = set_listener
-    mock_wrp.feedDataPause.side_effect = finalize_all
-    return mock_wrp
 
 
 # ---------------------------------------------------------------------------
@@ -320,7 +296,7 @@ def test_AmiVoiceClient_stream_api_url_none_invalid_raise_ConfigurationError() -
 def test_AmiVoiceClient_stream_logging_opt_out_constructor_valid_uses_nolog_url() -> None:
     """コンストラクタのlogging_opt_outで既定WRP URLがnolog URLへ切り替わることを確認する。"""
     # Given: ログ保存なしを指定したWebSocketクライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", logging_opt_out=True)
 
     # When: ストリーミングセッションを開始する
@@ -350,7 +326,7 @@ def test_AmiVoiceClient_stream_logging_opt_out_nolog_custom_url_valid_keeps_cust
     """ログ保存なしのパスを持つカスタムWRP URLをそのまま使うことを確認する。"""
     # Given: PrivateLinkのログ保存なしURLとログ保存なしを指定したクライアント
     custom = "wss://acp-api-private.amivoice.com/v1/nolog/"
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", ws_api_url=custom, logging_opt_out=True)
 
     # When: ストリーミングセッションを開始する
@@ -385,7 +361,7 @@ def test_AmiVoiceClient_stream_logging_opt_out_override_valid_uses_expected_url(
 ) -> None:
     """streamのlogging_opt_out overrideがコンストラクタ設定を上書きすることを確認する。"""
     # Given: logging_opt_outの既定値を設定したWebSocketクライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", logging_opt_out=constructor_value)
 
     # When: 呼び出し時にlogging_opt_outを上書きしてストリーミングを開始する
@@ -525,89 +501,89 @@ def test_AmiVoiceClient_transcribe_processing_parameter_omitted_valid_not_set(wi
 
 
 @pytest.mark.parametrize(
-    ("parameter_name", "setter_name", "value", "expected"),
+    ("parameter_name", "wire_name", "value", "expected"),
     [
-        ("max_decoding_time", "setMaxDecodingTime", 1000, "1000"),
-        ("max_response_time", "setMaxResponseTime", 2000, "2000"),
-        ("max_decoding_rate", "setMaxDecodingRate", 1.25, "1.25"),
-        ("target_response_time", "setTargetResponseTime", 3000, "3000"),
-        ("target_decoding_rate", "setTargetDecodingRate", -1.0, "-1.0"),
+        ("max_decoding_time", "maxDecodingTime", 1000, "1000"),
+        ("max_response_time", "maxResponseTime", 2000, "2000"),
+        ("max_decoding_rate", "maxDecodingRate", 1.25, "1.25"),
+        ("target_response_time", "targetResponseTime", 3000, "3000"),
+        ("target_decoding_rate", "targetDecodingRate", -1.0, "-1.0"),
     ],
 )
 def test_AmiVoiceClient_stream_processing_parameter_constructor_default_valid_passes_string(
     parameter_name: str,
-    setter_name: str,
+    wire_name: str,
     value: int | float,
     expected: str,
 ) -> None:
-    """コンストラクタの処理時間制御パラメータが WRP setter に文字列で渡ることを確認する"""
+    """コンストラクタの処理時間制御パラメータが WRP protocol に文字列で渡ることを確認する"""
     # Given: 処理時間制御パラメータを設定した WebSocket クライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", **{parameter_name: value})
 
     # When: stream を開く
-    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream() as session:
+    with patch("amivoice._stream.WebSocketTransport", return_value=mock_wrp), client.stream() as session:
         session.end()
 
-    # Then: 対応する setter に文字列で値が渡る
-    getattr(mock_wrp, setter_name).assert_called_once_with(expected)
+    # Then: 対応する protocol に文字列で値が渡る
+    assert_wrp_parameter(mock_wrp, wire_name, expected)
 
 
 @pytest.mark.parametrize(
-    ("parameter_name", "setter_name", "default_value", "override_value", "expected"),
+    ("parameter_name", "wire_name", "default_value", "override_value", "expected"),
     [
-        ("max_decoding_time", "setMaxDecodingTime", 1000, 2000, "2000"),
-        ("max_response_time", "setMaxResponseTime", 2000, 3000, "3000"),
-        ("max_decoding_rate", "setMaxDecodingRate", 1.25, 2.5, "2.5"),
-        ("target_response_time", "setTargetResponseTime", 3000, 4000, "4000"),
-        ("target_decoding_rate", "setTargetDecodingRate", -1.0, 0.75, "0.75"),
+        ("max_decoding_time", "maxDecodingTime", 1000, 2000, "2000"),
+        ("max_response_time", "maxResponseTime", 2000, 3000, "3000"),
+        ("max_decoding_rate", "maxDecodingRate", 1.25, 2.5, "2.5"),
+        ("target_response_time", "targetResponseTime", 3000, 4000, "4000"),
+        ("target_decoding_rate", "targetDecodingRate", -1.0, 0.75, "0.75"),
     ],
 )
 def test_AmiVoiceClient_stream_processing_parameter_call_override_valid_passes_string(
     parameter_name: str,
-    setter_name: str,
+    wire_name: str,
     default_value: int | float,
     override_value: int | float,
     expected: str,
 ) -> None:
     """Stream の処理時間制御パラメータ override が既定値を上書きすることを確認する"""
     # Given: 処理時間制御パラメータの既定値を設定した WebSocket クライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", **{parameter_name: default_value})
 
     # When: 呼び出し時に処理時間制御パラメータを上書きして stream を開く
     with (
-        patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
+        patch("amivoice._stream.WebSocketTransport", return_value=mock_wrp),
         client.stream(**{parameter_name: override_value}) as session,
     ):
         session.end()
 
-    # Then: override の値が対応する setter に文字列で渡る
-    getattr(mock_wrp, setter_name).assert_called_once_with(expected)
+    # Then: override の値が対応する protocol に文字列で渡る
+    assert_wrp_parameter(mock_wrp, wire_name, expected)
 
 
 @pytest.mark.parametrize(
-    "setter_name",
+    "wire_name",
     [
-        "setMaxDecodingTime",
-        "setMaxResponseTime",
-        "setMaxDecodingRate",
-        "setTargetResponseTime",
-        "setTargetDecodingRate",
+        "maxDecodingTime",
+        "maxResponseTime",
+        "maxDecodingRate",
+        "targetResponseTime",
+        "targetDecodingRate",
     ],
 )
-def test_AmiVoiceClient_stream_processing_parameter_omitted_valid_not_set(setter_name: str) -> None:
-    """処理時間制御パラメータ未指定時に WRP setter が呼ばれないことを確認する"""
+def test_AmiVoiceClient_stream_processing_parameter_omitted_valid_not_set(wire_name: str) -> None:
+    """処理時間制御パラメータ未指定時に WRP protocol が呼ばれないことを確認する"""
     # Given: 処理時間制御パラメータを指定していない WebSocket クライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key")
 
     # When: stream を開く
-    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream() as session:
+    with patch("amivoice._stream.WebSocketTransport", return_value=mock_wrp), client.stream() as session:
         session.end()
 
-    # Then: サーバー側のデフォルトに委ねるため setter は呼ばれない
-    getattr(mock_wrp, setter_name).assert_not_called()
+    # Then: サーバー側のデフォルトに委ねるため protocol は呼ばれない
+    assert_wrp_parameter_absent(mock_wrp, wire_name)
 
 
 def test_AmiVoiceClient_transcribe_confidence_level_constructor_default_valid_passes_repr() -> None:
@@ -913,7 +889,7 @@ def test_AmiVoiceClient_stream_audio_filter_configured_invalid_raise_Configurati
 ) -> None:
     """コンストラクタの音声フィルタ設定がstream()で黙って捨てられないことを確認する"""
     # Given: チャネル選択を設定したWRPクライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp, **audio_filter_kwargs)  # type: ignore[arg-type]
 
     # When / Then: stream()はWebSocket非対応の設定としてConfigurationErrorを送出する
@@ -925,7 +901,7 @@ def test_AmiVoiceClient_stream_audio_filter_configured_invalid_raise_Configurati
 def test_AmiVoiceClient_stream_context_manager_returns_stream_session() -> None:
     """With client.stream() as session: で StreamSession が返ることを確認する。"""
     # Given: モック WRP トランスポートを注入した AmiVoiceClient
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
 
     # When / Then: with ブロック内で StreamSession が取得できる
@@ -936,7 +912,7 @@ def test_AmiVoiceClient_stream_context_manager_returns_stream_session() -> None:
 def test_AmiVoiceClient_stream_write_and_end_sends_audio() -> None:
     """session.write() でデータが feedData に渡されることを確認する。"""
     # Given: モック WRP トランスポートを注入した AmiVoiceClient
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
 
     # When: session.write() でチャンクを送信し、end() で終了する
@@ -945,13 +921,13 @@ def test_AmiVoiceClient_stream_write_and_end_sends_audio() -> None:
         session.end()
 
     # Then: feedData に正しい引数で呼び出されている
-    mock_wrp.feedData.assert_called_once_with(b"chunk1", 0, 6)
+    mock_wrp.send_binary.assert_called_once_with(b"pchunk1")
 
 
 def test_AmiVoiceClient_stream_poll_yields_events() -> None:
     """session.poll() がストリーミングイベントを yield することを確認する。"""
     # Given: 1件の結果を返すモック WRP トランスポート
-    mock_wrp = _make_mock_wrp(['{"text": "hello"}'])
+    mock_wrp = make_websocket_transport(['{"text": "hello"}'])
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
 
     # When: end() 後に poll() でイベントを収集する
@@ -970,7 +946,7 @@ def test_AmiVoiceClient_stream_poll_yields_events() -> None:
 def test_AmiVoiceClient_stream_results_returns_all_finalized() -> None:
     """session.results() が確定済み結果リストを返すことを確認する。"""
     # Given: 2件の結果を返すモック WRP トランスポート
-    mock_wrp = _make_mock_wrp(['{"text": "part1"}', '{"text": "part2"}'])
+    mock_wrp = make_websocket_transport(['{"text": "part1"}', '{"text": "part2"}'])
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
 
     # When: セッションを実行し poll() でキューを消費してから results() を呼ぶ
@@ -988,7 +964,7 @@ def test_AmiVoiceClient_stream_results_returns_all_finalized() -> None:
 def test_AmiVoiceClient_stream_disconnect_called_on_exit() -> None:
     """With ブロックを抜けると disconnect が呼ばれることを確認する。"""
     # Given: モック WRP トランスポートを注入した AmiVoiceClient
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
 
     # When: with ブロックを正常終了する
@@ -996,13 +972,13 @@ def test_AmiVoiceClient_stream_disconnect_called_on_exit() -> None:
         session.end()
 
     # Then: disconnect が1回呼ばれている（リソースリークなし）
-    mock_wrp.disconnect.assert_called_once()
+    mock_wrp.close.assert_called_once()
 
 
 def test_AmiVoiceClient_stream_uses_default_wrp_url() -> None:
     """api_url を省略したとき _DEFAULT_WRP_URL が使われることを確認する。"""
     # Given: wrp_transport を注入しない AmiVoiceClient（実 transport ファクトリをモック）
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key")
 
     # When: api_url を省略して stream() を開く
@@ -1019,7 +995,7 @@ def test_AmiVoiceClient_stream_uses_default_wrp_url() -> None:
 def test_AmiVoiceClient_stream_uses_custom_api_url() -> None:
     """stream(api_url=...) でカスタム URL が使われることを確認する。"""
     # Given: カスタム WRP エンドポイント URL
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     custom = "wss://custom.example.com/v1/"
     client = AmiVoiceClient(api_key="key")
 
@@ -1038,7 +1014,7 @@ def test_AmiVoiceClient_stream_uses_custom_api_url() -> None:
 def test_AmiVoiceClient_stream_uses_constructor_ws_api_url() -> None:
     """コンストラクタで ws_api_url を指定したとき stream がそれを使うことを確認する。"""
     # Given: ws_api_url をコンストラクタで指定したクライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     custom = "wss://constructor.example.com/v1/"
     client = AmiVoiceClient(api_key="key", ws_api_url=custom)
 
@@ -1054,74 +1030,74 @@ def test_AmiVoiceClient_stream_uses_constructor_ws_api_url() -> None:
 
 
 def test_AmiVoiceClient_stream_segmenter_valid_passes_generated_parameter() -> None:
-    """型付き segmenter 設定が WRP の setter に渡されることを確認する。"""
+    """型付き segmenter 設定が WRP の protocol に渡されることを確認する。"""
     # Given: 型付き設定を指定したクライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key")
     properties = SegmenterProperties(languages=("ja", "en"))
 
     # When: 型付き設定で stream を開く
-    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream(segmenter=properties) as session:
+    with patch("amivoice._stream.WebSocketTransport", return_value=mock_wrp), client.stream(segmenter=properties) as session:
         session.end()
 
-    # Then: 生成された文字列が WRP の setter に渡される
-    mock_wrp.setSegmenterProperties.assert_called_once_with("useLid=ja,en")
+    # Then: 生成された文字列が WRP の protocol に渡される
+    assert_wrp_parameter(mock_wrp, "segmenterProperties", "useLid=ja,en")
 
 
 def test_AmiVoiceClient_stream_confidence_level_call_override_valid_passes_repr() -> None:
     """Stream の confidence_level override が repr 文字列で WRP に渡ることを確認する。"""
     # Given: confidence_level の既定値を設定したクライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", confidence_level=0.3)
 
     # When: 呼び出し時に confidence_level を上書きして stream を開く
-    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream(confidence_level=0.7) as session:
+    with patch("amivoice._stream.WebSocketTransport", return_value=mock_wrp), client.stream(confidence_level=0.7) as session:
         session.end()
 
-    # Then: override の値が repr 文字列で setter に渡される
-    mock_wrp.setConfidenceLevel.assert_called_once_with("0.7")
+    # Then: override の値が repr 文字列で protocol に渡される
+    assert_wrp_parameter(mock_wrp, "confidenceLevel", "0.7")
 
 
 def test_AmiVoiceClient_stream_confidence_level_omitted_valid_not_set() -> None:
-    """confidence_level 未指定時に WRP の setter が呼ばれないことを確認する。"""
+    """confidence_level 未指定時に WRP の protocol が呼ばれないことを確認する。"""
     # Given: confidence_level を指定していないクライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key")
 
     # When: confidence_level を指定せず stream を開く
-    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream() as session:
+    with patch("amivoice._stream.WebSocketTransport", return_value=mock_wrp), client.stream() as session:
         session.end()
 
-    # Then: サーバー側のデフォルトに委ねるため setter は呼ばれない
-    mock_wrp.setConfidenceLevel.assert_not_called()
+    # Then: サーバー側のデフォルトに委ねるため protocol は呼ばれない
+    assert_wrp_parameter_absent(mock_wrp, "confidenceLevel")
 
 
 def test_AmiVoiceClient_stream_billing_key_constructor_default_valid_passes_extension() -> None:
-    """コンストラクタの billing_key が WRP の extension setter に渡ることを確認する"""
+    """コンストラクタの billing_key が WRP の extension protocol に渡ることを確認する"""
     # Given: billing_key を設定した WebSocket クライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", billing_key="user01")
 
     # When: billing_key を設定した stream を開く
-    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream() as session:
+    with patch("amivoice._stream.WebSocketTransport", return_value=mock_wrp), client.stream() as session:
         session.end()
 
-    # Then: billing_key 用のコンパクト JSON が extension setter に渡る
-    mock_wrp.setExtension.assert_called_once_with('{"client_info":{"billing_key":"user01"}}')
+    # Then: billing_key 用のコンパクト JSON が extension protocol に渡る
+    assert_wrp_parameter(mock_wrp, "extension", '{"client_info":{"billing_key":"user01"}}')
 
 
 def test_AmiVoiceClient_stream_billing_key_call_override_valid_passes_extension() -> None:
     """Stream の billing_key override がインスタンス既定値を上書きすることを確認する"""
     # Given: billing_key の既定値を設定した WebSocket クライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", billing_key="default")
 
     # When: 呼び出し時に billing_key を上書きして stream を開く
-    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream(billing_key="override") as session:
+    with patch("amivoice._stream.WebSocketTransport", return_value=mock_wrp), client.stream(billing_key="override") as session:
         session.end()
 
     # Then: override の billing_key から生成した JSON が渡る
-    mock_wrp.setExtension.assert_called_once_with('{"client_info":{"billing_key":"override"}}')
+    assert_wrp_parameter(mock_wrp, "extension", '{"client_info":{"billing_key":"override"}}')
 
 
 def test_AmiVoiceClient_stream_extension_and_billing_key_invalid_raise_ConfigurationError() -> None:
@@ -1148,7 +1124,7 @@ def test_AmiVoiceClient_stream_segmenter_and_raw_properties_invalid_raise_Config
 def test_AmiVoiceClient_stream_call_args_override_instance_defaults() -> None:
     """stream() の呼び出し時引数が同名のインスタンス既定値を上書きすることを確認する。"""
     # Given: 既定値を保持したクライアントとモック WRP
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(
         api_key="key",
         grammar_file_names="-a-general",
@@ -1189,7 +1165,7 @@ def test_AmiVoiceClient_stream_call_args_override_instance_defaults() -> None:
 def test_AmiVoiceClient_stream_omitted_args_use_instance_defaults() -> None:
     """stream() で引数を省略した場合にインスタンス既定値が使われることを確認する。"""
     # Given: 既定値を保持したクライアントとモック WRP
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(
         api_key="key",
         grammar_file_names="-a-general",
@@ -1230,48 +1206,44 @@ def test_AmiVoiceClient_stream_connection_failed_raises_error() -> None:
         pass
 
 
-def test_AmiVoiceClient_stream_resume_failed_disconnect_called() -> None:
-    """FeedDataResume 失敗時に disconnect が呼ばれ RecognitionError が送出されることを確認する。"""
-    # Given: feedDataResume が失敗するモック WRP トランスポート
-    mock_wrp = MagicMock()
-    mock_wrp.feedDataResume.return_value = False
-    mock_wrp.getLastMessage.return_value = "resume failed"
-    client = AmiVoiceClient(api_key="key")
-
-    # When / Then: stream() の with ブロック入口で RecognitionError が送出され disconnect が呼ばれる
-    with (
-        patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp),
-        pytest.raises(RecognitionError, match="resume failed"),
-        client.stream(),
-    ):
+def test_AmiVoiceClient_stream_start_rejected_invalid_raise_RecognitionError() -> None:
+    """開始確認が失敗しても受信スレッドと接続を閉じる"""
+    # Given: サーバーが開始を拒否する接続
+    mock_wrp = make_websocket_transport()
+    mock_wrp.send_text.side_effect = lambda _: mock_wrp._messages.put("s resume failed")
+    client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
+    # When / Then: 開始拒否の例外が伝播する
+    with pytest.raises(RecognitionError, match="resume failed"), client.stream():
         pass
+    mock_wrp.close.assert_called_once()
 
-    mock_wrp.disconnect.assert_called_once()
 
+def test_AmiVoiceClient_stream_immediate_event_valid_return_event() -> None:
+    """開始確認直後のイベントを受信キューで取りこぼさない"""
+    # Given: 開始と同時に通知するサーバー
+    mock_wrp = make_websocket_transport()
+    original = mock_wrp.send_text.side_effect
 
-def test_AmiVoiceClient_stream_listener_set_before_feed_data_resume() -> None:
-    """SetListener が feedDataResume より前に呼ばれることを確認する。"""
-    # Given: 呼び出し順を記録するモック WRP トランスポート
-    call_order: list[str] = []
-    mock_wrp = MagicMock()
-    mock_wrp.feedDataResume.return_value = True
-    mock_wrp.getWaitingResults.return_value = 0
-    mock_wrp.setListener.side_effect = lambda _: call_order.append("setListener")
-    mock_wrp.feedDataResume.side_effect = lambda: call_order.append("feedDataResume") or True
-    client = AmiVoiceClient(api_key="key")
+    def emit(command: str) -> None:
+        """開始コマンド送信直後に通知を返す"""
+        original(command)
+        if command.startswith("s "):
+            mock_wrp._messages.put("Q ready")
 
-    # When: with ブロックでセッションを開く
-    with patch("amivoice._stream._build_wrp_transport", return_value=mock_wrp), client.stream():
-        pass
-
-    # Then: setListener が feedDataResume より先に呼ばれている
-    assert call_order.index("setListener") < call_order.index("feedDataResume")
+    mock_wrp.send_text.side_effect = emit
+    client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
+    # When: 開始直後の通知を取得する
+    with client.stream() as session:
+        event = next(session.events(timeout=1))
+        session.end()
+    # Then: 開始処理のイベントも届く
+    assert event.notification.event_message == "ready"
 
 
 def test_AmiVoiceClient_stream_write_after_end_raises_recognition_error() -> None:
     """end() 後に write() を呼ぶと RecognitionError が送出されることを確認する。"""
     # Given: モック WRP トランスポートを注入した AmiVoiceClient
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
 
     # When / Then: end() 後の write() は RecognitionError を送出する
@@ -1284,7 +1256,7 @@ def test_AmiVoiceClient_stream_write_after_end_raises_recognition_error() -> Non
 def test_AmiVoiceClient_stream_enter_escape_hatch_works() -> None:
     """StreamConnectionManager.enter escape hatch が __enter__ と同等に動くことを確認する。"""
     # Given: モック WRP トランスポートを注入した AmiVoiceClient
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
 
     # When: with ブロックを使わず manager.enter() / manager.__exit__() を直接呼ぶ
@@ -1297,13 +1269,13 @@ def test_AmiVoiceClient_stream_enter_escape_hatch_works() -> None:
         manager.__exit__(None, None, None)
 
     # Then: disconnect が1回呼ばれている
-    mock_wrp.disconnect.assert_called_once()
+    mock_wrp.close.assert_called_once()
 
 
 def test_AmiVoiceClient_stream_events_blocking_yields_until_end() -> None:
     """session.events() が end() の終端マーカーまでブロッキングでイベントを yield することを確認する。"""
     # Given: 2件の結果を返すモック WRP トランスポート
-    mock_wrp = _make_mock_wrp(['{"text": "part1"}', '{"text": "part2"}'])
+    mock_wrp = make_websocket_transport(['{"text": "part1"}', '{"text": "part2"}'])
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
 
     # When: end() 後に events() を消費する
@@ -1317,116 +1289,87 @@ def test_AmiVoiceClient_stream_events_blocking_yields_until_end() -> None:
     assert all(e.type == "final" for e in final_events)
 
 
-def test_AmiVoiceClient_stream_partial_event_type() -> None:
-    """ResultUpdated が type="partial" の StreamEvent になることを確認する。"""
-    # Given: feedDataPause で resultUpdated → resultFinalized を送るモック WRP
-    mock_wrp = MagicMock()
-    mock_wrp.connect.return_value = True
-    mock_wrp.feedDataResume.return_value = True
-    mock_wrp.feedData.return_value = True
-    mock_wrp.getWaitingResults.return_value = 0
+def test_AmiVoiceClient_stream_partial_event_valid_return_stream_event() -> None:
+    """途中結果と確定結果の受信順を維持する"""
+    # Given: 途中結果を返すサーバー
+    mock_wrp = make_websocket_transport()
+    original = mock_wrp.send_text.side_effect
 
-    def set_listener(listener: object) -> None:
-        mock_wrp._listener = listener
+    def emit(command: str) -> None:
+        """送信終了時に途中結果を先に返す"""
+        if command == "e":
+            mock_wrp._messages.put("U こんに")
+        original(command)
 
-    def emit() -> bool:
-        mock_wrp._listener.resultUpdated("こんに")
-        mock_wrp._listener.resultFinalized('{"text": "こんにちは"}')
-        return True
-
-    mock_wrp.setListener.side_effect = set_listener
-    mock_wrp.feedDataPause.side_effect = emit
+    mock_wrp.send_text.side_effect = emit
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
-
-    # When: end() 後にイベントを収集する
+    # When: 全イベントを取得する
     with client.stream() as session:
         session.end()
         events = list(session.events())
-
-    # Then: 先頭が partial（途中結果）、末尾が final
+    # Then: 最初は途中結果、最後は確定結果
     assert events[0].type == "partial"
     assert events[0].text == "こんに"
-    assert events[0].is_partial is True
+    assert events[0].is_partial
     assert events[-1].type == "final"
 
 
-def test_AmiVoiceClient_stream_utterance_and_notification_events_delivered() -> None:
-    """発話境界・サービス通知イベントが StreamEvent として届くことを確認する。"""
-    # Given: 各種コールバックを発火するモック WRP
-    mock_wrp = MagicMock()
-    mock_wrp.connect.return_value = True
-    mock_wrp.feedDataResume.return_value = True
-    mock_wrp.feedData.return_value = True
-    mock_wrp.getWaitingResults.return_value = 0
+def test_AmiVoiceClient_stream_notifications_valid_return_stream_events() -> None:
+    """発話開始・終了・通知を直接イベントへ変換する"""
+    # Given: 発話イベントを返すサーバー
+    mock_wrp = make_websocket_transport()
+    original = mock_wrp.send_text.side_effect
 
-    def set_listener(listener: object) -> None:
-        mock_wrp._listener = listener
+    def emit(command: str) -> None:
+        """終了時に発話イベントを返す"""
+        if command == "e":
+            for message in ("S 100", "E 500", "Q ready", 'A {"text":"hello"}'):
+                mock_wrp._messages.put(message)
+        original(command)
 
-    def emit() -> bool:
-        mock_wrp._listener.utteranceStarted(100)
-        mock_wrp._listener.utteranceEnded(500)
-        mock_wrp._listener.eventNotified("E001", "ready")
-        return True
-
-    mock_wrp.setListener.side_effect = set_listener
-    mock_wrp.feedDataPause.side_effect = emit
+    mock_wrp.send_text.side_effect = emit
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
-
-    # When: end() 後にイベントを収集する
+    # When: 全イベントを取得する
     with client.stream() as session:
         session.end()
         events = list(session.events())
-
-    # Then: 発話開始・終了・通知イベントがそれぞれ届く
-    by_type = {e.type: e for e in events}
-    assert by_type["utterance_started"].utterance is not None
-    assert by_type["utterance_started"].utterance.time == 100
+    # Then: 発話時間と通知を保持する
+    by_type = {event.type: event for event in events}
+    assert by_type["utterance_started"].utterance.time == 0
+    assert next(event for event in events if event.type == "utterance_started").utterance.time == 100
     assert by_type["utterance_ended"].utterance.time == 500
-    assert by_type["notification"].notification is not None
-    assert by_type["notification"].notification.event_id == "E001"
+    assert by_type["notification"].notification.event_id == "Q"
 
 
-def test_AmiVoiceClient_stream_events_timeout_raises() -> None:
-    """events(timeout=...) でイベントが届かない場合に RecognitionError が送出されることを確認する。"""
-    # Given: 結果を一切返さないモック WRP（end() 前は終端マーカーも来ない）
-    mock_wrp = MagicMock()
-    mock_wrp.connect.return_value = True
-    mock_wrp.feedDataResume.return_value = True
-    mock_wrp.feedDataPause.return_value = True
-    mock_wrp.feedData.return_value = True
-    mock_wrp.getWaitingResults.return_value = 0
-
-    def set_listener(listener: object) -> None:
-        mock_wrp._listener = listener
-
-    mock_wrp.setListener.side_effect = set_listener
+def test_AmiVoiceClient_stream_events_timeout_invalid_raise_RecognitionError() -> None:
+    """イベント未到着の待機だけをタイムアウトさせる"""
+    # Given: イベントを返さない接続
+    mock_wrp = make_websocket_transport(results=[])
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
-
-    # When / Then: end() を呼ぶ前に events(timeout=...) を消費するとタイムアウトする
+    # When / Then: 終了前のイベント待機はタイムアウトする
     with client.stream() as session:
         with pytest.raises(RecognitionError, match="Timed out waiting for stream event"):
-            next(session.events(timeout=0.05))
+            next(session.events(timeout=0.01))
         session.end()
 
 
-def test_AmiVoiceClient_stream_end_timeout_raises_when_results_pending() -> None:
-    """end(timeout=...) で待機結果が残り続ける場合に RecognitionError が送出されることを確認する。"""
-    # Given: getWaitingResults が常に 1 を返し続けるモック WRP
-    mock_wrp = MagicMock()
-    mock_wrp.connect.return_value = True
-    mock_wrp.feedDataResume.return_value = True
-    mock_wrp.feedDataPause.return_value = True
-    mock_wrp.getWaitingResults.return_value = 1
+def test_AmiVoiceClient_stream_end_pending_result_invalid_raise_RecognitionError() -> None:
+    """終了確認が届いても未確定発話があればタイムアウトする"""
+    # Given: 確定結果を返さないサーバー
+    mock_wrp = make_websocket_transport(results=[])
+    original = mock_wrp.send_text.side_effect
 
-    def set_listener(listener: object) -> None:
-        mock_wrp._listener = listener
+    def emit(command: str) -> None:
+        """終了時に未確定発話を残す"""
+        if command == "e":
+            mock_wrp._messages.put("S 100")
+        original(command)
 
-    mock_wrp.setListener.side_effect = set_listener
+    mock_wrp.send_text.side_effect = emit
     client = AmiVoiceClient(api_key="key", wrp_transport=mock_wrp)
-
-    # When / Then: end(timeout=...) が待機結果ゼロを見ないままタイムアウトする
+    # When / Then: 未確定結果の待機はタイムアウトする
     with client.stream() as session, pytest.raises(RecognitionError, match="Timed out waiting for remaining"):
-        session.end(timeout=0.2)
+        session.end(timeout=0.01)
 
 
 @pytest.mark.parametrize(
@@ -1481,59 +1424,59 @@ def test_AmiVoiceClient_transcribe_rule_grammar_parameter_override_passes_string
 
 
 @pytest.mark.parametrize(
-    ("parameter_name", "setter_name", "value", "expected"),
+    ("parameter_name", "wire_name", "value", "expected"),
     [
-        ("complete_timeout", "setCompleteTimeout", 5000, "5000"),
-        ("wildcard_model_penalty", "setWildcardModelPenalty", 4.0, "4.0"),
+        ("complete_timeout", "completeTimeout", 5000, "5000"),
+        ("wildcard_model_penalty", "wildcardModelPenalty", 4.0, "4.0"),
     ],
 )
 def test_AmiVoiceClient_stream_rule_grammar_parameter_constructor_default_passes_string(
     parameter_name: str,
-    setter_name: str,
+    wire_name: str,
     value: int | float,
     expected: str,
 ) -> None:
-    """コンストラクタのルールグラマ専用パラメータが WRP setter に渡ることを確認する"""
+    """コンストラクタのルールグラマ専用パラメータが WRP protocol に渡ることを確認する"""
     # Given: ルールグラマ専用パラメータを設定したクライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", **{parameter_name: value})
 
     # When: ストリーミングセッションを開始して終了する
-    with patch("amivoice._stream._Wrp.construct", return_value=mock_wrp), client.stream() as session:
+    with patch("amivoice._stream.WebSocketTransport", return_value=mock_wrp), client.stream() as session:
         session.end()
 
-    # Then: 対応するWRP setterへ文字列値が渡る
-    getattr(mock_wrp, setter_name).assert_called_once_with(expected)
+    # Then: 対応するWRP protocolへ文字列値が渡る
+    assert_wrp_parameter(mock_wrp, wire_name, expected)
 
 
 @pytest.mark.parametrize(
-    ("parameter_name", "setter_name", "default_value", "override_value", "expected"),
+    ("parameter_name", "wire_name", "default_value", "override_value", "expected"),
     [
-        ("complete_timeout", "setCompleteTimeout", 5000, 7000, "7000"),
-        ("wildcard_model_penalty", "setWildcardModelPenalty", 4.0, 5.5, "5.5"),
+        ("complete_timeout", "completeTimeout", 5000, 7000, "7000"),
+        ("wildcard_model_penalty", "wildcardModelPenalty", 4.0, 5.5, "5.5"),
     ],
 )
 def test_AmiVoiceClient_stream_rule_grammar_parameter_override_passes_string(
     parameter_name: str,
-    setter_name: str,
+    wire_name: str,
     default_value: int | float,
     override_value: int | float,
     expected: str,
 ) -> None:
     """Stream のルールグラマ専用パラメータ override が既定値を上書きすることを確認する"""
     # Given: 既定値を設定したクライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", **{parameter_name: default_value})
 
     # When: ストリーミング開始時にルールグラマ専用パラメータを上書きする
     with (
-        patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
+        patch("amivoice._stream.WebSocketTransport", return_value=mock_wrp),
         client.stream(**{parameter_name: override_value}) as session,
     ):
         session.end()
 
-    # Then: 上書きした文字列値が対応するWRP setterへ渡る
-    getattr(mock_wrp, setter_name).assert_called_once_with(expected)
+    # Then: 上書きした文字列値が対応するWRP protocolへ渡る
+    assert_wrp_parameter(mock_wrp, wire_name, expected)
 
 
 @pytest.mark.parametrize(
@@ -1731,38 +1674,38 @@ def test_AmiVoiceClient_transcribe_profile_words_empty_override_valid_clear_defa
     assert "profileWords" not in http_wire_values(mock_hrp)
 
 
-def test_AmiVoiceClient_stream_profile_words_empty_sequence_valid_skip_setter() -> None:
+def test_AmiVoiceClient_stream_profile_words_empty_sequence_valid_skip_protocol() -> None:
     """streamの空のProfileWordシーケンスでWRPのprofileWordsを設定しないことを確認する"""
     # Given: クライアントとモックWRP
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key")
 
     # When: 空のProfileWordシーケンスでストリーミングセッションを開始する
     with (
-        patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
+        patch("amivoice._stream.WebSocketTransport", return_value=mock_wrp),
         client.stream(profile_words=[]) as session,
     ):
         session.end()
 
     # Then: 空文字列のprofileWordsは送られない
-    mock_wrp.setProfileWords.assert_not_called()
+    assert_wrp_parameter_absent(mock_wrp, "profileWords")
 
 
 def test_AmiVoiceClient_stream_profile_words_sequence_valid_passes_serialized_string() -> None:
     """streamのProfileWordシーケンスがWRPへシリアライズされることを確認する"""
     # Given: ProfileWordシーケンスを指定するクライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key")
 
     # When: ProfileWordシーケンスでストリーミングセッションを開始する
     with (
-        patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
+        patch("amivoice._stream.WebSocketTransport", return_value=mock_wrp),
         client.stream(profile_words=(ProfileWord(written="AmiVoice", spoken="あみぼいす"),)) as session,
     ):
         session.end()
 
-    # Then: profileWordsのワイヤー形式がWRP setterへ渡る
-    mock_wrp.setProfileWords.assert_called_once_with("AmiVoice あみぼいす")
+    # Then: profileWordsのワイヤー形式がWRP protocolへ渡る
+    assert_wrp_parameter(mock_wrp, "profileWords", "AmiVoice あみぼいす")
 
 
 def test_AmiVoiceClient_transcribe_profile_id_without_colon_warns_and_passes_as_is() -> None:
@@ -1798,15 +1741,15 @@ def test_AmiVoiceClient_transcribe_profile_id_override_without_colon_warns() -> 
 def test_AmiVoiceClient_stream_profile_id_with_colon_no_warning_passes_as_is() -> None:
     """streamのコロン付きprofile_idが警告なしでWRPへ渡ることを確認する"""
     # Given: コロン付きのprofile_idを設定したクライアント
-    mock_wrp = _make_mock_wrp()
+    mock_wrp = make_websocket_transport()
     client = AmiVoiceClient(api_key="key", profile_id=":myprofile")
 
     # When: ストリーミングセッションを開始する
     with (
-        patch("amivoice._stream._Wrp.construct", return_value=mock_wrp),
+        patch("amivoice._stream.WebSocketTransport", return_value=mock_wrp),
         client.stream() as session,
     ):
         session.end()
 
-    # Then: profileIdがそのままWRP setterへ渡る
-    mock_wrp.setProfileId.assert_called_once_with(":myprofile")
+    # Then: profileIdがそのままWRP protocolへ渡る
+    assert_wrp_parameter(mock_wrp, "profileId", ":myprofile")

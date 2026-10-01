@@ -1,422 +1,320 @@
-"""ストリーミング音声認識セッションの管理クラス群。"""
+"""WRP 確認応答とイベントキューを直接管理するストリーミング認識"""
 
 import queue
-from collections.abc import Callable, Iterator
+import threading
+from collections.abc import Iterator
+from contextlib import suppress
 
-from com.amivoice.wrp.Wrp import Wrp as _Wrp
-from com.amivoice.wrp.WrpListener import WrpListener
-
-from ._billing import resolve_billing_extension
 from ._params import RecognitionParams
-from ._transport import WrpTransport, _set_optional_transport_parameter, bool_string
-from .exceptions import ConnectionFailedError, RecognitionError
-from .models import NotificationEvent, RecognitionResult, StreamEvent, UtteranceEvent, parse_result
+from ._recognition_protocol import build_wrp_start_command, parse_wrp_message
+from ._websocket_transport import WebSocketTransport
+from .exceptions import RecognitionError
+from .models import RecognitionResult, StreamEvent
 
-_SENTINEL = object()  # poll() ループ終端マーカー
-
-
-class _WrpListenerAdapter(WrpListener):
-    """WRP ライブラリのコールバックを ``StreamSession`` のイベントキューへ変換するアダプター。
-
-    コールバックのメソッド名は override 元の ``WrpListener``（上流ライブラリ）に合わせる。
-    引数名は snake_case にするが、上流はキャメルケースの引数を位置引数で渡すため、
-    引数名不一致による ``reportIncompatibleMethodOverride`` を抑制する。
-    """
-
-    def __init__(self, session: "StreamSession") -> None:
-        super().__init__()
-        self._session = session
-
-    def utteranceStarted(self, start_time: int) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
-        self._session._on_utterance_started(UtteranceEvent("started", start_time))
-
-    def utteranceEnded(self, end_time: int) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
-        self._session._on_utterance_ended(UtteranceEvent("ended", end_time))
-
-    def resultUpdated(self, result: str) -> None:
-        self._session._on_result_updated(result)
-
-    def resultFinalized(self, result: str) -> None:
-        self._session._on_result_finalized(result)
-
-    def eventNotified(self, event_id: str, event_message: str) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
-        self._session._on_event_notified(NotificationEvent(event_id, event_message))
+_SENTINEL = object()
 
 
 class StreamSession:
-    """アクティブな WebSocket ストリーミング認識セッション。
+    """アクティブな WebSocket 音声認識セッション
 
-    ``StreamConnectionManager.__enter__`` が返す。直接インスタンス化しないこと。
-
-    イベント消費には 2 通りの方法がある:
-
-    - :meth:`events` — ブロッキングで逐次消費する（推奨）。``end()`` の終端まで待機する。
-    - :meth:`poll` — ノンブロッキング。その時点で溜まっているイベントのみ返す。
-
-    Example::
-
-        with client.stream(
-            grammar_file_names=Engine.A_GENERAL,
-            codec=Codec.HEADER_16K,
-        ) as session:
-            session.write(
-                audio_bytes
-            )
-            session.end()
-            for event in session.events():
-                if event.is_final:
-                    print(
-                        event.result.data[
-                            "text"
-                        ]
-                    )
-                elif (
-                    event.type
-                    == "partial"
-                ):
-                    print(
-                        "...",
-                        event.text,
-                    )
+    ``client.stream()`` のコンテキストマネージャから取得する
+    音声は ``write()`` で送信し、``end()`` で残りの確定結果を待つ
+    ``events()`` はブロッキング、``poll()`` はノンブロッキングでイベントを返す
     """
 
-    def __init__(self, wrp: WrpTransport, *, finalize_timeout_ms: int = 60_000) -> None:
-        """内部使用専用。``wrp`` はすでに connect 済みの WRP トランスポートオブジェクト。
+    def __init__(self, wrp: WebSocketTransport, *, finalize_timeout_ms: int = 60_000) -> None:
+        """接続済み WebSocket とイベントキューを初期化する
 
         Args:
-            wrp: connect 済みの WRP トランスポート。
-            finalize_timeout_ms: ``end()`` が残りの認識結果を待機する既定タイムアウト（ミリ秒）。
+            wrp (WebSocketTransport): 接続済みの通信境界
+            finalize_timeout_ms (int): 開始確認と認識終了の既定待機時間（ミリ秒）
         """
         self._wrp = wrp
         self._finalize_timeout_ms = finalize_timeout_ms
         self._event_queue: queue.SimpleQueue[object] = queue.SimpleQueue()
         self._finalized_results: list[RecognitionResult] = []
+        self._condition = threading.Condition()
+        self._write_lock = threading.Lock()
+        self._started = False
         self._ended = False
-        self._adapter = _WrpListenerAdapter(self)
-        self._wrp.setListener(self._adapter)
+        self._end_acknowledged = False
+        self._waiting_results = 0
+        self._error: RecognitionError | None = None
+        self._events_closed = False
+        self._closing = False
+        self._receiver: threading.Thread | None = None
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    def _start_recognition(self, command: str) -> None:
+        self._receiver = threading.Thread(target=self._receive_events, name="amivoice-stream-receiver", daemon=True)
+        self._receiver.start()
+        try:
+            self._wrp.send_text(command)
+            with self._condition:
+                ready = self._condition.wait_for(
+                    lambda: self._started or self._error is not None, timeout=self._finalize_timeout_ms / 1000
+                )
+                self._raise_receiver_error()
+                if not ready:
+                    raise RecognitionError("Timed out waiting for stream start acknowledgement")
+        except RecognitionError as exc:
+            self._fail_recognition(exc)
+            raise
+
+    def _raise_receiver_error(self) -> None:
+        if self._error is not None:
+            raise self._error
+
+    def _receive_events(self) -> None:
+        try:
+            while True:
+                message = self._wrp.receive_message()
+                if isinstance(message, bytes):
+                    message = message.decode("UTF-8")
+                parsed = parse_wrp_message(message)
+                with self._condition:
+                    if self._closing:
+                        return
+                    if parsed.command == "s":
+                        self._started = True
+                    elif parsed.command == "e":
+                        self._end_acknowledged = True
+                    elif parsed.command == "S":
+                        self._waiting_results += 1
+                    elif parsed.command in {"A", "R"}:
+                        self._waiting_results = max(0, self._waiting_results - 1)
+                    if parsed.event is not None:
+                        if parsed.event.result is not None:
+                            self._finalized_results.append(parsed.event.result)
+                        self._event_queue.put(parsed.event)
+                    self._condition.notify_all()
+                    if self._end_acknowledged and self._waiting_results == 0:
+                        self._finish_events()
+                        return
+        except (RecognitionError, UnicodeError) as exc:
+            if not self._closing:
+                error = exc if isinstance(exc, RecognitionError) else RecognitionError("Invalid WRP response encoding")
+                self._fail_recognition(error)
+
+    def _finish_events(self) -> None:
+        if not self._events_closed:
+            self._events_closed = True
+            self._event_queue.put(_SENTINEL)
+
+    def _fail_recognition(self, error: RecognitionError) -> None:
+        with self._condition:
+            if self._error is None and not self._events_closed:
+                self._error = error
+                self._event_queue.put(error)
+                self._finish_events()
+            self._condition.notify_all()
 
     def write(self, chunk: bytes) -> None:
-        """音声チャンクを送信する。
+        """音声チャンクを送信する
 
         Args:
-            chunk: 送信する PCM 音声バイト列。
+            chunk (bytes): 送信する音声バイト列
 
         Raises:
-            RecognitionError: 送信に失敗した場合。
+            RecognitionError: 終了後の送信、通信失敗、受信側のエラー
         """
-        if self._ended:
-            raise RecognitionError("Cannot write to an ended session")
-        if not self._wrp.feedData(chunk, 0, len(chunk)):
-            raise RecognitionError(self._wrp.getLastMessage())
+        with self._write_lock:
+            self._raise_receiver_error()
+            if self._ended or self._closing:
+                raise RecognitionError("Cannot write to an ended session")
+            try:
+                self._wrp.send_binary(b"p" + chunk)
+            except RecognitionError as exc:
+                self._fail_recognition(exc)
+                raise
 
     def poll(self) -> Iterator[StreamEvent]:
-        """キューに溜まったイベントをすべて yield する（ノンブロッキング）。
-
-        呼び出した時点でキューに溜まっているイベントのみを返し、キューが空になると即座に
-        終了する。まだ結果が届いていない場合は何も返さないため、ポーリングループでは
-        別途 sleep 等で待機する必要がある。逐次消費してブロックしたい場合は
-        :meth:`events` を使用する。
-
-        ``end()`` 呼び出し後に呼ぶと、残っているイベントをすべて返した後で終了する。
+        """その時点でキューに溜まっているイベントを返す
 
         Yields:
-            ``StreamEvent`` オブジェクト。
+            StreamEvent: 公開認識イベント
+
+        Raises:
+            RecognitionError: キュー内の受信エラー
         """
         while True:
             try:
                 item = self._event_queue.get_nowait()
             except queue.Empty:
-                break
+                if self._events_closed:
+                    self._raise_receiver_error()
+                return
             if item is _SENTINEL:
-                break
+                return
+            if isinstance(item, RecognitionError):
+                raise item
             if isinstance(item, StreamEvent):
                 yield item
 
     def events(self, *, timeout: float | None = None) -> Iterator[StreamEvent]:
-        """イベントをブロッキングで逐次 yield する。
-
-        次のイベントが届くまで待機し、``end()`` が投入する終端マーカーに到達すると
-        イテレーションを終了する。音声送信と別スレッドで消費するか、送信完了後に
-        ``end()`` を呼んでから消費する。
+        """次のイベントを待ち、終了または受信エラーまで逐次返す
 
         Args:
-            timeout: 次のイベントを待機する最大秒数。``None`` は無制限。指定した時間内に
-                イベントが届かなかった場合は ``RecognitionError`` を送出する。
+            timeout (float | None): 次のイベントを待つ秒数、None は無制限
 
         Yields:
-            ``StreamEvent`` オブジェクト。
+            StreamEvent: 公開認識イベント
 
         Raises:
-            RecognitionError: ``timeout`` 秒以内にイベントが届かなかった場合。
+            RecognitionError: イベント待機タイムアウトまたは受信失敗
         """
         while True:
+            if self._events_closed and self._event_queue.empty():
+                self._raise_receiver_error()
+                return
             try:
                 item = self._event_queue.get(timeout=timeout)
             except queue.Empty as exc:
                 raise RecognitionError("Timed out waiting for stream event") from exc
             if item is _SENTINEL:
                 return
+            if isinstance(item, RecognitionError):
+                raise item
             if isinstance(item, StreamEvent):
                 yield item
 
     def end(self, *, timeout: float | None = None) -> None:
-        """音声送信終了を宣言し、残りの認識結果を待機する。
-
-        ``feedDataPause`` を発行し、WRP の待機結果がゼロになるまでポーリングする。
-        呼び出し後は ``write()`` できない。
+        """送信終了の確認応答とすべての残りの認識結果を一つの期限で待つ
 
         Args:
-            timeout: 残りの認識結果を待機する最大秒数。``None`` の場合はコンストラクタ時の
-                既定タイムアウト（``finalize_timeout_ms``）を使用する。
+            timeout (float | None): 最大待機秒数、None は既定値
 
         Raises:
-            RecognitionError: 終了処理中にエラーが発生した場合、または待機がタイムアウトした場合。
+            RecognitionError: 確認応答、認識結果のタイムアウトまたは受信失敗
         """
-        if self._ended:
-            return
-        self._ended = True
-
-        if not self._wrp.feedDataPause():
-            raise RecognitionError(self._wrp.getLastMessage())
-
-        # 残り待機結果がゼロになるまでポーリング
-        poll_interval_ms = 100
-        max_wait_ms = self._finalize_timeout_ms if timeout is None else int(timeout * 1000)
-        waited_ms = 0
-        while self._wrp.getWaitingResults() > 0:
-            if waited_ms >= max_wait_ms:
-                raise RecognitionError("Timed out waiting for remaining recognition results")
-            self._wrp.sleep(poll_interval_ms)
-            waited_ms += poll_interval_ms
-
-        # poll() / events() ループ終端マーカーをキューに投入
-        self._event_queue.put(_SENTINEL)
+        with self._write_lock:
+            self._raise_receiver_error()
+            if self._ended:
+                return
+            self._ended = True
+            try:
+                self._wrp.send_text("e")
+            except RecognitionError as exc:
+                self._fail_recognition(exc)
+                raise
+        wait_seconds = self._finalize_timeout_ms / 1000 if timeout is None else timeout
+        with self._condition:
+            ready = self._condition.wait_for(
+                lambda: (self._end_acknowledged and self._waiting_results == 0) or self._error is not None, timeout=wait_seconds
+            )
+            self._raise_receiver_error()
+            if not ready:
+                error = RecognitionError("Timed out waiting for remaining recognition results or end acknowledgement")
+                self._fail_recognition(error)
+                raise error
 
     def results(self) -> list[RecognitionResult]:
-        """``end()`` 後の確定済み認識結果一覧を返す。
+        """確定済み認識結果を受信順のコピーとして返す
 
         Returns:
-            確定済み ``RecognitionResult`` のリスト（順序保証）。
+            list[RecognitionResult]: 確定済み結果
         """
-        return list(self._finalized_results)
+        with self._condition:
+            return list(self._finalized_results)
 
-    # ------------------------------------------------------------------
-    # Internal callbacks (called by _WrpListenerAdapter)
-    # ------------------------------------------------------------------
-
-    def _on_result_updated(self, text: str) -> None:
-        self._event_queue.put(StreamEvent(type="partial", text=text))
-
-    def _on_result_finalized(self, raw: str) -> None:
-        result = parse_result(raw, raise_on_error=False)
-        self._finalized_results.append(result)
-        text = str(result.data.get("text", ""))
-        self._event_queue.put(StreamEvent(type="final", text=text, result=result))
-
-    def _on_utterance_started(self, event: UtteranceEvent) -> None:
-        self._event_queue.put(StreamEvent(type="utterance_started", utterance=event))
-
-    def _on_utterance_ended(self, event: UtteranceEvent) -> None:
-        self._event_queue.put(StreamEvent(type="utterance_ended", utterance=event))
-
-    def _on_event_notified(self, event: NotificationEvent) -> None:
-        self._event_queue.put(StreamEvent(type="notification", notification=event))
+    def _close_recognition(self) -> None:
+        with self._condition:
+            self._closing = True
+            self._ended = True
+            self._finish_events()
+            self._condition.notify_all()
+        try:
+            self._wrp.close()
+        finally:
+            if self._receiver is not None:
+                self._receiver.join(timeout=2)
 
 
-def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) -> WrpTransport:
-    """WRP トランスポートオブジェクトを生成して接続する。
+def _build_wrp_transport(api_key: str, api_url: str, params: RecognitionParams) -> WebSocketTransport:
+    """接続設定だけを汎用 WebSocket 層へ渡し接続する
 
     Args:
-        api_key (str): AmiVoice API の認証キー
-        api_url (str): 接続先の WRP API エンドポイント URL
-        params (RecognitionParams): WRP に適用する認識パラメータ
+        api_key (str): 互換用引数、認証は開始コマンドで送る
+        api_url (str): ws / wss エンドポイント
+        params (RecognitionParams): 解決済み認識設定
 
     Returns:
-        WrpTransport: 接続済みの WRP トランスポート
-
-    Raises:
-        ConnectionFailedError: WRP API への接続に失敗した場合
+        WebSocketTransport: 接続済みトランスポート
     """
-    wrp: WrpTransport = _Wrp.construct()
-
-    wrp.setServerURL(api_url)
-    wrp.setAuthorization(api_key)
-
-    keep_filler = None if params.keep_filler_token is None else bool_string(params.keep_filler_token)
-    interval = None if params.result_updated_interval is None else str(params.result_updated_interval)
-    recognition_timeout = None if params.recognition_timeout is None else str(params.recognition_timeout)
-    complete_timeout = None if params.complete_timeout is None else str(params.complete_timeout)
-    wildcard_model_penalty = None if params.wildcard_model_penalty is None else repr(params.wildcard_model_penalty)
-    max_decoding_time = None if params.max_decoding_time is None else str(params.max_decoding_time)
-    max_response_time = None if params.max_response_time is None else str(params.max_response_time)
-    max_decoding_rate = None if params.max_decoding_rate is None else repr(params.max_decoding_rate)
-    target_response_time = None if params.target_response_time is None else str(params.target_response_time)
-    target_decoding_rate = None if params.target_decoding_rate is None else repr(params.target_decoding_rate)
-    confidence_level = None if params.confidence_level is None else repr(params.confidence_level)
-    extension = resolve_billing_extension(params.extension, params.billing_key)
-    no_input_timeout = None if params.no_input_timeout is None else str(params.no_input_timeout)
-    _set_optional_transport_parameter(wrp, "setCompleteTimeout", complete_timeout)
-    _set_optional_transport_parameter(wrp, "setWildcardModelPenalty", wildcard_model_penalty)
-    optional_setters: tuple[tuple[Callable[[str | None], None], str | None], ...] = (
-        (wrp.setGrammarFileNames, params.grammar_file_names),
-        (wrp.setCodec, params.codec),
-        (wrp.setResultType, params.result_type),
-        (wrp.setProxyServerName, params.proxy_server_name),
-        (wrp.setVoiceDetection, params.voice_detection),
-        (wrp.setMode, params.mode),
-        (wrp.setProfileId, params.profile_id),
-        (wrp.setProfileWords, params.profile_words),
-        (wrp.setSegmenterType, params.segmenter_type),
-        (wrp.setSegmenterProperties, params.segmenter_properties),
-        (wrp.setExtension, extension),
-        (wrp.setKeepFillerToken, keep_filler),
-        (wrp.setResultUpdatedInterval, interval),
-        (wrp.setRecognitionTimeout, recognition_timeout),
-        (wrp.setMaxDecodingTime, max_decoding_time),
-        (wrp.setMaxResponseTime, max_response_time),
-        (wrp.setMaxDecodingRate, max_decoding_rate),
-        (wrp.setTargetResponseTime, target_response_time),
-        (wrp.setTargetDecodingRate, target_decoding_rate),
-        (wrp.setConfidenceLevel, confidence_level),
-        (wrp.setNoInputTimeout, no_input_timeout),
+    transport = WebSocketTransport()
+    transport.connect(
+        api_url,
+        connect_timeout_ms=params.connect_timeout,
+        receive_timeout_ms=params.receive_timeout,
+        proxy_server_name=params.proxy_server_name,
     )
-    for setter, value in optional_setters:
-        if value is not None:
-            setter(value)
-
-    if params.connect_timeout > 0:
-        wrp.setConnectTimeout(params.connect_timeout)
-    if params.receive_timeout > 0:
-        wrp.setReceiveTimeout(params.receive_timeout)
-
-    if not wrp.connect():
-        raise ConnectionFailedError(wrp.getLastMessage())
-
-    return wrp
+    return transport
 
 
 class StreamConnectionManager:
-    """``client.stream()`` が返すコンテキストマネージャ。
+    """``client.stream()`` が返す接続コンテキストマネージャ
 
-    ``__enter__`` で WebSocket 接続を確立し ``StreamSession`` を返す。
-    ``__exit__`` で切断する。
-
-    openai-python の ``RealtimeConnectionManager`` と同様に
-    ``enter = __enter__`` escape hatch を提供する。
-
-    Example::
-
-        manager = client.stream(
-            grammar_file_names=Engine.A_GENERAL,
-            codec=Codec.HEADER_16K,
-        )
-        # コンテキストマネージャ経由（推奨）
-        with (
-            manager as session
-        ):
-            session.write(
-                data
-            )
-            session.end()
-
-        # escape hatch（非同期フレームワーク等での手動管理）
-        session = (
-            manager.enter()
-        )
-        try:
-            session.write(
-                data
-            )
-            session.end()
-        finally:
-            manager.__exit__(
-                None,
-                None,
-                None,
-            )
+    ``__enter__`` で開始確認まで待ち、``__exit__`` で受信スレッドと接続を閉じる
+    ``enter = __enter__`` の手動接続 API も提供する
     """
 
     def __init__(
-        self,
-        *,
-        api_key: str,
-        api_url: str,
-        params: RecognitionParams,
-        wrp_transport: WrpTransport | None = None,
+        self, *, api_key: str, api_url: str, params: RecognitionParams, wrp_transport: WebSocketTransport | None = None
     ) -> None:
+        """認識設定と任意のテスト用接続を保持する
+
+        Args:
+            api_key (str): 認証キー
+            api_url (str): WebSocket URL
+            params (RecognitionParams): 解決済みの設定
+            wrp_transport (WebSocketTransport | None): 接続済みテストトランスポート
+        """
         self._api_key = api_key
         self._api_url = api_url
         self._params = params
-        self._wrp_transport = wrp_transport  # テスト注入用
-
-        self._wrp: WrpTransport | None = None
+        self._wrp_transport = wrp_transport
         self._session: StreamSession | None = None
 
     def __enter__(self) -> StreamSession:
-        """WebSocket 接続を確立し ``StreamSession`` を返す。
+        """WebSocket 接続を開き、認識開始が確認されたセッションを返す
 
         Returns:
-            StreamSession: 接続済みのストリーミング認識セッション
-
-        Raises:
-            ConnectionFailedError: WRP API への接続に失敗した場合
-            RecognitionError: 音声送信の開始に失敗した場合
+            StreamSession: 認識開始済みセッション
         """
-        if self._wrp_transport is not None:
-            wrp = self._wrp_transport
-        else:
-            wrp = _build_wrp_transport(self._api_key, self._api_url, self._params)
-
-        # feedDataResume() 内で発生する通知を取りこぼさないよう、
-        # 先に StreamSession 側でリスナーを設定してから開始する
-        # end() の待機タイムアウトは receive_timeout（0 は無制限だが実務上の上限として 60 秒）に合わせる
-        finalize_timeout_ms = self._params.receive_timeout if self._params.receive_timeout > 0 else 60_000
-        self._wrp = wrp
-        self._session = StreamSession(wrp, finalize_timeout_ms=finalize_timeout_ms)
-
-        if not wrp.feedDataResume():
+        if self._session is not None:
+            raise RecognitionError("Stream manager is already entered")
+        transport = (
+            self._wrp_transport
+            if self._wrp_transport is not None
+            else _build_wrp_transport(self._api_key, self._api_url, self._params)
+        )
+        session = StreamSession(
+            transport, finalize_timeout_ms=self._params.receive_timeout if self._params.receive_timeout > 0 else 60_000
+        )
+        self._session = session
+        try:
+            session._start_recognition(build_wrp_start_command(self._params, self._api_key))
+        except BaseException:
             self._session = None
-            self._wrp = None
-            wrp.disconnect()
-            raise RecognitionError(wrp.getLastMessage())
+            session._close_recognition()
+            raise
+        return session
 
-        return self._session
-
-    # escape hatch — openai-python 互換パターン
     enter = __enter__
 
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: object | None,
-    ) -> None:
-        """WebSocket 接続を切断する。
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: object | None) -> None:
+        """受信待機を解除し接続とスレッドを閉じる
 
         Args:
-            exc_type (type[BaseException] | None): コンテキスト内で送出された例外の型
-            exc_val (BaseException | None): コンテキスト内で送出された例外
-            exc_tb (object | None): コンテキスト内で送出されたトレースバック
+            exc_type (type[BaseException] | None): コンテキスト内の例外型
+            exc_val (BaseException | None): コンテキスト内の例外
+            exc_tb (object | None): トレースバック
         """
-        if self._wrp is not None:
-            try:
-                self._wrp.disconnect()
-            except Exception:
-                pass
-            finally:
-                self._wrp = None
-                self._session = None
+        session, self._session = self._session, None
+        if session is not None:
+            with suppress(Exception):
+                session._close_recognition()
 
     def __del__(self) -> None:
-        """GC 時のフェールセーフ切断。"""
-        if self._wrp is not None:
-            try:
-                self._wrp.disconnect()
-            except Exception:
-                pass
-            finally:
-                self._wrp = None
+        """GC 時にもベストエフォートで切断する"""
+        if getattr(self, "_session", None) is not None:
+            self.__exit__(None, None, None)

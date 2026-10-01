@@ -9,8 +9,8 @@ from ._http_recognition import HttpRecognitionTransport
 from ._params import UNSET, RecognitionParams, _UnsetType, merge_params
 from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager
-from ._transport import WrpTransport
 from ._types import AudioSource
+from ._websocket_transport import WebSocketTransport
 from .constants import Codec
 from .dictionary import ProfileWord, build_profile_words
 from .exceptions import AuthenticationError, ConfigurationError
@@ -435,7 +435,7 @@ class AmiVoiceClient:
         http_api_url: str | _UnsetType = UNSET,
         ws_api_url: str | _UnsetType = UNSET,
         hrp_transport: HttpRecognitionTransport | None = None,
-        wrp_transport: WrpTransport | None = None,
+        wrp_transport: WebSocketTransport | None = None,
     ) -> None:
         """クライアント設定を保持し、未指定時は環境変数から API キーを解決する。
 
