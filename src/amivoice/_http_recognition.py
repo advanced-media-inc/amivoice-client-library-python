@@ -53,10 +53,9 @@ class HttpRecognitionTransport:
                     raise AuthenticationError(f"HRP authentication failed: HTTP {response.status}")
                 if response.status != 200:
                     raise RecognitionError(f"HRP request failed: HTTP {response.status}")
-                encoding = response.headers.get_content_charset() or "UTF-8"
-                raw = response.read().decode(encoding)
+                raw = response.read().decode("utf-8")
                 session_id = response.getheader("X-Session-ID")
-            except (OSError, http.client.HTTPException, UnicodeError, LookupError) as exc:
+            except (OSError, http.client.HTTPException, UnicodeError) as exc:
                 raise RecognitionError("HRP response failed") from exc
             finalized = [line for line in raw.split("\r\n") if line and not line.endswith(("...", '..."}'))]
             if not finalized:

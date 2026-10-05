@@ -16,7 +16,6 @@ def _http_connection(body: bytes = b'{"text":"hello"}\r\n', status: int = 200) -
     response = connection.getresponse.return_value
     response.status = status
     response.read.return_value = body
-    response.headers.get_content_charset.return_value = "UTF-8"
     response.getheader.return_value = "session-id"
     return connection
 
@@ -70,6 +69,19 @@ def test_http_transcribe_network_failure_invalid_raise_public_error(phase: str, 
     getattr(connection, phase).side_effect = http.client.HTTPException("failure")
     # When / Then: 元の例外を公開例外へ変換する
     with patch("amivoice._http_connection.http.client.HTTPSConnection", return_value=connection), pytest.raises(error):
+        HttpRecognitionTransport().transcribe("https://example.com/", "key", RecognitionParams(), b"audio")
+    connection.close.assert_called_once()
+
+
+def test_http_transcribe_non_utf8_response_invalid_raise_RecognitionError() -> None:
+    """UTF-8 ではない認識応答を公開例外へ変換し接続を閉じる"""
+    # Given: UTF-8 としてデコードできない応答
+    connection = _http_connection(b"\xff\r\n")
+    # When / Then: 応答エラーとなり接続が閉じられる
+    with (
+        patch("amivoice._http_connection.http.client.HTTPSConnection", return_value=connection),
+        pytest.raises(RecognitionError, match="HRP response failed"),
+    ):
         HttpRecognitionTransport().transcribe("https://example.com/", "key", RecognitionParams(), b"audio")
     connection.close.assert_called_once()
 
