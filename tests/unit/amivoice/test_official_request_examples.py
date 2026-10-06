@@ -1,8 +1,6 @@
 """公式記載例と独立した許可リストで送信形式を照合する"""
 
 import re
-from email import policy
-from email.parser import BytesParser
 from urllib.parse import unquote
 
 import pytest
@@ -10,6 +8,8 @@ import pytest
 from amivoice import Codec
 from amivoice._params import RecognitionParams
 from amivoice._request_parameters import REQUEST_PARAMETERS, build_http_multipart, build_start_command
+
+from .recognition_mock_servers import parse_recognition_multipart as _multipart_parts
 
 # 実装の変換表から期待値を生成せず、公式のrequest-parametersを転記する
 # https://docs.amivoice.com/amivoice-api/manual/request-parameters
@@ -34,16 +34,6 @@ OFFICIAL_PARAMETER_SCOPES = {
     "resultUpdatedInterval": "ws",
     "noInputTimeout": "ws",
 }
-
-
-def _multipart_parts(content_type: str, body: bytes) -> list[tuple[str, bytes]]:
-    """標準のMIMEパーサでパート名と内容を取得する"""
-    message = BytesParser(policy=policy.default).parsebytes(
-        f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode() + body
-    )
-    return [
-        (part.get_param("name", header="Content-Disposition"), part.get_payload(decode=True)) for part in message.iter_parts()
-    ]
 
 
 @pytest.mark.parametrize("api_key", [None, "dummy"])

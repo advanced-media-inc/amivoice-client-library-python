@@ -3,7 +3,6 @@
 import base64
 import hashlib
 import socket
-import struct
 import threading
 from unittest.mock import patch
 
@@ -13,28 +12,7 @@ from amivoice._params import RecognitionParams
 from amivoice._websocket_connection import WebSocketConnection
 from amivoice.exceptions import RecognitionError
 
-
-def _read_exact(sock: socket.socket, count: int) -> bytes:
-    data = bytearray()
-    while len(data) < count:
-        chunk = sock.recv(count - len(data))
-        if not chunk:
-            raise AssertionError("Unexpected test socket EOF")
-        data.extend(chunk)
-    return bytes(data)
-
-
-def _read_client_frame(sock: socket.socket) -> tuple[int, bytes]:
-    head = _read_exact(sock, 2)
-    assert head[1] & 0x80
-    length = head[1] & 0x7F
-    if length == 126:
-        length = struct.unpack("!H", _read_exact(sock, 2))[0]
-    elif length == 127:
-        length = struct.unpack("!Q", _read_exact(sock, 8))[0]
-    mask = _read_exact(sock, 4)
-    data = _read_exact(sock, length)
-    return head[0] & 0x0F, bytes(c ^ mask[i % 4] for i, c in enumerate(data))
+from .recognition_mock_servers import read_client_websocket_frame as _read_client_frame
 
 
 @pytest.mark.parametrize("size", [0, 125, 126, 65535, 65536])

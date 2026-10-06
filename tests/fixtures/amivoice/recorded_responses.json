@@ -1,0 +1,350 @@
+{
+  "provenance": {
+    "source": "audioファイルの実際の音声認識結果",
+    "audio": "audio/www.wav / audio/test.wav",
+    "normalization": [
+      "認証情報は取得しない",
+      "utteranceidを削除",
+      "JSONの空白とキー順を正規化"
+    ],
+    "limits": [
+      "音声認識内容・時刻・サーバー既定値の将来の一致を保証しない",
+      "Rは実測されておらず互換動作のテストでのみ使用する"
+    ]
+  },
+  "http": {
+    "success": {
+      "results": [
+        {
+          "tokens": [
+            {
+              "written": "トリプル",
+              "confidence": 1,
+              "starttime": 788,
+              "endtime": 1316,
+              "spoken": "とりぷる"
+            },
+            {
+              "written": "W",
+              "confidence": 1,
+              "starttime": 1316,
+              "endtime": 1812,
+              "spoken": "だぶりゅー"
+            }
+          ],
+          "confidence": 1,
+          "starttime": 500,
+          "endtime": 2084,
+          "tags": [],
+          "rulename": "",
+          "text": "トリプルW"
+        }
+      ],
+      "text": "トリプルW",
+      "code": "",
+      "message": ""
+    },
+    "speech_rejected": {
+      "results": [
+        {
+          "tokens": [],
+          "tags": [],
+          "rulename": "",
+          "text": ""
+        }
+      ],
+      "text": "",
+      "code": "o",
+      "message": "recognition result is rejected because confidence is below the threshold"
+    },
+    "decoding_cancelled": {
+      "results": [
+        {
+          "tokens": [],
+          "confidence": 0.638,
+          "starttime": 500,
+          "endtime": 596,
+          "tags": [],
+          "rulename": "",
+          "text": ""
+        }
+      ],
+      "text": "",
+      "code": "c",
+      "message": "recognition result is rejected because the recognition process is cancelled"
+    }
+  },
+  "websocket": {
+    "labelled": [
+      "s",
+      "S 500",
+      "E 2100",
+      "C",
+      "U {\"results\":[{\"tokens\":[{\"written\":\"...\"}],\"text\":\"...\"}],\"text\":\"...\"}",
+      "U {\"results\":[{\"tokens\":[{\"written\":\".\"},{\"written\":\"...\"}],\"text\":\"....\"}],\"text\":\"....\"}",
+      "U {\"results\":[{\"tokens\":[{\"written\":\"テスト\"},{\"written\":\"...\"}],\"text\":\"テスト...\"}],\"text\":\"テスト...\"}",
+      "A {\"results\":[{\"tokens\":[{\"written\":\"テスト\",\"confidence\":1,\"starttime\":788,\"endtime\":1812,\"spoken\":\"とりぷるだぶりゅー\",\"label\":\"speaker0\",\"language\":\"ja\"}],\"confidence\":1,\"starttime\":500,\"endtime\":2084,\"tags\":[],\"rulename\":\"\",\"text\":\"テスト\"}],\"text\":\"テスト\",\"code\":\"\",\"message\":\"\"}",
+      "e"
+    ],
+    "updates_disabled": [
+      "s",
+      "S 500",
+      "E 2100",
+      "C",
+      "A {\"results\":[{\"tokens\":[{\"written\":\"トリプル\",\"confidence\":1,\"starttime\":788,\"endtime\":1316,\"spoken\":\"とりぷる\"},{\"written\":\"W\",\"confidence\":1,\"starttime\":1316,\"endtime\":1812,\"spoken\":\"だぶりゅー\"}],\"confidence\":1,\"starttime\":500,\"endtime\":2084,\"tags\":[],\"rulename\":\"\",\"text\":\"トリプルW\"}],\"text\":\"トリプルW\",\"code\":\"\",\"message\":\"\"}",
+      "e"
+    ],
+    "rejected_then_successful": [
+      {
+        "results": [
+          {
+            "tokens": [],
+            "confidence": 0.99,
+            "starttime": 250,
+            "endtime": 5482,
+            "tags": [],
+            "rulename": "",
+            "text": ""
+          }
+        ],
+        "text": "",
+        "code": "o",
+        "message": "recognition result is rejected because confidence is below the threshold"
+      },
+      {
+        "results": [
+          {
+            "tokens": [
+              {
+                "written": "豊か",
+                "confidence": 1,
+                "starttime": 5628,
+                "endtime": 5996,
+                "spoken": "ゆたか"
+              },
+              {
+                "written": "な",
+                "confidence": 1,
+                "starttime": 5996,
+                "endtime": 6092,
+                "spoken": "な"
+              },
+              {
+                "written": "未来",
+                "confidence": 1,
+                "starttime": 6092,
+                "endtime": 6492,
+                "spoken": "みらい"
+              },
+              {
+                "written": "を",
+                "confidence": 1,
+                "starttime": 6492,
+                "endtime": 6556,
+                "spoken": "を"
+              },
+              {
+                "written": "創造",
+                "confidence": 1,
+                "starttime": 6556,
+                "endtime": 7036,
+                "spoken": "そうぞう"
+              },
+              {
+                "written": "して",
+                "confidence": 1,
+                "starttime": 7036,
+                "endtime": 7212,
+                "spoken": "して"
+              },
+              {
+                "written": "いく",
+                "confidence": 1,
+                "starttime": 7212,
+                "endtime": 7420,
+                "spoken": "いく"
+              },
+              {
+                "written": "こと",
+                "confidence": 1,
+                "starttime": 7420,
+                "endtime": 7676,
+                "spoken": "こと"
+              },
+              {
+                "written": "を",
+                "confidence": 1,
+                "starttime": 7676,
+                "endtime": 7724,
+                "spoken": "を"
+              },
+              {
+                "written": "目指し",
+                "confidence": 1,
+                "starttime": 7724,
+                "endtime": 8092,
+                "spoken": "めざし"
+              },
+              {
+                "written": "ます",
+                "confidence": 1,
+                "starttime": 8092,
+                "endtime": 8524,
+                "spoken": "ます"
+              },
+              {
+                "written": "。",
+                "confidence": 0.88,
+                "starttime": 8524,
+                "endtime": 8844,
+                "spoken": "_"
+              }
+            ],
+            "confidence": 1,
+            "starttime": 5500,
+            "endtime": 8844,
+            "tags": [],
+            "rulename": "",
+            "text": "豊かな未来を創造していくことを目指します。"
+          }
+        ],
+        "text": "豊かな未来を創造していくことを目指します。",
+        "code": "",
+        "message": ""
+      }
+    ],
+    "no_input_timeout": [
+      "s",
+      "e no input timeout occurred"
+    ]
+  },
+  "sentiment_parameters": {
+    "sentiment_analysis": {
+      "result_parameters": {
+        "display_language": "ja",
+        "definitions": [
+          {
+            "name": "energy",
+            "display_name": "エネルギー",
+            "minimum": 0,
+            "maximum": 100
+          },
+          {
+            "name": "stress",
+            "display_name": "ストレス",
+            "minimum": 0,
+            "maximum": 100
+          },
+          {
+            "name": "emo_cog",
+            "display_name": "感情バランス論理",
+            "minimum": 1,
+            "maximum": 500
+          },
+          {
+            "name": "concentration",
+            "display_name": "集中",
+            "minimum": 0,
+            "maximum": 100
+          },
+          {
+            "name": "anticipation",
+            "display_name": "期待",
+            "minimum": 0,
+            "maximum": 100
+          },
+          {
+            "name": "excitement",
+            "display_name": "興奮",
+            "minimum": 0,
+            "maximum": 30
+          },
+          {
+            "name": "hesitation",
+            "display_name": "躊躇",
+            "minimum": 0,
+            "maximum": 30
+          },
+          {
+            "name": "uncertainty",
+            "display_name": "不確実",
+            "minimum": 0,
+            "maximum": 30
+          },
+          {
+            "name": "intensive_thinking",
+            "display_name": "思考",
+            "minimum": 0,
+            "maximum": 100
+          },
+          {
+            "name": "imagination_activity",
+            "display_name": "想像力",
+            "minimum": 0,
+            "maximum": 30
+          },
+          {
+            "name": "embarrassment",
+            "display_name": "困惑",
+            "minimum": 0,
+            "maximum": 30
+          },
+          {
+            "name": "passionate",
+            "display_name": "情熱",
+            "minimum": 0,
+            "maximum": 30
+          },
+          {
+            "name": "brain_power",
+            "display_name": "脳活動",
+            "minimum": 0,
+            "maximum": 100
+          },
+          {
+            "name": "confidence",
+            "display_name": "自信",
+            "minimum": 0,
+            "maximum": 30
+          },
+          {
+            "name": "aggression",
+            "display_name": "攻撃性憤り",
+            "minimum": 0,
+            "maximum": 30
+          },
+          {
+            "name": "atmosphere",
+            "display_name": "雰囲気会話傾向",
+            "minimum": -100,
+            "maximum": 100
+          },
+          {
+            "name": "upset",
+            "display_name": "動揺",
+            "minimum": 0,
+            "maximum": 30
+          },
+          {
+            "name": "content",
+            "display_name": "喜び",
+            "minimum": 0,
+            "maximum": 30
+          },
+          {
+            "name": "dissatisfaction",
+            "display_name": "不満",
+            "minimum": 0,
+            "maximum": 30
+          },
+          {
+            "name": "extreme_emotion",
+            "display_name": "極端な起伏",
+            "minimum": 0,
+            "maximum": 30
+          }
+        ]
+      }
+    }
+  }
+}
