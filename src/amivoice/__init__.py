@@ -17,9 +17,11 @@ from .exceptions import (
     ConnectionFailedError,
     DictionaryApiError,
     RecognitionError,
+    SentimentAnalysisApiError,
 )
 from .grammar import build_grammar_file_names, encode_grammar
 from .models import NotificationEvent, RecognitionResult, StreamEvent, StreamEventType, Token, UtteranceEvent, UtteranceResult
+from .sentiment_analysis import SentimentAnalysisClient, SentimentParameterDefinition
 
 try:
     __version__ = version("amivoice-api-client")
@@ -42,6 +44,9 @@ __all__ = [
     "RecognitionError",
     "RecognitionResult",
     "SegmenterProperties",
+    "SentimentAnalysisApiError",
+    "SentimentAnalysisClient",
+    "SentimentParameterDefinition",
     "StreamConnectionManager",
     "StreamEvent",
     "StreamEventType",
