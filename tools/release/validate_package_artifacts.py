@@ -15,6 +15,10 @@ from packaging.utils import (
 )
 from packaging.version import InvalidVersion, Version
 
+_REQUIRED_PUBLIC_FILES = frozenset(
+    {"amivoice/__init__.py", "amivoice/client.py", "amivoice/sentiment_analysis.py", "amivoice/py.typed"}
+)
+
 
 class PackageArtifactError(ValueError):
     """Indicate that package artifacts contain an unexpected file or version"""
@@ -29,7 +33,7 @@ def _validate_archive_member_path(member_name: str) -> None:
 def _validate_wheel_contents(wheel_path: Path, distribution_name: str, expected_version: Version) -> None:
     distribution_prefix = canonicalize_name(distribution_name).replace("-", "_")
     metadata_prefix = f"{distribution_prefix}-{expected_version}.dist-info/"
-    required_paths = {"amivoice/py.typed"}
+    required_paths = _REQUIRED_PUBLIC_FILES
 
     try:
         with zipfile.ZipFile(wheel_path) as wheel_archive:
@@ -39,11 +43,13 @@ def _validate_wheel_contents(wheel_path: Path, distribution_name: str, expected_
 
     for member_name in members:
         _validate_archive_member_path(member_name)
-        if not (member_name.startswith("amivoice/") or member_name.startswith("com/") or member_name.startswith(metadata_prefix)):
+        if member_name == "amivoice/_transport.py":
+            raise PackageArtifactError("Wheel contains the obsolete transport adapter")
+        if not (member_name.startswith("amivoice/") or member_name.startswith(metadata_prefix)):
             raise PackageArtifactError(f"Wheel contains a file outside the package allowlist: {member_name}")
 
     if not required_paths.issubset(members):
-        raise PackageArtifactError("Wheel does not contain amivoice/py.typed")
+        raise PackageArtifactError("Wheel is missing required public API files or amivoice/py.typed")
     if f"{metadata_prefix}METADATA" not in members or f"{metadata_prefix}RECORD" not in members:
         raise PackageArtifactError("Wheel metadata is incomplete")
 
@@ -54,7 +60,6 @@ def _validate_sdist_contents(sdist_path: Path, distribution_name: str, expected_
     allowed_root_files = {"LICENSE", "PKG-INFO", "README.md", "pyproject.toml", "setup.cfg"}
     allowed_source_prefixes = (
         f"{archive_prefix}/src/amivoice",
-        f"{archive_prefix}/src/com",
         f"{archive_prefix}/src/{distribution_prefix}.egg-info",
     )
 
@@ -64,8 +69,14 @@ def _validate_sdist_contents(sdist_path: Path, distribution_name: str, expected_
     except (OSError, tarfile.TarError) as error:
         raise PackageArtifactError(f"Unable to read source distribution artifact: {sdist_path}") from error
 
+    required_paths = {f"{archive_prefix}/src/{name}" for name in _REQUIRED_PUBLIC_FILES}
+    if not required_paths.issubset({member.name for member in members if member.isfile()}):
+        raise PackageArtifactError("Source distribution is missing required public API files")
+
     for member in members:
         _validate_archive_member_path(member.name)
+        if member.name == f"{archive_prefix}/src/amivoice/_transport.py":
+            raise PackageArtifactError("Source distribution contains the obsolete transport adapter")
         if member.issym() or member.islnk():
             raise PackageArtifactError(f"Source distribution contains a symbolic link: {member.name}")
         relative_name = member.name.removeprefix(f"{archive_prefix}/")

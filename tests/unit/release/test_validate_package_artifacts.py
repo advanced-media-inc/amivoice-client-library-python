@@ -23,7 +23,9 @@ def create_valid_artifacts(dist_dir: Path) -> None:
     with zipfile.ZipFile(wheel_path, mode="w") as wheel_archive:
         for member_name in (
             "amivoice/py.typed",
-            "com/__init__.py",
+            "amivoice/__init__.py",
+            "amivoice/client.py",
+            "amivoice/sentiment_analysis.py",
             "amivoice_api_client-1.0.0.dist-info/METADATA",
             "amivoice_api_client-1.0.0.dist-info/RECORD",
         ):
@@ -38,7 +40,9 @@ def create_valid_artifacts(dist_dir: Path) -> None:
             f"{archive_prefix}/README.md",
             f"{archive_prefix}/pyproject.toml",
             f"{archive_prefix}/src/amivoice/py.typed",
-            f"{archive_prefix}/src/com/__init__.py",
+            f"{archive_prefix}/src/amivoice/__init__.py",
+            f"{archive_prefix}/src/amivoice/client.py",
+            f"{archive_prefix}/src/amivoice/sentiment_analysis.py",
             f"{archive_prefix}/src/amivoice_api_client.egg-info/PKG-INFO",
         ):
             write_tar_member(sdist_archive, member_name)
@@ -90,7 +94,9 @@ def test_validate_package_artifacts_unexpected_sdist_file_invalid_raise_PackageA
             f"{archive_prefix}/README.md",
             f"{archive_prefix}/pyproject.toml",
             f"{archive_prefix}/src/amivoice/py.typed",
-            f"{archive_prefix}/src/com/__init__.py",
+            f"{archive_prefix}/src/amivoice/__init__.py",
+            f"{archive_prefix}/src/amivoice/client.py",
+            f"{archive_prefix}/src/amivoice/sentiment_analysis.py",
             f"{archive_prefix}/src/amivoice_api_client.egg-info/PKG-INFO",
             f"{archive_prefix}/docs/internal.md",
         ):
