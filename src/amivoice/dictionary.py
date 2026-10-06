@@ -9,8 +9,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal, NoReturn, Protocol
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
+from ._connection_settings import parse_service_url
+from ._http_api import HttpApiConnection, validate_service_api_key
 from .exceptions import AuthenticationError, ConfigurationError, ConnectionFailedError, DictionaryApiError
 
 __all__ = ["DictionaryTransport", "ProfileWord", "UserDictionaryClient", "build_profile_words"]
@@ -193,55 +195,6 @@ def _validate_profile_word_wire_values(word: ProfileWord) -> None:
     values = (word.written, word.spoken, word.classname, word.alternative_written)
     if any(value is not None and (" " in value or "|" in value) for value in values):
         raise ConfigurationError("ProfileWord values cannot contain spaces or '|' characters")
-
-
-class _HttpDictionaryTransport:
-    """標準ライブラリで実装した辞書 API トランスポート"""
-
-    def __init__(self, timeout: float) -> None:
-        """HTTP 接続タイムアウトを保持する
-
-        Args:
-            timeout (float): HTTP 接続のタイムアウト秒数
-        """
-        self._timeout = timeout
-
-    def request(
-        self,
-        method: str,
-        url: str,
-        headers: dict[str, str],
-        body: bytes | None,
-    ) -> tuple[int, bytes]:
-        """HTTP リクエストを送り、ステータスコードと本文を返す
-
-        Args:
-            method (str): HTTP メソッド
-            url (str): リクエスト URL
-            headers (dict[str, str]): HTTP リクエストヘッダー
-            body (bytes | None): HTTP リクエスト本文
-
-        Returns:
-            tuple[int, bytes]: HTTP ステータスコードとレスポンス本文
-
-        Raises:
-            ConfigurationError: URL が絶対 HTTPS URL でない場合
-        """
-        parsed = urlsplit(url)
-        if parsed.scheme != "https" or not parsed.netloc:
-            raise ConfigurationError("base_url must be an absolute HTTPS URL")
-
-        connection_class = http.client.HTTPSConnection
-        connection = connection_class(parsed.netloc, timeout=self._timeout)
-        target = parsed.path or "/"
-        if parsed.query:
-            target = f"{target}?{parsed.query}"
-        try:
-            connection.request(method, target, body=body, headers=headers)
-            response = connection.getresponse()
-            return response.status, response.read()
-        finally:
-            connection.close()
 
 
 def _response_body_text(body: bytes) -> str:
@@ -466,12 +419,10 @@ class UserDictionaryClient:
         resolved_api_key = api_key if api_key is not None else os.environ.get("AMIVOICE_API_KEY")
         if resolved_api_key is None:
             raise AuthenticationError("AMIVOICE_API_KEY is not set")
-        parsed_base_url = urlsplit(base_url)
-        if parsed_base_url.scheme != "https" or not parsed_base_url.netloc:
-            raise ConfigurationError("base_url must be an absolute HTTPS URL")
-        self._api_key = resolved_api_key
+        parse_service_url(base_url, ("https",))
+        self._api_key = validate_service_api_key(resolved_api_key)
         self._base_url = base_url.rstrip("/")
-        self._transport = transport if transport is not None else _HttpDictionaryTransport(timeout)
+        self._transport = transport if transport is not None else HttpApiConnection(timeout)
 
     def register_words(
         self,
@@ -559,11 +510,12 @@ class UserDictionaryClient:
         )
         _parse_profile_words_response(response_body, status_code)
 
-    def list_classnames(self, engine: str) -> tuple[str, ...]:
+    def list_classnames(self, engine: str, *, sampling_rate: SamplingRate | None = None) -> tuple[str, ...]:
         """接続エンジンで利用できる単語クラス名を取得する
 
         Args:
             engine (str): 接続エンジン名
+            sampling_rate (SamplingRate | None): 8k又は16k、省略時はサーバ既定
 
         Returns:
             tuple[str, ...]: 利用可能なクラス名一覧
@@ -571,8 +523,32 @@ class UserDictionaryClient:
         Raises:
             DictionaryApiError: API がエラーを返した場合、またはレスポンスが不正な場合
         """
-        status_code, response_body = self._request("GET", self._classnames_url(engine), None)
+        status_code, response_body = self._request("GET", self._classnames_url(engine, sampling_rate), None)
         return _parse_classnames_response(response_body, status_code)
+
+    def list_profiles(self, engine: str, *, sampling_rate: SamplingRate | None = None) -> tuple[str, ...]:
+        """プロファイル名一覧を末尾スラッシュ付きURLで取得する
+
+        Args:
+            engine (str): 接続エンジン名
+            sampling_rate (SamplingRate | None): 8k又は16k、省略時はサーバ既定
+
+        Returns:
+            tuple[str, ...]: 登録済みプロファイル名
+
+        Raises:
+            DictionaryApiError: HTTPエラー又は不正な応答の場合
+            ConfigurationError: サンプリングレートが不正な場合
+        """
+        url = f"{self._base_url}/profilewords/{quote(engine, safe='')}/" + _sampling_rate_query(sampling_rate)
+        status_code, body = self._request("GET", url, None)
+        parsed = _load_json_response(body, status_code)
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("profileids"), list):
+            _raise_invalid_response("profileids must be an array", status_code, body)
+        names = parsed["profileids"]
+        if any(not isinstance(name, str) for name in names):
+            _raise_invalid_response("profileids must contain strings", status_code, body)
+        return tuple(names)
 
     def _request(self, method: str, url: str, body: bytes | None) -> tuple[int, bytes]:
         """認証ヘッダー付きで辞書 API にリクエストする。
@@ -595,7 +571,7 @@ class UserDictionaryClient:
         try:
             status_code, response_body = self._transport.request(method, url, headers, body)
         except (OSError, http.client.HTTPException) as exc:
-            raise ConnectionFailedError(f"Dictionary API connection failed: {exc}") from exc
+            raise ConnectionFailedError("Dictionary API connection failed") from None
         if not 200 <= status_code < 300:
             body_text = _response_body_text(response_body)
             raise DictionaryApiError(
@@ -618,20 +594,25 @@ class UserDictionaryClient:
             str: プロファイル単語 API の URL
         """
         url = f"{self._base_url}/profilewords/{quote(engine, safe='')}/{quote(profile_id, safe='')}"
-        if sampling_rate is not None:
-            url = f"{url}?adf={quote(sampling_rate, safe='')}"
-        return url
+        return url + _sampling_rate_query(sampling_rate)
 
-    def _classnames_url(self, engine: str) -> str:
-        """クラス名一覧 API の URL を構築する。
+    def _classnames_url(self, engine: str, sampling_rate: SamplingRate | None = None) -> str:
+        """クラス名一覧 API の URL を構築する
 
         Args:
             engine (str): 接続エンジン名
+            sampling_rate (SamplingRate | None): 対象サンプリングレート
 
         Returns:
             str: クラス名一覧 API の URL
         """
-        return f"{self._base_url}/classnames/{quote(engine, safe='')}"
+        return f"{self._base_url}/classnames/{quote(engine, safe='')}" + _sampling_rate_query(sampling_rate)
+
+
+def _sampling_rate_query(sampling_rate: SamplingRate | None) -> str:
+    if sampling_rate not in (None, "8k", "16k"):
+        raise ConfigurationError("sampling_rate must be 8k or 16k")
+    return "" if sampling_rate is None else f"?adf={sampling_rate}"
 
 
 def _serialize_profile_words(words: Sequence[ProfileWord]) -> bytes:

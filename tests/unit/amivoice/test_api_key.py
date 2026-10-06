@@ -307,10 +307,11 @@ def test_api_key_issuance_client_network_failure_invalid_raise_ConnectionFailedE
     client = ApiKeyIssuanceClient(api_key="issuer-key", transport=transport)
 
     # When / Then: APIキー発行でConnectionFailedErrorが送出される
-    with pytest.raises(ConnectionFailedError, match="connection refused") as exc_info:
+    with pytest.raises(ConnectionFailedError, match="connection failed") as exc_info:
         client.issue()
 
-    assert isinstance(exc_info.value.__cause__, OSError)
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__suppress_context__ is True
 
 
 def test_api_key_issuance_client_expires_in_invalid_raise_ConfigurationError() -> None:

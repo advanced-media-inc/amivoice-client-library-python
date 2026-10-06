@@ -215,10 +215,11 @@ def test_dictionary_api_network_failure_invalid_raise_ConnectionFailedError() ->
     client = UserDictionaryClient(api_key="test-key", transport=transport)
 
     # When / Then: API 呼び出しで ConnectionFailedError が送出される
-    with pytest.raises(ConnectionFailedError, match="connection refused") as exc_info:
+    with pytest.raises(ConnectionFailedError, match="connection failed") as exc_info:
         client.get_words("-a-general", "profile")
 
-    assert isinstance(exc_info.value.__cause__, OSError)
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__suppress_context__ is True
 
 
 def test_dictionary_api_http_protocol_failure_invalid_raise_ConnectionFailedError() -> None:
@@ -231,7 +232,8 @@ def test_dictionary_api_http_protocol_failure_invalid_raise_ConnectionFailedErro
     with pytest.raises(ConnectionFailedError, match="Dictionary API connection failed") as exc_info:
         client.get_words("-a-general", "profile")
 
-    assert isinstance(exc_info.value.__cause__, IncompleteRead)
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__suppress_context__ is True
 
 
 def test_user_dictionary_client_http_base_url_invalid_raise_ConfigurationError() -> None:

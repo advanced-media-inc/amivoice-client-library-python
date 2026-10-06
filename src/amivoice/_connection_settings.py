@@ -26,7 +26,9 @@ def parse_service_url(url: str, schemes: tuple[str, ...]) -> SplitResult:
         port = parsed.port
     except ValueError:
         raise ConfigurationError("Service URL has an invalid host or port") from None
-    if parsed.scheme not in schemes or not parsed.hostname or parsed.username is not None or parsed.query or parsed.fragment:
+    if parsed.scheme not in schemes:
+        raise ConfigurationError("Service URL scheme must be one of: " + ", ".join(scheme.upper() for scheme in schemes))
+    if not parsed.hostname or parsed.username is not None or parsed.query or parsed.fragment:
         raise ConfigurationError("Service URL must be absolute and contain no credentials, query or fragment")
     if port is not None and not 1 <= port <= 65535:
         raise ConfigurationError("Service URL port must be between 1 and 65535")

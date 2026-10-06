@@ -3,12 +3,13 @@
 import http.client
 import ipaddress
 import os
-import ssl
 from collections.abc import Sequence
 from datetime import timedelta
 from typing import NoReturn, Protocol
 from urllib.parse import urlencode, urlsplit
 
+from ._connection_settings import parse_service_url
+from ._http_api import HttpApiConnection, validate_service_api_key
 from .exceptions import ApiKeyIssuanceApiError, AuthenticationError, ConfigurationError, ConnectionFailedError
 
 __all__ = ["ApiKeyIssuanceClient", "ApiKeyIssuanceTransport"]
@@ -43,59 +44,6 @@ class ApiKeyIssuanceTransport(Protocol):
             HTTP ステータスコードとレスポンス本文
         """
         ...
-
-
-class _HttpApiKeyIssuanceTransport:
-    """標準ライブラリで実装した API キー発行 API トランスポート。"""
-
-    def __init__(self, timeout: float) -> None:
-        """HTTP 接続タイムアウトを保持する。
-
-        Args:
-            timeout: HTTP 接続のタイムアウト秒数
-        """
-        self._timeout = timeout
-
-    def request(
-        self,
-        method: str,
-        url: str,
-        headers: dict[str, str],
-        body: bytes | None,
-    ) -> tuple[int, bytes]:
-        """HTTP リクエストを送り、ステータスコードと本文を返す。
-
-        Args:
-            method: HTTP メソッド
-            url: リクエスト URL
-            headers: HTTP リクエストヘッダー
-            body: HTTP リクエスト本文
-
-        Returns:
-            HTTP ステータスコードとレスポンス本文
-
-        Raises:
-            ConfigurationError: URL が絶対 HTTPS URL でない場合
-        """
-        parsed = urlsplit(url)
-        if parsed.scheme != "https" or not parsed.netloc:
-            raise ConfigurationError("base_url must be an absolute HTTPS URL")
-
-        connection_class = http.client.HTTPSConnection
-        connection = connection_class(
-            parsed.netloc,
-            timeout=self._timeout,
-            context=ssl.create_default_context(),
-        )
-        target = parsed.path or "/"
-        if parsed.query:
-            target = f"{target}?{parsed.query}"
-        try:
-            connection.request(method, target, body=body, headers=headers)
-            response = connection.getresponse()
-            return response.status, response.read()
-        finally:
-            connection.close()
 
 
 def _response_body_text(body: bytes) -> str:
@@ -301,9 +249,10 @@ class ApiKeyIssuanceClient:
         if parsed_base_url.query or parsed_base_url.fragment:
             raise ConfigurationError("base_url must not contain a query or fragment")
 
-        self._api_key = resolved_api_key
+        parse_service_url(base_url, ("https",))
+        self._api_key = validate_service_api_key(resolved_api_key)
         self._endpoint_url = f"{base_url.rstrip('/')}{_ISSUE_API_PATH}"
-        self._transport = transport if transport is not None else _HttpApiKeyIssuanceTransport(timeout)
+        self._transport = transport if transport is not None else HttpApiConnection(timeout)
 
     def issue(
         self,
@@ -342,7 +291,7 @@ class ApiKeyIssuanceClient:
         try:
             status_code, response_body = self._transport.request("POST", self._endpoint_url, headers, body)
         except (OSError, http.client.HTTPException) as exc:
-            raise ConnectionFailedError(f"API key issuance API connection failed: {exc}") from exc
+            raise ConnectionFailedError("API key issuance API connection failed") from None
         if not 200 <= status_code < 300:
             body_text = _response_body_text(response_body)
             raise ApiKeyIssuanceApiError(
