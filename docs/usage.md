@@ -2,11 +2,8 @@
 
 ## インストール
 
-```bash
-uv sync
-```
-
-アプリケーションから配布パッケージを利用する場合は、次のコマンドを実行します。
+Python 3.11 以降に対応しています。
+以下のコマンドでクライアントライブラリをインストールします。
 
 ```bash
 pip install amivoice-api-client
@@ -14,40 +11,48 @@ pip install amivoice-api-client
 
 ## 認証
 
-API キーは環境変数で指定できます。
+API キーを参照する場合、環境変数`AMIVOICE_API_KEY`の利用を推奨します。
+以下の値を自分のキーに置き換えて、実行する環境へ設定してください。
 
 ```bash
 export AMIVOICE_API_KEY="your-api-key"
 ```
 
-または、`AmiVoiceClient`のコンストラクタへ渡します。
-
-```python
-from amivoice import AmiVoiceClient
-
-client = AmiVoiceClient(api_key="your-api-key")
-```
+各`amivoice`クライアントは、`api_key`を省略すると環境変数からキーを読み取ります。
+アプリケーション側で安全に管理したキーをコンストラクタへ渡すこともできますが、ソースコード、コマンドラインの引数、URL などにはキーを書かないでください。
 
 ### APIキーの発行
 
-`ApiKeyIssuanceClient`を使うと、有効期限や接続元 IP アドレス制限を付けた API キーを発行できます。API キー発行機能付きの API キーを Bearer 認証で使用します。発行用の API キーはサーバー側で管理してください。
+`ApiKeyIssuanceClient`を使うと、有効期限や接続元 IP アドレスの制限を付けた API キーを発行できます。
+API キーの発行権限が付いた API キーを Bearer 認証で使用します。発行用のキーはサーバー側で管理してください。
+
+発行専用の環境変数`AMIVOICE_ISSUER_API_KEY`に、発行権限が付いた API キーを設定します。`ApiKeyIssuanceClient`では、`AMIVOICE_API_KEY`は発行用として使用しません。
+
+```bash
+export AMIVOICE_ISSUER_API_KEY="api-key-with-issuance-permission"
+```
 
 ```python
 from datetime import timedelta
 
 from amivoice import ApiKeyIssuanceClient
 
-api_key_issuance_client = ApiKeyIssuanceClient(api_key="api-key-with-issuance-permission")
+api_key_issuance_client = ApiKeyIssuanceClient()
 issued_api_key = api_key_issuance_client.issue(
     expires_in=timedelta(hours=2),
     allowed_ip_addresses=("203.0.113.0/24",),
 )
+# 発行したキーは必要な利用先へ安全に渡し、画面やログへ出力しない
 ```
 
-API キーをコンストラクタへ渡さない場合は、`AMIVOICE_ISSUER_API_KEY`の環境変数を使用します。音声認識用の`AMIVOICE_API_KEY`は使用しません。`expires_in`にはミリ秒の整数、`2h`などの API 形式の文字列、`timedelta`を指定できます。省略時の有効期限は 30 秒です。整数と`timedelta`は 1 ミリ秒以上を指定してください。1 ミリ秒未満の`timedelta`の端数は切り捨てます。
-`allowed_ip_addresses`には、IPv4 アドレスまたは IPv4 CIDR を文字列、`ipaddress.IPv4Address`、`ipaddress.IPv4Network`で指定します。IPv6 アドレスや空の一覧を指定すると`ConfigurationError`が送出されます。接続元 IP アドレスを制限しない場合は`allowed_ip_addresses`を省略してください。
+`expires_in`にはミリ秒の整数、`2h`などの API 形式の文字列、`timedelta`を指定できます。省略時の有効期限はサーバー側の既定値で、公式仕様では 30 秒です。整数と`timedelta`は 1 ミリ秒以上を指定してください。1 ミリ秒未満の`timedelta`の端数は切り捨てます。
+
+`allowed_ip_addresses`には IPv4 アドレスまたは IPv4 CIDR の一覧を指定します。各要素は文字列、`ipaddress.IPv4Address`、`ipaddress.IPv4Network`を使用できます。IPv6 アドレスや空の一覧を指定すると`ConfigurationError`を送出します。接続元 IP アドレスを制限しない場合は、この引数を省略してください。
 
 ## HTTP音声認識
+
+`grammar_file_names`には接続エンジン名を指定します。
+コンストラクタで共通の設定を保持し、`transcribe()`の呼び出し時に上書きできます。
 
 ```python
 from amivoice import AmiVoiceClient, Codec, Engine
@@ -60,75 +65,58 @@ result = client.transcribe("audio.wav")
 print(result.text)
 ```
 
-`Codec`は音声フォーマット名の定数です。`Codec.HEADER_16K`は`"16K"`と同じ値として扱われ、`Codec("lsb16k")`のように大文字小文字を区別せずに解決できます。文字列が有効な音声フォーマット名かを判定するときは、`"lsb16k" in Codec`ではなく`Codec(value)`を呼び、`ValueError`を捕捉してください。`in`演算子の結果は Python のバージョンによって異なります。音声ファイルのヘッダにフォーマット情報がある場合は、HTTP 音声認識では`codec`の指定を省略できます。ヘッダ付き音声で明示的に指定する場合は、8kHz または 11.025kHz なら`Codec.HEADER_8K`、16kHz 以上なら`Codec.HEADER_16K`を使用してください。ヘッダなし PCM では`Codec.LSB16K`や`Codec.MSB16K`など、エンディアンとサンプリングレートに合った定数を指定します。ヘッダなし音声に`Codec.HEADER_8K`や`Codec.HEADER_16K`を指定すると、ヘッダの読み込みに失敗して`LSB16K`として扱われます。詳細は[AmiVoice APIの音声フォーマット](https://docs.amivoice.com/amivoice-api/manual/audio-format)を参照してください。
+`transcribe()`にはファイルパス、`pathlib.Path`、`bytes`、バイナリファイルオブジェクトを渡せます。入力音声は 16,777,215 バイト以下である必要があります。
 
-`Engine`は接続エンジン名の定数です。定数名は、公式ドキュメントの接続エンジン名から先頭の`-`を除き、`-`を`_`に置き換えて大文字にしたものです（例：`-a2-ja-general`は`Engine.A2_JA_GENERAL`）。会話用の汎用エンジンは`Engine.A_GENERAL`、音声入力用は`Engine.A_GENERAL_INPUT`、AmiVoice API Private のルールエンジンは`Engine.A_RULE_INPUT_PRIVATE`で指定できます。グラマファイルを使うルールグラマは`Engine.A_RULE_INPUT_PRIVATE`専用で、ほかのエンジンとは組み合わせられません（[ルールグラマ](https://docs.amivoice.com/amivoice-api/manual/rule-grammar)）。
-
-エンジンごとに対応するサンプリングレートとインタフェースが異なるため、`Engine`と`Codec`を組み合わせるときは[AmiVoice APIの音声認識エンジン一覧](https://docs.amivoice.com/amivoice-api/manual/engines#list)を確認してください。特に次の制約があります。
-
-- すべてのエンジンは 16kHz に対応するが、8kHz または 11.025kHz に対応するのは一部のエンジンだけである。例えば、`Engine.A_GENERAL`は 8kHz と 16kHz に対応し、`Engine.A_MEDICAL`と`Engine.A_RULE_INPUT_PRIVATE`は 16kHz に対応する。
-- `Engine.A_NAME_INPUT_PRIVATE`、`Engine.A_ADDRESS_INPUT_PRIVATE`、`Engine.A_RULE_INPUT_PRIVATE`は AmiVoice API Private 向けのエンジンで、非同期 HTTP インタフェースでは利用できない。
-
-`Engine`と`Codec`のすべての組み合わせが有効とは限らないため、利用するインタフェース、エンジン、音声のサンプリングレートの対応を公式一覧で確認してください。
-
-`transcribe()`には、ファイルパス、`pathlib.Path`、`bytes`、バイナリファイルオブジェクトを渡せます。
-
-### ログ保存なしの認識
-
-ログを保存せずに認識する場合は、`logging_opt_out=True`を指定します。同期 HTTP と WebSocket の既定エンドポイントが、それぞれログ保存なしのエンドポイントへ切り替わります。
+モジュールレベルの`transcribe()`でも同期 HTTP で認識できます。
 
 ```python
-from amivoice import AmiVoiceClient
+from amivoice import Engine, transcribe
 
-client = AmiVoiceClient(logging_opt_out=True)
-result = client.transcribe("audio.wav")
-
-with client.stream() as session:
-    session.write(audio_chunk)
-    session.end()
+result = transcribe("audio.wav", grammar_file_names=Engine.A_GENERAL)
+print(result.text)
 ```
 
-`transcribe()`や`stream()`の呼び出し時にも`logging_opt_out`を指定できます。
+### 音声フォーマットと接続エンジン
 
-`http_api_url`、`ws_api_url`、`api_url`で URL を明示した場合、その URL は`logging_opt_out`で書き換えられません。`logging_opt_out`が有効なときに明示した URL のパスがログ保存なしのエンドポイントと一致しない場合は、リクエストを送信する前に`ConfigurationError`を送出します。既定と同じ URL を明示した場合も同じです。
+`Codec`は音声フォーマット名の定数です。`Codec.HEADER_16K`は文字列`"16K"`と同じ値で、`Codec("lsb16k")`のように大文字小文字を区別せずに解決できます。文字列の有効性を判定するときは`Codec(value)`を呼び、`ValueError`を捕捉してください。`"lsb16k" in Codec`の結果は Python のバージョンによって異なります。
 
-| インタフェース | ログ保存なしのパス | 例 |
-| --- | --- | --- |
-| 同期 HTTP | `/v1/nolog/recognize` | `https://acp-api.amivoice.com/v1/nolog/recognize` |
-| WebSocket | `/v1/nolog/` | `wss://acp-api.amivoice.com/v1/nolog/` |
+音声ファイルのヘッダにフォーマット情報がある場合、HTTP 認識では`codec`を省略できます。ヘッダ付き音声で明示する場合は、8kHz または 11.025kHz なら`Codec.HEADER_8K`、16kHz 以上なら`Codec.HEADER_16K`を使用します。
 
-WebSocket の URL は末尾の`/`まで必要です。`wss://acp-api.amivoice.com/v1/nolog`のように`/`がない URL は、AmiVoice API ではログ保存ありになります。詳しくは[ログ保存](https://docs.amivoice.com/amivoice-api/manual/log-retention)を参照してください。
+ヘッダなし PCM では、エンディアンとサンプリングレートに合った`Codec.LSB16K`や`Codec.MSB16K`などを指定してください。詳しくは[公式の音声フォーマット](https://docs.amivoice.com/amivoice-api/manual/audio-format)を参照してください。
 
-AWS PrivateLink で接続する場合は、ホスト名だけを`acp-api-private.amivoice.com`へ変えた URL を指定します。
+`Engine`は接続エンジン名の定数です。定数名は公式の接続エンジン名から先頭の`-`を除き、`-`を`_`に置き換えて大文字にしたものです。例えば`-a2-ja-general`は`Engine.A2_JA_GENERAL`に対応します。
+
+会話用の汎用エンジンは`Engine.A_GENERAL`、音声入力用は`Engine.A_GENERAL_INPUT`を指定します。AmiVoice API Private のルールエンジンは`Engine.A_RULE_INPUT_PRIVATE`を使用します。グラマファイルを使うルールグラマは、この Private エンジン専用です。
+
+利用するエンジンと使用できる音声の組み合わせは[公式のエンジン一覧](https://docs.amivoice.com/amivoice-api/manual/engines#list)で確認してください。
+
+### 認識の成功と失敗
+
+HTTP ステータスが 200 でも、認識に成功したとは限りません。ライブラリは本文の`code`と`message`で成否を判定します。成功結果は両方が空文字列で、`text`が空ではありません。`code`または`message`が空でなければ、`RecognitionResult.is_error`は`True`になります。信頼度による拒否を示す`code="o"`も音声認識は行っていません。
+
+`transcribe()`は既定の`raise_on_error=True`で、認識失敗時に`RecognitionError`を送出します。失敗した結果をアプリケーションで調べる場合は、`raise_on_error=False`を指定します。
 
 ```python
-client = AmiVoiceClient(
-    logging_opt_out=True,
-    http_api_url="https://acp-api-private.amivoice.com/v1/nolog/recognize",
-    ws_api_url="wss://acp-api-private.amivoice.com/v1/nolog/",
-)
+from amivoice import AmiVoiceClient, Engine
+
+client = AmiVoiceClient(grammar_file_names=Engine.A_GENERAL)
+result = client.transcribe("audio.wav", raise_on_error=False)
+if result.is_error:
+    print("認識失敗:", result.data["code"])
+else:
+    print(result.text)
 ```
 
-### マルチチャネル音声のチャネル選択
-
-複数チャネルの音声を同期 HTTP で認識する場合は、`selected_channel`で認識対象を指定できます。単一チャネルは整数、複数チャネルの混合平均は`(開始チャネル, 終了チャネル)`のタプルで指定します。チャネル番号は`0`から始まります。`(0, 0)`のように開始と終了が同じタプルは`ConfigurationError`になります。単一チャネルは整数で指定してください。
-
-```python
-from amivoice import AmiVoiceClient
-
-client = AmiVoiceClient(selected_channel=(0, 1))
-result = client.transcribe("stereo.wav")
-```
-
-複数チャネルに対応するのは、Wave、Ogg、FLAC などファイルのヘッダに音声フォーマットが含まれる「ヘッダあり」の音声だけです。`codec="LSB16K"`のように音声フォーマットを指定して送る「ヘッダなし」の PCM データは 1 チャネルにしか対応しないため、`selected_channel`で別のチャネルを選んだり、複数チャネルを混合したりできません。詳細は公式マニュアルの[音声フォーマット](https://docs.amivoice.com/amivoice-api/manual/audio-format#channels)を参照してください。
-
-API の`audioFilterProperties`を直接指定する場合は、`audio_filter_properties`を使用します。`selected_channel`と同時には指定できません。チャネル選択は同期 HTTP の`transcribe()`専用で、WebSocket の`stream()`では利用できません。コンストラクタで`selected_channel`または`audio_filter_properties`を指定したクライアントで`stream()`を呼び出すと、設定を無視せずに`ConfigurationError`を送出します。WebSocket で認識する場合は、音声フィルタを指定しないクライアントを使用してください。WebSocket では 1 チャネル目だけが認識対象になります。
+`raise_on_error=False`は、通信障害や不正なレスポンスまで成功結果に変える設定ではありません。通信に失敗した場合は`ConnectionFailedError`、結果の形式が不正な場合などは`RecognitionError`を送出します。
 
 ### 型付き認識結果
 
-`RecognitionResult.results`から発話区間、単語、信頼度、時刻、話者ラベル、言語ラベルを型付きで参照できます。
+`RecognitionResult.results`から発話区間と単語を参照できます。信頼度、時刻、話者ラベル、言語ラベルも型付きで取得できます。
 
 ```python
+from amivoice import AmiVoiceClient, Engine
+
+client = AmiVoiceClient(grammar_file_names=Engine.A_GENERAL)
 result = client.transcribe("audio.wav")
 
 print(result.utterance_id)
@@ -144,11 +132,156 @@ for utterance in result.results:
         )
 ```
 
-`spoken`、`confidence`、`starttime`、`endtime`、`label`、`language`など、エンジンや設定により省略されるフィールドは`None`になります。`RecognitionResult.raw`、`data`、`text`、`is_error`、`session_id`も引き続き利用できます。
+`spoken`、`confidence`、`starttime`、`endtime`、`label`、`language`など、エンジンや設定によって省略されるフィールドは`None`になります。`raw`には受信した JSON 文字列、`data`にはその辞書、`text`には認識テキストが入ります。`is_error`、`session_id`も公開フィールドです。
+
+## WebSocketストリーミング認識
+
+`stream()`では`grammar_file_names`と`codec`の両方が必須です。`with`で接続を管理し、例外が起きた場合もソケットと受信処理を終了させます。
+
+以下はヘッダ付きの音声ファイルを開き、4096 バイトずつ送信する例です。送信中と送信終了後のイベントを、同じ処理で読み取ります。
+
+```python
+from amivoice import AmiVoiceClient, Codec, Engine, StreamEvent
+
+
+def show_event(event: StreamEvent) -> None:
+    if event.is_final and event.result is not None:
+        if event.result.is_error:
+            print("区間の認識失敗:", event.result.data["code"])
+        else:
+            print("確定:", event.result.text)
+    elif event.is_partial:
+        print("途中:", event.text)
+    elif event.utterance is not None:
+        print(event.type, event.utterance.time)
+    elif event.notification is not None:
+        print("通知:", event.notification.event_id)
+
+
+client = AmiVoiceClient(
+    grammar_file_names=Engine.A_GENERAL,
+    codec=Codec.HEADER_16K,
+)
+with open("audio.wav", "rb") as audio, client.stream() as session:
+    for chunk in iter(lambda: audio.read(4096), b""):
+        session.write(chunk)
+        for event in session.poll():
+            show_event(event)
+
+    session.end(timeout=60.0)
+    for event in session.poll():
+        show_event(event)
+    results = session.results()
+
+# results は集計だけに使い、表示済みのイベントを再表示しない
+print("成功区間数:", sum(not result.is_error for result in results))
+print("失敗区間数:", sum(result.is_error for result in results))
+```
+
+`session.end()`は終了コマンドを送るだけでなく、サーバーの`e`応答まで待ちます。その間も途中結果と確定結果を受信します。最後の結果を取りこぼさないように、`end()`の後で`poll()`または`results()`を読んでください。
+
+`poll()`は到着済みのイベントを返し、まだ到着していないイベントは待ちません。イベントは読み取り時にキューから取り出されます。単一の消費者で読み取り、複数のスレッドや`events()`から同時に消費しないでください。上の例では送信中の`poll()`と終了後の`poll()`を同じスレッドで使い、各イベントを一度だけ表示します。
+
+`results()`は確定結果の一覧のコピーを返します。イベントを消費せず、`poll()`で表示した確定結果も含みます。結果の表示を`poll()`で行う場合は、`results()`から同じ結果を重ねて表示しないようにしてください。
+
+### 区間ごとの結果と通知
+
+確定結果の`A`イベントは、`type="final"`の`StreamEvent`になります。公式サンプルと状態遷移表にある`R`も、互換対応として同じ形式で処理します。
+
+確定した各区間の`event.result.is_error`または`session.results()`の各結果を調べてください。先行区間が`code="o"`で拒否されても、後続区間の認識に成功する場合があります。セッション全体の成否は全区間を確認して判断し、先行区間の拒否だけで後続区間の受信を打ち切らないでください。通信障害や開始・終了コマンドへのエラー応答は例外として通知します。
+
+`U`は`partial`、`S`と`E`は`utterance_started`と`utterance_ended`に対応します。発話境界の`utterance.time`はミリ秒です。`C`は認識処理の開始を表す`notification`で、`notification.event_id`は`"C"`です。
+
+## 共通の認識設定
+
+コンストラクタで指定した値は、各認識呼び出しの設定として引き継がれます。対応する引数を`transcribe()`や`stream()`に指定すると、その呼び出しだけ上書きします。任意の認識パラメータを指定しない場合、ライブラリはサーバーの既定値を勝手に補って送信しません。公式に記載された既定値も、予告なく変更される場合があります。
+
+### ログ保存なしの認識
+
+サーバー側に音声を保存しない設定で認識する場合は、`logging_opt_out=True`を指定します。同期 HTTP と WebSocket の既定 URL が、それぞれログ保存なしの URL に切り替わります。`transcribe()`や`stream()`の呼び出し時にも指定できます。
+
+```python
+from amivoice import AmiVoiceClient, Engine
+
+client = AmiVoiceClient(
+    grammar_file_names=Engine.A_GENERAL,
+    logging_opt_out=True,
+)
+result = client.transcribe("audio.wav")
+print(result.text)
+```
+
+`http_api_url`、`ws_api_url`、呼び出し時の`api_url`で URL を指定した場合、その URL は書き換えません。`logging_opt_out=True`のときは、明示した URL のパスが下表と一致するかを検証します。一致しない場合は通信前に`ConfigurationError`を送出します。既定と同じ URL を明示した場合も、この検証の対象です。
+
+| インタフェース | ログ保存なしのパス | 例 |
+| --- | --- | --- |
+| 同期 HTTP | `/v1/nolog/recognize` | `https://acp-api.amivoice.com/v1/nolog/recognize` |
+| WebSocket | `/v1/nolog/` | `wss://acp-api.amivoice.com/v1/nolog/` |
+
+WebSocket の URL は末尾の`/`まで必要です。`wss://acp-api.amivoice.com/v1/nolog`のように末尾の`/`がない場合、AmiVoice API ではログ保存ありになります。詳しくは[公式のログ保存の説明](https://docs.amivoice.com/amivoice-api/manual/log-retention)を参照してください。
+
+AWS PrivateLink で接続する場合は、ホスト名を`acp-api-private.amivoice.com`へ変えた URL を指定します。以下のクライアントは WebSocket でも利用できます。`stream()`の呼び出し時には、音声のフォーマットと合う`codec`を指定してください。
+
+```python
+from amivoice import AmiVoiceClient, Engine
+
+client = AmiVoiceClient(
+    grammar_file_names=Engine.A_GENERAL,
+    logging_opt_out=True,
+    http_api_url="https://acp-api-private.amivoice.com/v1/nolog/recognize",
+    ws_api_url="wss://acp-api-private.amivoice.com/v1/nolog/",
+)
+result = client.transcribe("audio.wav")
+print(result.text)
+```
+
+### タイムアウトと単位
+
+認識のタイムアウトと、クライアントの通信待機時間は別の設定です。
+
+| 設定 | 単位 | 用途 |
+| --- | --- | --- |
+| `connect_timeout` | ミリ秒 | 接続待機。`0`は無制限 |
+| `receive_timeout` | ミリ秒 | 受信待機。ソケットの待機では`0`は無制限 |
+| `recognition_timeout` | ミリ秒 | サーバー側の認識完了までの時間。`0`は無効 |
+| `session.end(timeout=...)` | 秒 | WebSocket の終了応答を待つ時間 |
+
+WebSocket の開始・終了応答には、クライアント側の待機上限があります。通常は`receive_timeout`を秒へ換算した値を使用します。`receive_timeout=0`でも、この待機上限はクライアントの既定値である 60 秒です。サーバー側の既定値ではありません。終了時だけ上限を変える場合は、`session.end(timeout=...)`を指定します。
+
+`recognition_timeout`は音声の再生時間ではなく、認識処理にかかる時間を対象とします。同期 HTTP ではサーバーが音声の受信を開始した時点、WebSocket では最初の発話区間の先頭を検出した時点から計測します。
+
+### インタフェース専用の設定
+
+`selected_channel`と`audio_filter_properties`は同期 HTTP 専用です。これらをコンストラクタに設定したクライアントで`stream()`を呼ぶと、設定を無視せず`ConfigurationError`を送出します。WebSocket では音声フィルタを指定しないクライアントを使用してください。
+
+`result_updated_interval`と`no_input_timeout`は WebSocket 専用です。共通のコンストラクタに指定しても、HTTP の`transcribe()`ではサーバーへ送信しません。
+
+`result_updated_interval`は途中結果を発行する間隔で、単位はミリ秒です。`0`を指定すると途中結果を発行しません。`no_input_timeout`は発話開始までのタイムアウトをミリ秒で指定し、`0`で無効になります。
+
+### マルチチャネル音声のチャネル選択
+
+複数チャネルの音声を同期 HTTP で認識する場合は、`selected_channel`で認識対象を指定できます。チャネル番号は`0`から始まり、単一チャネルは整数で指定します。複数チャネルの混合平均は`(0, N)`のタプルで指定し、`N`は正の整数に限ります。
+
+`(0, 1)`はチャネル 0 と 1 を混合する指定です。`(1, 2)`のように先頭が 0 以外の範囲や、`(0, 0)`のように開始と終了が同じ範囲は`ConfigurationError`になります。チャネル 0 だけを認識する場合は`selected_channel=0`を使用してください。
+
+```python
+from amivoice import AmiVoiceClient, Engine
+
+client = AmiVoiceClient(
+    grammar_file_names=Engine.A_GENERAL,
+    selected_channel=(0, 1),
+)
+result = client.transcribe("stereo.wav")
+print(result.text)
+```
+
+複数チャネルに対応するのは、Wave、Ogg、FLAC などヘッダに音声フォーマットが含まれる音声です。`codec="LSB16K"`などを指定して送るヘッダなし PCM は 1 チャネルだけに対応します。別のチャネルの選択や複数チャネルの混合はできません。詳しくは[音声フォーマットのチャネルの説明](https://docs.amivoice.com/amivoice-api/manual/audio-format#channels)を参照してください。
+
+API の設定文字列を直接指定する場合は`audio_filter_properties`を使用します。対応する形式は`selectedChannel=0`などの単一チャネル、または`selectedChannel=0-N`の範囲です。`selected_channel`と同時には指定できません。WebSocket では 1 チャネル目だけが認識対象になります。
 
 ### セッション単語登録
 
-認識セッションだけで有効にする単語は、`ProfileWord`のシーケンスで指定できます。ハイブリッドエンジンでは`spoken`を必須とし、クラスを指定する場合は`classname`を追加します。End to End エンジンでは`alternative_written`と`biasing`を指定します。従来どおり、ワイヤー形式の文字列も指定できます。
+認識セッションだけで有効にする単語は、`ProfileWord`のシーケンスで指定できます。ハイブリッドエンジンでは`spoken`を必須とし、クラスを指定する場合は`classname`を追加します。End to End エンジンでは`alternative_written`と`biasing`を使用します。公式の送信形式に沿った設定文字列も指定できます。
 
 ```python
 from amivoice import AmiVoiceClient, Engine, ProfileWord
@@ -161,18 +294,22 @@ client = AmiVoiceClient(
     ),
 )
 result = client.transcribe("audio.wav")
+print(result.text)
 ```
 
-`ProfileWord`の値には空白や`|`を含めないでください。表記（`written`）には半角コロン（`:`）も使えません。これらの文字を含む`ProfileWord`を生成または変換すると、`ConfigurationError`が送出されます。複数の単語は、ライブラリが`|`で連結して API 送信用の形式へ変換します。
+セッション単語の各値には半角スペースや`|`を含めないでください。表記の`written`には半角コロン`:`も使えません。これらの文字を含む`ProfileWord`を生成したり送信形式へ変換したりすると、`ConfigurationError`を送出します。複数の単語はライブラリが`|`で連結し、API の送信形式へ変換します。
+
+`profile_id`と`profile_words`を同時に指定すると、`profile_words`が優先されます。プロファイルに登録済みの単語はそのセッションで有効になりません。
 
 ### セグメンター設定
 
-発話検出、話者ダイアライゼーション、言語識別は`SegmenterProperties`で指定できます。次の設定は同期 HTTP と WebSocket で利用できます。
+発話検出、話者ダイアライゼーション、言語識別は`SegmenterProperties`で指定できます。同期 HTTP と WebSocket の両方で利用できます。
 
 ```python
-from amivoice import AmiVoiceClient, SegmenterProperties
+from amivoice import AmiVoiceClient, Engine, SegmenterProperties
 
 client = AmiVoiceClient(
+    grammar_file_names=Engine.A_GENERAL,
     segmenter=SegmenterProperties(
         speaker_diarization=True,
         diarizer_alpha="1e-20",
@@ -180,65 +317,71 @@ client = AmiVoiceClient(
     ),
 )
 result = client.transcribe("audio.wav")
+print(result.text)
 ```
 
-`segmenter`と既存の`segmenter_properties`は同時に指定できません。`languages`には`ja`、`en`、`zh`、`ko`、`th`を指定できます。言語識別結果と音声認識結果の言語を比較してください。`useLid`を利用する場合は、両者の言語が異なるケースもあります。
+型付きの`segmenter`と設定文字列の`segmenter_properties`は同時に指定できません。`languages`には`ja`、`en`、`zh`、`ko`、`th`を指定できます。言語識別の結果と音声認識の結果の言語が異なる場合もあるため、両方を確認してください。
 
-### 信頼度しきい値
+### 信頼度しきい値とフィラー
 
-発話区間の認識結果を信頼度しきい値でリジェクトする場合は、`confidence_level`を指定します。同期 HTTP と WebSocket の両方で利用でき、指定可能な範囲は`0.0`以上`1.0`以下です。
+発話区間の認識結果を信頼度で拒否する場合は、`confidence_level`を指定します。同期 HTTP と WebSocket の両方で利用でき、範囲は`0.0`以上`1.0`以下です。
 
 ```python
-from amivoice import AmiVoiceClient
+from amivoice import AmiVoiceClient, Engine
 
-client = AmiVoiceClient(confidence_level=0.3)
-result = client.transcribe("audio.wav")
+client = AmiVoiceClient(
+    grammar_file_names=Engine.A_GENERAL,
+    confidence_level=0.3,
+)
+result = client.transcribe("audio.wav", raise_on_error=False)
+if result.is_error:
+    print("認識失敗:", result.data["code"])
+else:
+    print(result.text)
 ```
 
-指定した値未満の発話区間はサーバー側でリジェクトされます。リジェクトされた結果はレスポンスコードが`o`となり、認識結果として成功扱いですが、`text`が空になることがあります。`1.0`を指定すると、ほとんどの認識結果がリジェクトされるため、値は用途に合わせて設定してください。
+指定した値未満の区間はサーバー側で拒否されます。拒否を表す`code="o"`は成功ではなく、`is_error=True`になります。`1.0`では多くの結果が拒否されるため、値は用途に合わせて設定してください。
 
-`confidence_level`を指定しない場合はパラメータを送信せず、サーバー側のデフォルト値に委ねます。公式仕様上のデフォルト値は`0.1`ですが、予告なく変更される可能性があります。
+`confidence_level`を指定しない場合はサーバーへ送信しません。公式仕様の既定値は`0.1`ですが、固定された値としてライブラリから送信することはありません。
+
+フィラーを残す場合は`keep_filler_token=True`、削除する場合は`False`を指定します。End to End エンジンはこの設定に対応せず、値を明示すると`ConfigurationError`を送出します。End to End エンジンでは`False`も指定せず、省略してください。
 
 ### 処理時間とレスポンスの制御
 
-処理時間制御パラメータは、認識処理を途中で打ち切ったり、処理速度と認識率を調整したりする上級者向けの設定です。値を小さくしすぎると、認識結果が途中で終了する場合があります。コンストラクタ、`transcribe()`、`stream()`、モジュールレベルの`transcribe()`で指定できます。
+処理時間の制御は、認識処理を途中で打ち切ったり、処理速度と認識率を調整したりする上級者向けの設定です。値を小さくしすぎると、認識結果が途中で終了する場合があります。コンストラクタ、`transcribe()`、`stream()`、モジュールレベルの`transcribe()`で指定できます。
 
-リアルタイム録音の WebSocket 認識では、次のように指定します。
+| 設定 | 単位 | 用途 |
+| --- | --- | --- |
+| `max_decoding_time` | ミリ秒 | 認識処理時間の上限 |
+| `max_response_time` | ミリ秒 | 音声時間に加える処理時間の上限。リアルタイム録音時のみ有効 |
+| `target_response_time` | ミリ秒 | 暫定結果の目標応答時間。リアルタイム録音時のみ有効 |
+| `max_decoding_rate` | 音声時間に対する倍率 | 認識処理時間の上限。録音済みのバッチ音声のみ有効 |
+| `target_decoding_rate` | 音声時間に対する倍率 | 暫定結果の目標倍率。録音済みのバッチ音声のみ有効 |
 
-```python
-from amivoice import AmiVoiceClient
-
-client = AmiVoiceClient(
-    max_decoding_time=30_000,
-    max_response_time=5_000,
-    target_response_time=1_000,
-)
-
-with client.stream() as session:
-    session.write(audio_chunk)
-    session.end()
-```
+例えば、リアルタイム録音を送る WebSocket のクライアントでは、`max_response_time=5_000`と`target_response_time=1_000`を指定できます。これらは録音済みファイルを送信するバッチ認識では無効です。
 
 バッチ音声の HTTP 認識では、処理時間を音声時間に対する倍率で制御できます。
 
 ```python
+from amivoice import AmiVoiceClient, Engine
+
 client = AmiVoiceClient(
+    grammar_file_names=Engine.A_GENERAL,
     max_decoding_time=30_000,
     max_decoding_rate=2.0,
     target_decoding_rate=1.5,
 )
 result = client.transcribe("audio.wav")
+print(result.text)
 ```
 
-`max_decoding_time`は認識処理時間の上限をミリ秒で指定します。`max_response_time`は音声時間に加える処理時間の上限をミリ秒で指定し、`target_response_time`は暫定結果の目標応答時間をミリ秒で指定します。後者 2 つはリアルタイム録音時のみ有効です。
-
-`max_decoding_rate`は音声時間に対する認識処理時間の上限倍率を指定し、`target_decoding_rate`は暫定結果の目標倍率を指定します。これらはバッチ音声のみ有効です。時間系の`0`は無効を表し、レート系の負値も無効指定として利用できます。公式仕様のデフォルト値は、時間系が`0`、レート系が`-1`です。未指定の場合はパラメータを送信せず、サーバー側のデフォルト値に委ねます。
+時間系の`0`は無効、レート系の負値も無効を表します。公式仕様の既定値は時間系が`0`、レート系が`-1`です。未指定の値は送信せず、サーバーの既定値に委ねます。
 
 ### ルールグラマ
 
-AmiVoice API Private の「音声入力_ルール」エンジン（`Engine.A_RULE_INPUT_PRIVATE`）を使う場合は、`build_grammar_file_names()`で接続エンジン名とグラマ指定を組み立てます。グラマファイルを使えるのはこのエンジンだけで、`build_grammar_file_names()`も既定でこのエンジンを使います。この機能は通常の AmiVoice API 環境では利用できません。
+AmiVoice API Private の「音声入力_ルール」エンジンを使う場合は、`build_grammar_file_names()`で接続エンジン名とグラマ指定を組み立てます。グラマファイルを使えるのは`Engine.A_RULE_INPUT_PRIVATE`だけで、ヘルパーも既定でこのエンジンを使います。この機能は通常の AmiVoice API 環境では利用できません。
 
-グラマ本文を直接指定するときは、`encode_grammar()`で GZIP 圧縮と Base64 エンコードを行います。URL とエンコード済み本文は混在でき、ヘルパーは URL エンコードを追加しません。
+グラマ本文を直接指定するときは、`encode_grammar()`で GZIP 圧縮と Base64 エンコードを行います。URL とエンコード済み本文は混在できます。ヘルパーは URL エンコードを追加せず、送信時のエンコードはライブラリが処理します。
 
 ```python
 from pathlib import Path
@@ -256,50 +399,49 @@ client = AmiVoiceClient(
     wildcard_model_penalty=4.0,
 )
 result = client.transcribe("audio.wav")
+print(result.text)
 ```
 
-通常のグラマ指定では`|`で連結します。前のグラマで認識に失敗した場合は、次のグラマへフォールバックするため`||`で連結します。`complete_timeout`は確定待ちタイムアウトをミリ秒で指定します。`wildcard_model_penalty`は`<GARBAGE>`の認識されやすさを調整し、目安は`2.0`から`6.0`です。Private 環境のデフォルト値は異なることがあります。目安の範囲外も指定できます。ただし、負値は指定できません。
+通常のグラマ指定は`|`で連結します。前のグラマで認識に失敗したときだけ次を試す場合は、`fallback=True`で`||`を使用します。
 
-「音声入力_ルール」エンジンは非同期 HTTP では利用できません。JSGF や SRGS の文法検証は行わないため、グラマのフォーマットと書き方は[グラマファイルの公式ドキュメント](https://docs.amivoice.com/amivoice-api/manual/grammar-file)を確認してください。誤ったグラマを指定した場合はサーバー側でエラーになります。
+`complete_timeout`は確定待ちタイムアウトをミリ秒で指定します。`wildcard_model_penalty`は`<GARBAGE>`の認識されやすさを調整し、目安は`2.0`から`6.0`です。目安の範囲外も指定できますが、負値は指定できません。両引数とも`-a-rule-input-private`専用で、ほかのエンジンに指定すると`ConfigurationError`を送出します。
+
+Private 環境の既定値は異なる場合があります。JSGF や SRGS の文法はライブラリで検証しません。[公式のルールグラマ](https://docs.amivoice.com/amivoice-api/manual/rule-grammar)と[グラマファイルの指定方法](https://docs.amivoice.com/amivoice-api/manual/set-grammar-file)を確認してください。誤ったグラマはサーバー側でエラーになります。
 
 ### 使用量集計タグ
 
 使用量をユーザーやアプリケーション単位で集計する場合は、`billing_key`を指定します。同期 HTTP と WebSocket の両方で利用できます。
 
 ```python
-from amivoice import AmiVoiceClient
+from amivoice import AmiVoiceClient, Engine
 
-client = AmiVoiceClient(billing_key="user01")
+client = AmiVoiceClient(
+    grammar_file_names=Engine.A_GENERAL,
+    billing_key="user01",
+)
 result = client.transcribe("audio.wav")
-
-with client.stream() as session:
-    session.write(audio_chunk)
-    session.end()
+print(result.text)
 ```
 
-`billing_key`は内部で`extension`の専用 JSON 形式に変換されます。既存の`extension`と同時には指定できません。低レベル API に直接渡す場合は、`build_billing_extension()`を使用できます。
-
-```python
-from amivoice import build_billing_extension
-from com.amivoice.hrp.Hrp import Hrp
-
-hrp = Hrp.construct()
-hrp.setExtension(build_billing_extension("user01"))
-```
-
-使用量の確認は、AmiVoice Cloud Platform のマイページにある発話量 CSV を利用してください。
+`billing_key`は内部で`extension`用の JSON 形式に変換します。`extension`と同時には指定できません。`extension`を自分で組み立てる場合は、公開ヘルパー`build_billing_extension()`も利用できます。使用量は AmiVoice Cloud Platform のマイページにある発話量 CSV で確認してください。
 
 ## ユーザー辞書管理
 
-ユーザー辞書登録 API を利用すると、プロファイルへ単語を登録・取得・削除できます。API キーは環境変数 `AMIVOICE_API_KEY` から解決されますが、`UserDictionaryClient` のコンストラクタへ渡すこともできます。
+`UserDictionaryClient`で、プロファイルの単語を登録・取得・削除できます。API キーは環境変数`AMIVOICE_API_KEY`から読み取ります。
+
+> [!NOTE]
+> AmiVoice API のユーザー辞書登録は、指定した単語一覧による全件置換のみです。単語単位の追加・削除 API はありません。既存の単語を残して追加・変更する場合は、残す単語を含む一覧を登録してください。
+
+`register_words()`は置換後の一覧を登録します。`clear_words()`は空の一覧を登録して全件を削除します。
+
+以下の例は`user01`の内容を置き換え、最後に全件を削除します。既存のプロファイルを使う場合は、事前に内容をバックアップしてください。
 
 ```python
-from amivoice import ProfileWord, UserDictionaryClient
+from amivoice import Engine, ProfileWord, UserDictionaryClient
 
-# 登録は単語の追加ではなく、指定した一覧による全件置換
 user_dictionary = UserDictionaryClient()
 user_dictionary.register_words(
-    "-a-general",
+    Engine.A_GENERAL,
     "user01",
     (
         ProfileWord(written="AmiVoice", spoken="あみぼいす", classname="固有名詞"),
@@ -308,22 +450,33 @@ user_dictionary.register_words(
     sampling_rate="16k",
 )
 
-words = user_dictionary.get_words("-a-general", "user01", sampling_rate="16k")
+words = user_dictionary.get_words(Engine.A_GENERAL, "user01", sampling_rate="16k")
 for word in words:
     print(word.written, word.spoken, word.classname)
 
-# 空の一覧を登録するとプロファイルの単語を全件削除
-user_dictionary.clear_words("-a-general", "user01", sampling_rate="16k")
+profiles = user_dictionary.list_profiles(Engine.A_GENERAL, sampling_rate="16k")
+classnames = user_dictionary.list_classnames(Engine.A_GENERAL, sampling_rate="16k")
+print("プロファイル:", profiles)
+print("クラス名:", classnames)
 
-# ハイブリッドエンジンで利用できるクラス名を取得
-classnames = user_dictionary.list_classnames("-a-general")
+# user01 の単語を全件削除する
+user_dictionary.clear_words(Engine.A_GENERAL, "user01", sampling_rate="16k")
 ```
 
-End to End エンジンの単語強調では、`alternative_written` と `biasing` を指定します。`biasing` は `0.0` 以上 `1.0` 以下です。数値のほか、`"0.5"` のような小数表記の文字列も指定できます。`"1e-5"` のような指数表記の文字列は指定できません。
+`list_profiles(engine, sampling_rate=...)`はプロファイル名、`list_classnames(engine, sampling_rate=...)`は利用できるクラス名を、文字列のタプルで返します。
+
+ハイブリッドエンジンでは 8k 用と 16k 用のプロファイルが分かれます。音声に合わせて`sampling_rate="8k"`または`"16k"`を指定すると、API のクエリ`adf=8k`または`adf=16k`に変換します。省略時はサーバーの既定値に委ね、公式仕様では 16k 用が対象です。
+
+### End to Endエンジンの単語強調
+
+End to End エンジンでは`alternative_written`と`biasing`を指定します。`biasing`は`0.0`以上`1.0`以下です。数値のほか、`"0.5"`などの小数表記の文字列も使用できます。`"1e-5"`などの指数表記の文字列は指定できません。ハイブリッド用の`spoken`や`classname`と、End to End 用のフィールドは混在させないでください。
 
 ```python
+from amivoice import Engine, ProfileWord, UserDictionaryClient
+
+user_dictionary = UserDictionaryClient()
 user_dictionary.register_words(
-    "-a-e2e",
+    Engine.A2_JA_GENERAL,
     "user01",
     (
         ProfileWord(
@@ -335,74 +488,117 @@ user_dictionary.register_words(
 )
 ```
 
-ハイブリッドエンジンでは 8k 用と 16k 用のプロファイルが分かれるため、音声のサンプリングレートに合わせて `sampling_rate="8k"` または `sampling_rate="16k"` を指定します。省略時は 16k 用のプロファイルが対象です。登録時は既存の単語を保持したい場合も、保持する単語を含む全件を渡してください。
+辞書 API の`engine`には、公式の音声認識エンジン一覧にある接続エンジン名を指定します。旧例の`-a-e2e`ではなく、上の例は`Engine.A2_JA_GENERAL`を使用します。辞書 API 専用の別名として`-a-e2e`を使う根拠はありません。End to End エンジンでは 8k と 16k を同じエンジンとして扱うため、`sampling_rate`の指定は不要です。
 
-ユーザー辞書はアプリケーションのデータベースなどで保持し、バックアップしてください。プロファイルをマスターデータにせず、API のプロファイルを更新する前にアプリケーションで全件を管理することが推奨されています。
+### 登録した辞書の参照
 
-登録した単語を音声認識で利用する場合は、登録時と同じ接続エンジン名を指定し、`profile_id` の先頭に `:` を付けます。`:` 付きのプロファイル ID は、プロファイルを参照だけする指定です。`:` を付けないと、セッション終了時にプロファイルを上書きする場合があります（[プロファイルの利用](https://docs.amivoice.com/amivoice-api/manual/user-dictionary-use-profile)）。ライブラリは値を書き換えず、先頭に `:` がない場合は `UserWarning` を出します。
+ユーザー辞書はアプリケーションのデータベースなどで全件を保持し、バックアップしてください。API のプロファイルをマスターデータにせず、アプリケーションで管理する一覧から更新する方法が推奨されています。
+
+音声認識で参照する場合は、登録時と同じ接続エンジンを使い、`profile_id`の先頭に`:`を付けます。辞書 API の登録・取得・削除には`:`を付けない ID を渡してください。
 
 ```python
-from amivoice import AmiVoiceClient, Codec, Engine
+from amivoice import AmiVoiceClient, Engine
 
 recognition_client = AmiVoiceClient(
     grammar_file_names=Engine.A_GENERAL,
-    codec=Codec.HEADER_16K,
     profile_id=":user01",
 )
 result = recognition_client.transcribe("audio.wav")
+print(result.text)
 ```
 
-## WebSocketストリーミング認識
+`:`付きの ID は参照だけを行います。`:`を付けないと、セッション終了時にプロファイルを上書きする場合があります。ライブラリは値を書き換えず、`UserWarning`を出します。詳しくは[公式のプロファイルの利用方法](https://docs.amivoice.com/amivoice-api/manual/user-dictionary-use-profile)を参照してください。
+
+## 感情パラメータの定義取得
+
+`SentimentAnalysisClient().list_parameters(language="ja")`で、感情パラメータの名前、表示名、最小値、最大値を取得できます。対応する表示言語は`ja`のみです。API キーは環境変数`AMIVOICE_API_KEY`から読み取ります。
 
 ```python
-from amivoice import AmiVoiceClient, Codec, Engine
+from amivoice import SentimentAnalysisClient
 
-client = AmiVoiceClient(grammar_file_names=Engine.A_GENERAL, codec=Codec.HEADER_16K)
-
-with client.stream() as session:
-    session.write(audio_chunk)
-    for event in session.poll():
-        print(event.text)
-    session.end()
+parameters = SentimentAnalysisClient().list_parameters(language="ja")
+for parameter in parameters:
+    print(
+        parameter.name,
+        parameter.display_name,
+        parameter.minimum,
+        parameter.maximum,
+    )
 ```
 
-## 低レベルAPI
+この API は定義の取得専用で、音声の感情を分析したり、音声認識ジョブを作成したりするものではありません。
 
-既存の低レベル API を利用する場合は、次の import パスを使用できます。
+## 使用例CLI
 
-```python
-from com.amivoice.hrp.Hrp import Hrp
-from com.amivoice.wrp.Wrp import Wrp
-```
-
-高レベル API の利用を優先し、プロトコルを直接制御する必要がある場合に低レベル API を使用してください。
-
-## サンプル
-
-低レベル API を使用したサンプルプログラムは`examples/`にあります。
-
-サンプルの実行には、AmiVoice API キーと音声ファイルが必要です。API キーは環境変数に設定し、各サンプルの引数として渡します。
+`examples/`の各プログラムは、現在の公開 API を使用します。認証は環境変数`AMIVOICE_API_KEY`から読み取るため、キーを引数へ渡しません。リポジトリのルートから実行してください。
 
 ```bash
-export AMIVOICE_API_KEY="your-api-key"
-
 # HTTP・簡易版
-uv run examples/hrp_simple_tester.py \
-  https://acp-api.amivoice.com/v1/recognize \
-  audio/test.wav 16K -a-general "$AMIVOICE_API_KEY"
+uv run examples/hrp_simple_tester.py audio/test.wav
 
 # WebSocket・簡易版
-uv run examples/wrp_simple_tester.py \
-  wss://acp-api.amivoice.com/v1/ \
-  audio/test.wav 16K -a-general "$AMIVOICE_API_KEY"
+uv run examples/wrp_simple_tester.py audio/test.wav --codec 16K
 
-# HTTP・詳細版
-uv run examples/hrp_tester.py \
-  g=-a-general c=16K ou="$AMIVOICE_API_KEY" \
-  https://acp-api.amivoice.com/v1/recognize audio/test.wav
+# HTTP・詳細版では複数ファイルを指定できる
+uv run examples/hrp_tester.py audio/test.wav audio/test2.wav \
+  --engine=-a-general --codec 16K --selected-channel 0
 
-# WebSocket・詳細版
-uv run examples/wrp_tester.py \
-  g=-a-general c=16K ou="$AMIVOICE_API_KEY" \
-  wss://acp-api.amivoice.com/v1/ audio/test.wav
+# WebSocket・詳細版では送信単位と途中イベントの表示を指定できる
+uv run examples/wrp_tester.py audio/test.wav audio/test2.wav \
+  --engine=-a-general --codec 16K --chunk-size 4096 --show-events
 ```
+
+`--engine`の値は先頭が`-`のため、`--engine=-a-general`のように`=`で指定する方法を推奨します。既定のエンジンは`-a-general`、音声フォーマットは`16K`です。音声に合った値へ変更してください。
+
+### CLIのオプション
+
+簡易版と詳細版は、次の共通オプションを使用できます。
+
+| オプション | 内容 |
+| --- | --- |
+| `--engine=...` | 接続エンジン名 |
+| `--codec` | 公式の音声フォーマット名 |
+| `--url` | 接続先 URL の上書き |
+| `--logging-opt-out` | ログ保存なしのエンドポイントを使用 |
+| `--connect-timeout` | 接続のタイムアウト。ミリ秒、CLI の既定値は`10000` |
+| `--receive-timeout` | 受信のタイムアウト。ミリ秒、CLI の既定値は`30000` |
+
+詳細版は複数の音声ファイルを位置引数で受け付け、次の設定を追加できます。
+
+| オプション | 内容 |
+| --- | --- |
+| `--profile-id` | 辞書の参照。例は`:user01` |
+| `--profile-words` | セッション単語の設定文字列 |
+| `--segmenter-properties` | 発話検出、話者ダイアライゼーション、言語識別の設定文字列 |
+| `--confidence-level` | 信頼度しきい値 |
+| `--keep-filler-token` / `--no-keep-filler-token` | フィラーの保持・削除。省略時は値を送信しない |
+| `--billing-key` | 使用量集計タグ |
+| `--recognition-timeout` | 認識完了までのタイムアウト。ミリ秒 |
+| `--max-decoding-time` | 認識処理時間の上限。ミリ秒 |
+| `--max-response-time` | 音声時間に加える処理時間の上限。ミリ秒 |
+| `--max-decoding-rate` | 音声時間に対する処理時間の上限倍率 |
+| `--target-response-time` | 暫定結果の目標応答時間。ミリ秒 |
+| `--target-decoding-rate` | 暫定結果の目標倍率 |
+
+HTTP の詳細版だけで使える設定は`--selected-channel`です。CLI では単一チャネルを整数で指定します。複数チャネルを混合するタプルは、Python API から指定してください。
+
+WebSocket の詳細版は`--result-updated-interval`、`--no-input-timeout`をミリ秒で指定できます。`--show-events`は途中結果と発話境界も表示するオプションです。WebSocket の簡易版と詳細版には`--chunk-size`があり、送信するバイト数を正の整数で指定します。既定値は`4096`です。
+
+`--url`を明示して`--logging-opt-out`を使う場合は、HTTP なら`/v1/nolog/recognize`、WebSocket なら`/v1/nolog/`のパスが必要です。指定した URL を自動でログ保存なしのパスへ変更しません。
+
+```bash
+uv run examples/hrp_tester.py audio/test.wav \
+  --logging-opt-out --url https://acp-api.amivoice.com/v1/nolog/recognize
+
+uv run examples/wrp_tester.py audio/test.wav --codec 16K \
+  --logging-opt-out --url wss://acp-api.amivoice.com/v1/nolog/
+```
+
+`--help`は API キーなしで実行でき、通信もしません。
+
+```bash
+uv run examples/hrp_tester.py --help
+uv run examples/wrp_tester.py --help
+```
+
+終了コードは成功が`0`、認識・通信・ファイル読み込みなどの失敗が`1`です。引数の構文や型が不正な場合は、`argparse`が`2`で終了します。数値の範囲や URL とログ保存設定の組み合わせなど、クライアントが検出する設定エラーは`1`です。
