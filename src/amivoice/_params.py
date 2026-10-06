@@ -20,6 +20,11 @@ class _UnsetType:
 UNSET: Final = _UnsetType()
 
 _PROCESSING_TIME_FIELDS: Final[tuple[str, ...]] = (
+    "connect_timeout",
+    "receive_timeout",
+    "recognition_timeout",
+    "no_input_timeout",
+    "result_updated_interval",
     "complete_timeout",
     "max_decoding_time",
     "max_response_time",
@@ -35,21 +40,18 @@ _PROCESSING_RATE_FIELDS: Final[tuple[str, ...]] = (
 class RecognitionParams:
     """AmiVoice の認識接続パラメータ一式。
 
-    HRP（HTTP）と WRP（WebSocket）で共通のパラメータに加え、各プロトコル専用の
-    パラメータを保持する。専用パラメータは対応しないプロトコルでは無視される。
+    HTTPとWebSocketの設定を保持する
+    専用設定の送信可否は送信パラメータ生成層が制御する
     """
 
     # 共通パラメータ
     grammar_file_names: str | None = None
     codec: str | None = None
-    result_type: str | None = None
     proxy_server_name: str | None = None
     connect_timeout: int = 0
     receive_timeout: int = 0
-    mode: str | None = None
     profile_id: str | None = None
     profile_words: str | None = None
-    segmenter_type: str | None = None
     segmenter_properties: str | None = None
     confidence_level: float | None = None
     keep_filler_token: bool | None = None
@@ -65,12 +67,6 @@ class RecognitionParams:
     target_response_time: int | None = None
     target_decoding_rate: float | None = None
     # HRP 専用
-    result_encoding: str | None = None
-    voice_detection: str | None = None
-    accept_topic: str | None = None
-    content_type: str | None = None
-    accept: str | None = None
-    domain_id: str | None = None
     audio_filter_properties: str | None = None
     # WRP 専用
     no_input_timeout: int | None = None
@@ -79,6 +75,8 @@ class RecognitionParams:
         """認識パラメータの入力値を検証する"""
         _validate_profile_id(self.profile_id)
         resolve_billing_extension(self.extension, self.billing_key)
+        if self.keep_filler_token is not None and not isinstance(self.keep_filler_token, bool):
+            raise ConfigurationError("Invalid keep_filler_token: must be a boolean")
         value = self.confidence_level
         if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not 0.0 <= value <= 1.0):
             raise ConfigurationError("Invalid confidence_level: must be a number between 0.0 and 1.0")
