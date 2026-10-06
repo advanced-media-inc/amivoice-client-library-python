@@ -142,12 +142,18 @@ class StreamSession:
         Raises:
             RecognitionError: 終了後や非接続時の送信
         """
-        self._raise_error()
-        if self._ended or self._finished.is_set() or not self._started.is_set():
-            raise RecognitionError("Cannot write to an ended or inactive session")
-        if not isinstance(chunk, bytes):
-            raise ConfigurationError("Stream audio must be bytes")
-        self._transport.send_audio(chunk)
+        with self._end_lock:
+            self._raise_error()
+            if self._ended or self._finished.is_set() or not self._started.is_set():
+                raise RecognitionError("Cannot write to an ended or inactive session")
+            if not isinstance(chunk, bytes):
+                raise ConfigurationError("Stream audio must be bytes")
+            try:
+                self._transport.send_audio(chunk)
+            except Exception:
+                self._finish(RecognitionError("WebSocket audio send failed"))
+                self.close()
+                self._raise_error()
 
     def poll(self) -> Iterator[StreamEvent]:
         """到着済みイベントを返し、通信エラーも伝える
@@ -211,7 +217,12 @@ class StreamSession:
                 return
             if not self._ended:
                 self._ended = True
-                self._transport.send_text("e")
+                try:
+                    self._transport.send_text("e")
+                except Exception:
+                    self._finish(RecognitionError("WebSocket recognition end send failed"))
+                    self.close()
+                    self._raise_error()
         if not self._finished.wait(wait):
             self._finish(RecognitionError("Timed out waiting for recognition end response"))
             self.close()
