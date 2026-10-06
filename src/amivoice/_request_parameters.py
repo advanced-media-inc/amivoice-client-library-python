@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 from ._billing import resolve_billing_extension
 from ._params import RecognitionParams
-from .constants import Codec
+from .constants import Codec, Engine
 from .exceptions import ConfigurationError
 
 # 送信パラメータ名と対応インタフェースはここだけで定義する
@@ -77,6 +77,13 @@ def validate_recognition_request(params: RecognitionParams) -> None:
     if not params.grammar_file_names:
         raise ConfigurationError("grammar_file_names is required")
     engine = _check_text(params.grammar_file_names).split("|", 1)[0]
+    if params.codec is not None:
+        try:
+            Codec(params.codec)
+        except (ValueError, TypeError):
+            raise ConfigurationError("codec must be an official audio format") from None
+    if params.keep_filler_token is not None and engine in {item.value for item in Engine if item.name.startswith("A2")}:
+        raise ConfigurationError("keep_filler_token is not supported by End to End engines")
     if " " in engine:
         raise ConfigurationError("grammar_file_names engine must not contain spaces")
     if (params.complete_timeout is not None or params.wildcard_model_penalty is not None) and engine != "-a-rule-input-private":
@@ -86,7 +93,7 @@ def validate_recognition_request(params: RecognitionParams) -> None:
             key, separator, value = property_value.partition("=")
             if key not in SEGMENTER_KEYS or not separator or not value:
                 raise ConfigurationError("Unsupported segmenter_properties parameter")
-    if params.audio_filter_properties is not None and not _CHANNEL_PATTERN.fullmatch(params.audio_filter_properties):
+    if params.audio_filter_properties is not None and not _CHANNEL_PATTERN.fullmatch(_check_text(params.audio_filter_properties)):
         raise ConfigurationError("audio_filter_properties must select one channel or a range starting at 0")
 
 

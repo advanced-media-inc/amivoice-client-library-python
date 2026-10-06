@@ -15,7 +15,6 @@ _NON_NEGATIVE_INTEGER_FIELDS: Final[tuple[str, ...]] = (
     "post_time",
     "pre_forced_time",
     "post_forced_time",
-    "power_threshold",
     "decay_time",
 )
 
@@ -45,6 +44,10 @@ class SegmenterProperties:
             value = getattr(self, field_name)
             _validate_non_negative_integer(field_name, value)
 
+        if self.power_threshold is not None and (
+            isinstance(self.power_threshold, bool) or not isinstance(self.power_threshold, int)
+        ):
+            raise ConfigurationError("Invalid segmenter power_threshold: must be an integer")
         if self.pre_time is not None and self.pre_time % 50 != 0:
             raise ConfigurationError("Invalid segmenter pre_time: must be a multiple of 50")
 

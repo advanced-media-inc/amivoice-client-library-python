@@ -169,7 +169,7 @@ def test_segmenter_properties_pre_time_not_multiple_invalid_raise_ConfigurationE
 
 @pytest.mark.parametrize(
     "field",
-    ["threshold", "post_time", "pre_forced_time", "post_forced_time", "power_threshold", "decay_time"],
+    ["threshold", "post_time", "pre_forced_time", "post_forced_time", "decay_time"],
 )
 def test_segmenter_properties_negative_value_invalid_raise_ConfigurationError(field: str) -> None:
     """発話検出の数値設定が負の場合に ConfigurationError が送出されることを確認する。"""
