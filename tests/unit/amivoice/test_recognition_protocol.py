@@ -44,13 +44,13 @@ def test_build_hrp_request_multipart_valid_return_audio_and_fields() -> None:
     """音声、認証、コーデック、結果形式を multipart へ変換する"""
     # Given: 任意のバイナリ音声と専用パラメータ
     audio = bytes(range(256))
-    params = RecognitionParams(codec="LSB16K", result_type="json", result_encoding="UTF-8", voice_detection="")
+    params = RecognitionParams(codec="LSB16K", result_type="json", voice_detection="")
     # When: MIME パーサーで生成電文を読み取る
     request = build_hrp_request(params, "secret", audio)
     mime = BytesParser().parsebytes(f"Content-Type: {request.headers['Content-Type']}\r\n\r\n".encode() + request.body)
     parts = {part.get_param("name", header="content-disposition"): part.get_payload(decode=True) for part in mime.get_payload()}
     # Then: バイト列と値が保持される
-    assert parts == {"a": audio, "c": b"LSB16K", "r": b"json", "e": b"UTF-8", "u": b"secret", "v": b""}
+    assert parts == {"a": audio, "c": b"LSB16K", "r": b"json", "u": b"secret", "v": b""}
 
 
 def test_build_hrp_request_domain_id_valid_return_only_additional_fields() -> None:

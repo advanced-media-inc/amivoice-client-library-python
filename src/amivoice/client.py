@@ -329,7 +329,6 @@ class AmiVoiceClient:
         max_decoding_rate: 音声時間に対する認識処理時間倍率の上限、バッチ音声のみ有効、負値は無効
         target_response_time: 暫定結果の目標応答時間（ミリ秒）、リアルタイム録音時のみ有効、0 は無効
         target_decoding_rate: 暫定結果の目標認識処理時間倍率、バッチ音声のみ有効、負値は無効
-        result_encoding: 認識結果の文字エンコーディング（HRP 専用）。
         voice_detection: 発話区間検出パラメータ。
         accept_topic: HTTP ``Accept-Topic`` ヘッダ（HRP 専用）。
         content_type: HTTP ``Content-Type`` ヘッダ（HRP 専用）。
@@ -425,7 +424,6 @@ class AmiVoiceClient:
         max_decoding_rate: float | None = None,
         target_response_time: int | None = None,
         target_decoding_rate: float | None = None,
-        result_encoding: str | None = None,
         voice_detection: str | None = None,
         accept_topic: str | None = None,
         content_type: str | None = None,
@@ -470,7 +468,6 @@ class AmiVoiceClient:
             max_decoding_rate (float | None): 音声時間に対する認識処理時間倍率の上限
             target_response_time (int | None): 暫定結果の目標応答時間（ミリ秒）
             target_decoding_rate (float | None): 暫定結果の目標認識処理時間倍率
-            result_encoding (str | None): 認識結果の文字エンコーディング（HRP 専用）
             voice_detection (str | None): 発話区間検出パラメータ
             accept_topic (str | None): HTTP ``Accept-Topic`` ヘッダ（HRP 専用）
             content_type (str | None): HTTP ``Content-Type`` ヘッダ（HRP 専用）
@@ -517,7 +514,6 @@ class AmiVoiceClient:
             recognition_timeout=recognition_timeout,
             complete_timeout=complete_timeout,
             wildcard_model_penalty=wildcard_model_penalty,
-            result_encoding=result_encoding,
             voice_detection=voice_detection,
             accept_topic=accept_topic,
             content_type=content_type,
@@ -582,7 +578,6 @@ class AmiVoiceClient:
         max_decoding_rate: float | None | _UnsetType = UNSET,
         target_response_time: int | None | _UnsetType = UNSET,
         target_decoding_rate: float | None | _UnsetType = UNSET,
-        result_encoding: str | None | _UnsetType = UNSET,
         voice_detection: str | None | _UnsetType = UNSET,
         accept_topic: str | None | _UnsetType = UNSET,
         content_type: str | None | _UnsetType = UNSET,
@@ -624,7 +619,6 @@ class AmiVoiceClient:
             max_decoding_rate: 認識処理時間倍率の上限の呼び出し時 override、バッチ音声のみ有効、負値は無効
             target_response_time: 目標応答時間（ミリ秒）の呼び出し時 override、リアルタイム録音時のみ有効、0 は無効
             target_decoding_rate: 目標認識処理時間倍率の呼び出し時 override、バッチ音声のみ有効、負値は無効
-            result_encoding: 認識結果エンコーディングの呼び出し時 override。
             voice_detection: 発話区間検出パラメータの呼び出し時 override。
             accept_topic: HTTP ``Accept-Topic`` ヘッダの呼び出し時 override。
             content_type: HTTP ``Content-Type`` ヘッダの呼び出し時 override。
@@ -677,7 +671,6 @@ class AmiVoiceClient:
             recognition_timeout=recognition_timeout,
             complete_timeout=complete_timeout,
             wildcard_model_penalty=wildcard_model_penalty,
-            result_encoding=result_encoding,
             voice_detection=voice_detection,
             accept_topic=accept_topic,
             content_type=content_type,
@@ -891,7 +884,6 @@ def transcribe(  # noqa: PLR0913
     max_decoding_rate: float | None = None,
     target_response_time: int | None = None,
     target_decoding_rate: float | None = None,
-    result_encoding: str | None = None,
     voice_detection: str | None = None,
     accept_topic: str | None = None,
     content_type: str | None = None,
@@ -934,7 +926,6 @@ def transcribe(  # noqa: PLR0913
         max_decoding_rate: 音声時間に対する認識処理時間倍率の上限、バッチ音声のみ有効、負値は無効
         target_response_time: 暫定結果の目標応答時間（ミリ秒）、リアルタイム録音時のみ有効、0 は無効
         target_decoding_rate: 暫定結果の目標認識処理時間倍率、バッチ音声のみ有効、負値は無効
-        result_encoding: 認識結果の文字エンコーディング。
         voice_detection: 発話区間検出パラメータ。
         accept_topic: HTTP ``Accept-Topic`` ヘッダ。
         content_type: HTTP ``Content-Type`` ヘッダ。
@@ -985,7 +976,6 @@ def transcribe(  # noqa: PLR0913
         recognition_timeout=recognition_timeout,
         complete_timeout=complete_timeout,
         wildcard_model_penalty=wildcard_model_penalty,
-        result_encoding=result_encoding,
         voice_detection=voice_detection,
         accept_topic=accept_topic,
         content_type=content_type,

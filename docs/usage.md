@@ -71,7 +71,7 @@ print(result.text)
 
 `Engine`と`Codec`のすべての組み合わせが有効とは限らないため、利用するインタフェース、エンジン、音声のサンプリングレートの対応を公式一覧で確認してください。
 
-`transcribe()`には、ファイルパス、`pathlib.Path`、`bytes`、バイナリファイルオブジェクトを渡せます。
+`transcribe()`には、ファイルパス、`pathlib.Path`、`bytes`、バイナリファイルオブジェクトを渡せます。同期 HTTP の認識結果は UTF-8 の JSON として受信・解析され、`result.text`は Python の`str`として取得できます。
 
 ### ログ保存なしの認識
 

@@ -37,7 +37,6 @@ def main(arguments: list[str] | None = None) -> int:
         "mode",
         "proxy-server-name",
         "domain-id",
-        "result-encoding",
         "voice-detection",
         "audio-filter-properties",
     ]:

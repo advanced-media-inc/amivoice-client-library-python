@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from amivoice import Codec, Engine, ProfileWord
+from amivoice import Codec, Engine, ProfileWord, transcribe
 from amivoice._segmenter import SegmenterProperties
 from amivoice._stream import StreamConnectionManager, StreamSession
 from amivoice.client import (
@@ -40,6 +40,23 @@ from ._recognition_fakes import (
 # ---------------------------------------------------------------------------
 # Construction
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("entrypoint", ["constructor", "method", "function"])
+def test_http_result_encoding_unsupported_raise_TypeError(entrypoint: str) -> None:
+    """効果のない文字コード指定を通信前に拒否する"""
+    unsupported = {"result_encoding": "SHIFT_JIS"}
+    with (
+        patch("amivoice.client._construct_hrp_transport") as factory,
+        pytest.raises(TypeError, match="result_encoding"),
+    ):
+        if entrypoint == "constructor":
+            AmiVoiceClient(api_key="test", **unsupported)
+        elif entrypoint == "method":
+            AmiVoiceClient(api_key="test").transcribe(b"audio", **unsupported)
+        else:
+            transcribe(b"audio", api_key="test", **unsupported)
+    factory.assert_not_called()
 
 
 def test_AmiVoiceClient_construction_stores_api_key() -> None:

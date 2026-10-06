@@ -102,7 +102,6 @@ def build_hrp_request(params: RecognitionParams, api_key: str, audio: bytes, *, 
         "d": build_hrp_domain(params),
         "c": params.codec,
         "r": params.result_type,
-        "e": params.result_encoding,
         "u": api_key,
         "v": params.voice_detection,
     }

@@ -41,6 +41,15 @@ def test_hrp_simple_example_audio_valid_return_result(tmp_path: Path, capsys: py
     assert "hello" in capsys.readouterr().out
 
 
+def test_hrp_example_result_encoding_unsupported_raise_SystemExit(capsys: pytest.CaptureFixture[str]) -> None:
+    """効果のない文字コード指定の CLI オプションを拒否する"""
+    with patch("examples.hrp_tester.AmiVoiceClient") as factory, pytest.raises(SystemExit) as error:
+        hrp_tester.main(["http://example.com/", "audio.wav", "--result-encoding=SHIFT_JIS"])
+    assert error.value.code == 2
+    assert "unrecognized arguments: --result-encoding=SHIFT_JIS" in capsys.readouterr().err
+    factory.assert_not_called()
+
+
 def test_hrp_example_typed_options_valid_return_result(tmp_path: Path) -> None:
     """詳細 HTTP サンプルの数値と真偽値を typed 設定へ変換する"""
     # Given: 音声ファイルと認識モック

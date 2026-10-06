@@ -65,7 +65,6 @@ class RecognitionParams:
     target_response_time: int | None = None
     target_decoding_rate: float | None = None
     # HRP 専用
-    result_encoding: str | None = None
     voice_detection: str | None = None
     accept_topic: str | None = None
     content_type: str | None = None
