@@ -5,9 +5,10 @@ import sys
 from importlib import metadata
 from pathlib import Path
 
-import amivoice
 import com.amivoice.hrp as hrp_package
 import com.amivoice.wrp as wrp_package
+
+import amivoice
 from amivoice import AmiVoiceClient
 
 
