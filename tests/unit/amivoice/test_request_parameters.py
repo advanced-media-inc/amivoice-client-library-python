@@ -91,3 +91,13 @@ def test_request_builder_rule_parameters_invalid_raise_ConfigurationError(builde
     # When / Then: 送信を拒否する
     with pytest.raises(ConfigurationError, match="rule"):
         builder(params)
+
+
+@pytest.mark.parametrize("builder", [build_start_command, lambda p: build_http_multipart(p, b"audio")])
+def test_request_builder_empty_engine_invalid_raise_ConfigurationError(builder: object) -> None:
+    """エンジン名が空のリクエストを送信前に拒否する"""
+    # Given: grammar_file_namesの先頭が区切り文字の設定
+    params = RecognitionParams(grammar_file_names="|https://example.test/grammar", codec="16K")
+    # When / Then: HTTPとWebSocketの両方で送信データの生成を拒否する
+    with pytest.raises(ConfigurationError, match="engine"):
+        builder(params)

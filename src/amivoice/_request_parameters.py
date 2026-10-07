@@ -77,6 +77,8 @@ def validate_recognition_request(params: RecognitionParams) -> None:
     if not params.grammar_file_names:
         raise ConfigurationError("grammar_file_names is required")
     engine = _check_text(params.grammar_file_names).split("|", 1)[0]
+    if not engine:
+        raise ConfigurationError("grammar_file_names engine is required")
     if params.codec is not None:
         try:
             Codec(params.codec)
