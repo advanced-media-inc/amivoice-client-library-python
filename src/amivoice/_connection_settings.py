@@ -1,7 +1,7 @@
 """通信先URLとHTTPプロキシの設定を検証する"""
 
 import base64
-from urllib.parse import SplitResult, urlsplit
+from urllib.parse import SplitResult, unquote, urlsplit
 
 from .exceptions import ConfigurationError
 
@@ -60,6 +60,8 @@ def parse_http_proxy(value: str | None) -> tuple[str, int, dict[str, str]] | Non
         raise ConfigurationError("HTTP proxy must use an HTTP host and port")
     headers = {}
     if parsed.username is not None:
-        credentials = f"{parsed.username}:{parsed.password or ''}".encode()
+        username = unquote(parsed.username)
+        password = unquote(parsed.password or "")
+        credentials = f"{username}:{password}".encode()
         headers["Proxy-Authorization"] = "Basic " + base64.b64encode(credentials).decode("ascii")
     return parsed.hostname, port, headers
