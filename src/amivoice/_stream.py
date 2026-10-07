@@ -114,7 +114,7 @@ class StreamSession:
             if payload:
                 raise RecognitionError("WebSocket recognition start event must not have a payload")
             self._queue.put(StreamEvent("notification", notification=NotificationEvent("C", "")))
-        elif kind != "G":
+        elif kind not in ("G", "Q"):
             raise RecognitionError("Unsupported WebSocket recognition event")
 
     def _handle_response(self, kind: str, payload: str) -> None:

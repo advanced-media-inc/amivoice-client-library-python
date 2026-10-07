@@ -84,3 +84,19 @@ def test_stream_end_send_failure_invalid_close_session() -> None:
         assert not session._thread.is_alive()
     finally:
         manager.__exit__(RuntimeError, None, None)
+
+
+def test_stream_q_and_g_events_valid_ignore_and_finish() -> None:
+    """QとGイベントを無視し認識セッションを正常終了する"""
+    # Given: 終了応答の前にQとGイベントを返す通信処理
+    fake = WebSocketFake(events=["Q ignored", "G ignored"])
+    manager = AmiVoiceClient(api_key="dummy", grammar_file_names="-a-general", codec="16K", wrp_transport=fake).stream()
+
+    # When: セッションを終了して到着済みイベントを取得する
+    with manager as session:
+        session.end(timeout=1)
+        events = list(session.poll())
+
+    # Then: QとGをイベントとして公開せず正常終了する
+    assert events == []
+    assert not session._thread.is_alive()
