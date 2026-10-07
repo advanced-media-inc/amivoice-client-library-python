@@ -46,4 +46,4 @@ WebSocket では`codec`も必ず指定してください。
 
 ## 公式仕様
 
-最新の公式仕様は[AmiVoice API マニュアル](https://docs.amivoice.com/amivoice-api/manual/getting-started)をご確認下さい。
+最新の公式仕様は[AmiVoice API マニュアル](https://docs.amivoice.com/amivoice-api/manual/getting-started)をご確認ください。
