@@ -34,6 +34,7 @@ def test_transcribe_local_chunked_recording_valid_return_full_response(recorded_
     path, headers, sent = server.received[0]
     assert path == "/v1/recognize"
     assert headers["Authorization"] == "Bearer dummy"
+    assert headers["User-Agent"].startswith("amivoice-api-client/")
     parts = _multipart_parts(headers["Content-Type"], sent)
     assert [name for name, _ in parts] == ["d", "c", "a"]
     assert parts[-1] == ("a", audio)
@@ -100,6 +101,7 @@ def test_stream_local_recorded_labels_valid_return_events_and_masked_audio(
     assert (token.label, token.language, token.spoken) == ("speaker0", "ja", "とりぷるだぶりゅー")
     assert server.frames[1:] == [(2, b"p\x00\xff"), (2, b"p" + b"x" * 200), (1, b"e")]
     assert b"Authorization: Bearer dummy\r\n" in server.upgrade_request
+    assert b"User-Agent: amivoice-api-client/" in server.upgrade_request
     assert b"dummy" not in server.frames[0][1]
     assert server.pongs == ([b"probe"] if fragment_final else [])
     assert not session._thread.is_alive()

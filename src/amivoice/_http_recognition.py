@@ -5,6 +5,7 @@ from typing import Protocol
 
 from ._connection_settings import parse_http_proxy, parse_service_url
 from ._params import RecognitionParams
+from ._user_agent import build_client_user_agent
 from .exceptions import ConnectionFailedError
 
 
@@ -48,14 +49,15 @@ class HttpRecognitionConnection:
         proxy = parse_http_proxy(params.proxy_server_name)
         connection_type = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
         target = parsed.path or "/"
-        request_headers = dict(headers)
+        user_agent = build_client_user_agent()
+        request_headers = {"User-Agent": user_agent, **headers}
         host = parsed.hostname
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
         tunnel = None
         if proxy is not None:
             host, proxy_port, proxy_headers = proxy
             if parsed.scheme == "https":
-                tunnel = (parsed.hostname, port, proxy_headers)
+                tunnel = (parsed.hostname, port, {"User-Agent": user_agent, **proxy_headers})
             else:
                 target = url
                 request_headers.update(proxy_headers)

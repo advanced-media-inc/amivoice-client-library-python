@@ -12,6 +12,7 @@ from typing import Protocol
 
 from ._connection_settings import parse_http_proxy, parse_service_url
 from ._params import RecognitionParams
+from ._user_agent import build_client_user_agent
 from .exceptions import ConfigurationError, ConnectionFailedError, RecognitionError
 
 _WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -73,13 +74,14 @@ class WebSocketConnection:
         port = parsed.port or (443 if parsed.scheme == "wss" else 80)
         target = (parsed.hostname, port)
         address = (proxy[0], proxy[1]) if proxy else target
+        user_agent = build_client_user_agent()
         try:
             self._socket = socket.create_connection(address, timeout=params.connect_timeout / 1000 or None)
             self._socket.settimeout(params.receive_timeout / 1000 or None)
             if proxy:
                 host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
                 authority = f"{host}:{port}"
-                lines = [f"CONNECT {authority} HTTP/1.1", f"Host: {authority}"]
+                lines = [f"CONNECT {authority} HTTP/1.1", f"Host: {authority}", f"User-Agent: {user_agent}"]
                 lines.extend(f"{key}: {value}" for key, value in proxy[2].items())
                 self._socket.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("ascii"))
                 status, _ = self._read_http_headers(allow_http_10=True)
@@ -92,6 +94,7 @@ class WebSocketConnection:
                 [
                     f"GET {parsed.path or '/'} HTTP/1.1",
                     f"Host: {parsed.netloc}",
+                    f"User-Agent: {user_agent}",
                     "Upgrade: websocket",
                     "Connection: Upgrade",
                     f"Sec-WebSocket-Key: {key}",

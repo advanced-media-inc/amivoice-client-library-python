@@ -6,6 +6,7 @@ import ssl
 from urllib.parse import urlsplit
 
 from ._connection_settings import parse_service_url
+from ._user_agent import build_client_user_agent
 from .exceptions import AuthenticationError, ConfigurationError
 
 
@@ -66,7 +67,7 @@ class HttpApiConnection:
         # nosemgrep: python.lang.security.audit.httpsconnection-detected.httpsconnection-detected
         connection = http.client.HTTPSConnection(parsed.netloc, timeout=self._timeout, context=ssl.create_default_context())
         try:
-            connection.request(method, target, body=body, headers=headers)
+            connection.request(method, target, body=body, headers={"User-Agent": build_client_user_agent(), **headers})
             response = connection.getresponse()
             return response.status, response.read()
         finally:
