@@ -82,7 +82,7 @@ class WebSocketConnection:
                 lines = [f"CONNECT {authority} HTTP/1.1", f"Host: {authority}"]
                 lines.extend(f"{key}: {value}" for key, value in proxy[2].items())
                 self._socket.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("ascii"))
-                status, _ = self._read_http_headers()
+                status, _ = self._read_http_headers(allow_http_10=True)
                 if status != 200 or self._buffer:
                     raise ConnectionFailedError("WebSocket proxy tunnel failed")
             if parsed.scheme == "wss":
@@ -109,16 +109,25 @@ class WebSocketConnection:
             expected = base64.b64encode(digest).decode("ascii")
             if (
                 status != 101
-                or headers.get("upgrade", "").lower() != "websocket"
-                or "upgrade" not in [token.strip().lower() for token in headers.get("connection", "").split(",")]
-                or headers.get("sec-websocket-accept") != expected
+                or ", ".join(headers.get("upgrade", [])).lower() != "websocket"
+                or "upgrade" not in [token.strip().lower() for token in ", ".join(headers.get("connection", [])).split(",")]
+                # RFC 6455 §11.3.3: Acceptは応答に1つだけ必要
+                or headers.get("sec-websocket-accept") != [expected]
             ):
                 raise ConnectionFailedError("WebSocket upgrade response is invalid")
         except (OSError, ValueError, ConnectionFailedError):
             self.close()
             raise ConnectionFailedError("WebSocket connection or upgrade failed") from None
 
-    def _read_http_headers(self) -> tuple[int, dict[str, str]]:
+    def _read_http_headers(self, *, allow_http_10: bool = False) -> tuple[int, dict[str, list[str]]]:
+        """CONNECTだけHTTP/1.0を許容し、Set-Cookieを含む重複値を個別に保持する
+
+        Args:
+            allow_http_10 (bool): プロキシのCONNECT応答でHTTP/1.0も受理するか
+
+        Returns:
+            tuple[int, dict[str, list[str]]]: ステータスと受信順のヘッダ値
+        """
         while b"\r\n\r\n" not in self._buffer:
             if len(self._buffer) > _MAX_HEADER_BYTES:
                 raise ConnectionFailedError("WebSocket HTTP headers are too large")
@@ -132,15 +141,16 @@ class WebSocketConnection:
         self._buffer = bytearray(remaining)
         lines = head.decode("iso-8859-1").split("\r\n")
         status_line = lines[0].split()
-        if len(status_line) < 2 or status_line[0] != "HTTP/1.1":
+        allowed_versions = ("HTTP/1.0", "HTTP/1.1") if allow_http_10 else ("HTTP/1.1",)
+        if len(status_line) < 2 or status_line[0] not in allowed_versions:
             raise ConnectionFailedError("WebSocket HTTP status line is invalid")
-        headers = {}
+        headers: dict[str, list[str]] = {}
         for line in lines[1:]:
             name, separator, value = line.partition(":")
             name = name.lower()
-            if not separator or name in headers:
+            if not separator:
                 raise ConnectionFailedError("WebSocket HTTP response headers are invalid")
-            headers[name] = value.strip()
+            headers.setdefault(name, []).append(value.strip())
         return int(status_line[1]), headers
 
     def _read_exact(self, length: int) -> bytes | None:
