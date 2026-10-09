@@ -111,6 +111,27 @@ class ApiKeyIssuanceApiError(AmiVoiceError):
         self.response_body: str | None = body
 
 
+class SentimentAnalysisApiError(AmiVoiceError):
+    """感情パラメータ定義APIがエラーや不正な結果を返した場合の例外"""
+
+    def __init__(
+        self, message: str, *, status_code: int | None = None, body: str | None = None, raw_body: bytes | None = None
+    ) -> None:
+        """HTTPステータスと元の本文を保持する
+
+        Args:
+            message (str): 安全な例外メッセージ
+            status_code (int | None): HTTPステータス
+            body (str | None): 表示用のレスポンス本文
+            raw_body (bytes | None): デコード前の本文
+        """
+        super().__init__(message)
+        self.status_code = status_code
+        self.body = body
+        self.raw_body = raw_body
+        self.response_body = body
+
+
 class DictionaryApiError(AmiVoiceError):
     """ユーザー辞書登録 API がエラーを返した場合に送出される例外"""
 

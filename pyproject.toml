@@ -32,7 +32,7 @@ Issues = "https://github.com/advanced-media-inc/amivoice-client-library-python/i
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["amivoice*", "com*"]
+include = ["amivoice*"]
 
 [tool.setuptools.package-data]
 amivoice = ["py.typed"]

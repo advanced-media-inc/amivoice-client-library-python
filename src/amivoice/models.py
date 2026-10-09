@@ -26,9 +26,6 @@ StreamEventType = Literal["partial", "final", "utterance_started", "utterance_en
 """
 
 
-_R_COMMAND_PREFIX = "\x01\x01\x01\x01\x01"
-
-
 @dataclass(frozen=True)
 class Token:
     """単語単位の認識結果。"""
@@ -296,7 +293,7 @@ def parse_result(raw: str, raise_on_error: bool = True) -> RecognitionResult:
     """AmiVoice の生レスポンスを ``RecognitionResult`` に変換する。
 
     Args:
-        raw: Hrp/Wrp ライブラリが返す生のレスポンステキスト。
+        raw (str): AmiVoice APIが返すJSON文字列
         raise_on_error: エラー結果の場合に ``RecognitionError`` を送出するか否か。
 
     Returns:
@@ -306,22 +303,20 @@ def parse_result(raw: str, raise_on_error: bool = True) -> RecognitionResult:
         RecognitionError: JSON のパースに失敗した場合、JSON オブジェクト以外の場合、
             または ``raise_on_error`` が ``True`` のときにエラー結果であった場合。
     """
-    is_error = raw.startswith(_R_COMMAND_PREFIX)
-    parsed_raw = raw[len(_R_COMMAND_PREFIX) :] if is_error else raw
     try:
-        parsed_json = json.loads(parsed_raw)
+        parsed_json = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise RecognitionError(str(exc)) from exc
     if not isinstance(parsed_json, dict):
         raise RecognitionError("Recognition result must be a JSON object")
     data: dict[str, object] = {str(k): v for k, v in parsed_json.items()}
-    # code="" は成功、code="o" はフィラーのみ認識の可能性があるので成功扱い、それ以外はエラー
-    if not is_error:
-        code = data.get("code")
-        if isinstance(code, str) and code not in ("", "o"):
-            is_error = True
+    for field in ("code", "message"):
+        if field in data and not isinstance(data[field], str):
+            raise RecognitionError(f"Recognition result field {field} must be a string")
+    # oも公式には認識失敗であり、HTTP 200を成功判定には使わない
+    is_error = bool(data.get("code") or data.get("message"))
     results = _parse_utterances(data.get("results", []))
-    result = RecognitionResult(raw=parsed_raw, data=data, is_error=is_error, results=results)
+    result = RecognitionResult(raw=raw, data=data, is_error=is_error, results=results)
     if is_error and raise_on_error:
         message_val = data.get("message")
         message = str(message_val if message_val is not None else (data.get("code") or data))

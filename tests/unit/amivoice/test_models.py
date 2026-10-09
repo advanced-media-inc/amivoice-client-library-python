@@ -285,25 +285,19 @@ def test_parse_result_normal_json_valid_return_result() -> None:
     assert result.is_error is False
 
 
-def test_parse_result_r_command_prefix_invalid_raise_RecognitionError() -> None:
-    """R コマンドプレフィックス付き応答を渡すと RecognitionError が送出されることを確認する。"""
-    # Given: R コマンドプレフィックス付きのエラー JSON
-    raw = '\x01\x01\x01\x01\x01{"code": "E001", "message": "bad request"}'
-
-    # When / Then: parse_result を呼び出すと RecognitionError が送出され、result にエラー情報が格納される
-    with pytest.raises(RecognitionError) as exc_info:
+def test_parse_result_legacy_prefix_invalid_raise_RecognitionError() -> None:
+    """APIが返さない旧ライブラリの接頭辞をJSONとして受け付けない"""
+    # Given: 不正なJSON文字列
+    raw = "\x01{}"
+    # When / Then: JSON解析に失敗する
+    with pytest.raises(RecognitionError):
         _parse_result(raw)
-
-    assert exc_info.value.result is not None
-    assert exc_info.value.result.is_error is True
-    assert exc_info.value.result.raw == '{"code": "E001", "message": "bad request"}'
-    assert exc_info.value.result.data == {"code": "E001", "message": "bad request"}
 
 
 def test_parse_result_error_with_message_field_invalid_raise_RecognitionError() -> None:
     """エラー JSON に message フィールドがある場合にそのメッセージで RecognitionError が送出されることを確認する。"""
     # Given: message フィールド付きのエラー JSON
-    raw = '\x01\x01\x01\x01\x01{"code": "E001", "message": "bad request"}'
+    raw = '{"code": "E001", "message": "bad request"}'
 
     # When / Then: parse_result を呼び出すと message フィールドのメッセージで RecognitionError が送出される
     with pytest.raises(RecognitionError, match="bad request"):
@@ -313,7 +307,7 @@ def test_parse_result_error_with_message_field_invalid_raise_RecognitionError() 
 def test_parse_result_error_code_without_message_invalid_raise_RecognitionError() -> None:
     """エラー JSON に message フィールドがない場合に code フィールドで RecognitionError が送出されることを確認する。"""
     # Given: message フィールドなしのエラー JSON
-    raw = '\x01\x01\x01\x01\x01{"code": "E001"}'
+    raw = '{"code": "E001"}'
 
     # When / Then: parse_result を呼び出すと code フィールドのメッセージで RecognitionError が送出される
     with pytest.raises(RecognitionError, match="E001"):
@@ -321,16 +315,13 @@ def test_parse_result_error_code_without_message_invalid_raise_RecognitionError(
 
 
 def test_parse_result_raise_on_error_false_invalid_return_error_result() -> None:
-    """raise_on_error=False の場合にエラー結果がそのまま返ることを確認する。"""
-    # Given: R コマンドプレフィックス付きのエラー JSON
-    raw = '\x01\x01\x01\x01\x01{"error": "bad request"}'
-
-    # When: raise_on_error=False で parse_result を呼び出す
+    """公式のエラーコードを失敗結果として保持する"""
+    # Given: 認識失敗のJSON
+    raw = '{"code":"o","message":"rejected","text":""}'
+    # When: 例外を抑制する
     result = _parse_result(raw, raise_on_error=False)
-
-    # Then: 例外は送出されず is_error=True の結果が返る
-    assert result.raw == '{"error": "bad request"}'
-    assert result.data == {"error": "bad request"}
+    # Then: エラー状態と元の応答を保持する
+    assert result.raw == raw
     assert result.is_error is True
 
 
@@ -382,18 +373,18 @@ def test_parse_result_empty_code_valid_return_is_error_false() -> None:
     assert result.is_error is False
 
 
-def test_parse_result_o_code_valid_return_is_error_false() -> None:
-    """Code フィールドが "o" の場合に is_error が False になることを確認する。"""
+def test_parse_result_o_code_invalid_return_is_error_true() -> None:
+    """Code フィールドが "o" の場合に is_error が True になることを確認する。"""
     # Given: code が "o" の JSON（閾値以下で棄却された認識結果）
     raw = (
         '{"results":[],"text":"","code":"o","message":"recognition result is rejected because confidence is below the threshold"}'
     )
 
     # When: parse_result を呼び出す
-    result = _parse_result(raw)
+    result = _parse_result(raw, raise_on_error=False)
 
-    # Then: is_error が False
-    assert result.is_error is False
+    # Then: is_error が True
+    assert result.is_error is True
 
 
 def test_UtteranceEvent_frozen_field_invalid_raise_FrozenInstanceError() -> None:
