@@ -1,6 +1,7 @@
 """ライブラリ識別子をHTTP・WebSocket・CONNECTで共通に送信する"""
 
 import sys
+from collections.abc import Iterator
 from importlib.metadata import PackageNotFoundError
 from unittest.mock import patch
 
@@ -13,6 +14,20 @@ from amivoice._user_agent import build_client_user_agent
 from amivoice._websocket_connection import WebSocketConnection
 
 _EXPECTED_USER_AGENT = f"amivoice-api-client/1.2.3 Python/{sys.version_info.major}.{sys.version_info.minor}"
+
+
+@pytest.fixture(autouse=True)
+def clear_client_user_agent_cache() -> Iterator[None]:
+    """各テストの前後でUser-Agentのキャッシュを消去する
+
+    Yields:
+        None: キャッシュを分離したテストの実行
+    """
+    build_client_user_agent.cache_clear()
+    try:
+        yield
+    finally:
+        build_client_user_agent.cache_clear()
 
 
 def test_build_client_user_agent_installed_metadata_valid_return_version() -> None:
@@ -34,6 +49,25 @@ def test_build_client_user_agent_missing_metadata_valid_return_fallback() -> Non
         user_agent = build_client_user_agent()
     # Then: 公開の__version__と同じフォールバックを使う
     assert user_agent == f"amivoice-api-client/0.0.0 Python/{sys.version_info.major}.{sys.version_info.minor}"
+
+
+@pytest.mark.parametrize("metadata_missing", [False, True])
+def test_build_client_user_agent_repeated_calls_valid_return_cached_value(metadata_missing: bool) -> None:
+    """正常値とメタデータ欠落時のフォールバックを再利用する"""
+    # Given: インストール済み又はメタデータのない環境
+    expected_version = "0.0.0" if metadata_missing else "1.2.3"
+    with patch(
+        "amivoice._user_agent.version",
+        return_value="1.2.3",
+        side_effect=PackageNotFoundError if metadata_missing else None,
+    ) as metadata_version:
+        # When: HTTPのUser-Agentを繰り返し生成する
+        first_user_agent = build_client_user_agent()
+        second_user_agent = build_client_user_agent()
+    # Then: 同じ識別子を再利用し、配布メタデータを1回だけ問い合わせる
+    assert first_user_agent == f"amivoice-api-client/{expected_version} Python/{sys.version_info.major}.{sys.version_info.minor}"
+    assert second_user_agent == first_user_agent
+    metadata_version.assert_called_once_with("amivoice-api-client")
 
 
 @pytest.mark.parametrize("scheme", ["http", "https"])
