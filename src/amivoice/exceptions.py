@@ -1,6 +1,9 @@
 """AmiVoice クライアントにおける例外クラス。"""
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from .async_models import AsyncJobSnapshot
 
 
 class RecognitionResultLike(Protocol):
@@ -79,6 +82,58 @@ class RecognitionError(AmiVoiceError):
         """
         super().__init__(message)
         self.result: RecognitionResultLike | None = result
+
+
+class AsyncHttpApiError(AmiVoiceError):
+    """非同期HTTPの受付失敗、HTTPエラー、不正応答"""
+
+    def __init__(
+        self, message: str, *, status_code: int | None = None, raw_body: bytes = b"", session_id: str | None = None
+    ) -> None:
+        """安全な表示メッセージと調査用の本文を保持する
+
+        Args:
+            message (str): 認証情報を含めない表示用の説明
+            status_code (int | None): HTTPステータス
+            raw_body (bytes): 元のレスポンス本文、無条件にログへ出力しない
+            session_id (str | None): 取得対象のジョブID
+        """
+        super().__init__(message)
+        self.status_code = status_code
+        self.raw_body = raw_body
+        self.body = raw_body.decode("utf-8", errors="replace")
+        self.response_body = self.body
+        self.session_id = session_id
+
+
+class AsyncJobError(RecognitionError):
+    """ジョブ又は認識が失敗した終端結果"""
+
+    def __init__(self, message: str, snapshot: "AsyncJobSnapshot") -> None:
+        """失敗したジョブ状態を保持する
+
+        Args:
+            message (str): 安全なエラー説明
+            snapshot (AsyncJobSnapshot): 失敗した状態と認識結果
+        """
+        super().__init__(message, result=snapshot)
+        self.snapshot = snapshot
+        self.session_id = snapshot.session_id
+
+
+class AsyncJobTimeoutError(AmiVoiceError, TimeoutError):
+    """クライアントの待機終了、サーバーのジョブはキャンセルしない"""
+
+    def __init__(self, session_id: str, snapshot: "AsyncJobSnapshot | None" = None) -> None:
+        """再開に必要なジョブIDと最後の状態を保持する
+
+        Args:
+            session_id (str): 再開できるジョブID
+            snapshot (AsyncJobSnapshot | None): 最後に取得した状態
+        """
+        super().__init__("Async HTTP job wait timed out; the server job has not been cancelled")
+        self.session_id = session_id
+        self.snapshot = snapshot
 
 
 class ConfigurationError(AmiVoiceError):
