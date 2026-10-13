@@ -527,6 +527,174 @@ for parameter in parameters:
 ```
 
 この API は定義の取得専用で、音声の感情を分析したり、音声認識ジョブを作成したりするものではありません。
+非同期 HTTP クライアント（`AmiVoiceAsyncClient`）では、話者ダイアライゼーションと感情分析の設定はまだ提供していません。
+同期 HTTP・WebSocket の話者ダイアライゼーションは、前述のセグメンター設定で利用できます。
+
+## 非同期HTTP音声認識（v2）
+
+長時間の音声ファイルやバッチ処理には、非同期 HTTP 音声認識 API（v2）を利用します。
+本ライブラリでは、`AmiVoiceAsyncClient`クラスを用いて非同期ジョブを登録・取得・待機します。
+
+なお、クラス名に「Async」を含みますが、Python の`async`/`await`構文を使用するライブラリではありません。通常の同期（ブロッキング）メソッドを提供します。`await`は使用できません。
+
+### 基本的な流れ
+
+非同期 HTTP 認識は、ジョブの登録（`submit()`）、状態取得（`get_job()`）、完了待機（`wait()`）の 3 つの操作で利用します。
+
+```python
+from amivoice import AmiVoiceAsyncClient, Engine
+
+client = AmiVoiceAsyncClient(grammar_file_names=Engine.A_GENERAL)
+
+# 音声のアップロードと受付応答を待つ。認識完了までは待たない。
+submission = client.submit("audio.wav")
+print(f"受付ジョブID: {submission.session_id}")
+
+# 完了までブロックして待機
+snapshot = client.wait(submission.session_id)
+print(f"状態: {snapshot.status}")
+if snapshot.recognition is not None:
+    print(f"認識テキスト: {snapshot.recognition.text}")
+```
+
+### ジョブIDからの再開
+
+ジョブ ID（`submission.session_id`）をデータベースやファイルへ保存しておけば、プロセスの再起動後や別のクライアントインスタンスからでも状態の取得や待機を再開できます。
+取得や待機だけを行う場合、クライアントのコンストラクタで`grammar_file_names`の指定は不要です。
+
+```python
+from amivoice import AmiVoiceAsyncClient
+
+client = AmiVoiceAsyncClient()
+
+# 保存済みのジョブIDから状態と結果を取得
+snapshot = client.get_job("job1")
+
+# 保存済みのジョブIDの完了を待機
+completed_snapshot = client.wait("job1")
+```
+
+### 入力音声の仕様と一時ファイル退避
+
+`submit()`には、ファイルパス（文字列）、`pathlib.Path`、`bytes`、バイナリファイルオブジェクト（ストリーム）を渡せます。
+
+音声データの上限は 2,147,483,647 バイト（約 2 GiB）です。ファイルは分割して読み込みます。
+長さを事前に判定できないストリームは、一時ファイルへ退避してから送信します。
+一時ファイル用に音声サイズ分のディスク容量が必要です。
+
+利用者が渡したストリームは現在位置から読み、ライブラリでは閉じません。
+呼び出し元で寿命を管理してください。
+内部で開いたファイルと一時ファイルは、送信終了時や例外発生時に閉じて回収します。
+
+### 共通設定の継承と解除
+
+コンストラクタの認識設定は`submit()`に引き継がれ、呼び出し単位で上書きできます。
+プロキシ、通信タイムアウト、接続先は`get_job()`と`wait()`でも継承・上書きできます。
+任意の認識設定やプロキシは、`None`を渡すと解除できます。
+通信タイムアウトは非負整数が必要で、`None`による解除には対応しません。
+
+```python
+from amivoice import AmiVoiceAsyncClient, Engine
+
+client = AmiVoiceAsyncClient(
+    grammar_file_names=Engine.A_GENERAL,
+    profile_id=":user01",
+)
+
+# この呼び出しだけプロファイル辞書を使用しない
+job = client.submit("audio.wav", profile_id=None)
+```
+
+### ログ保存なしの設定（logging_opt_out）
+
+非同期 HTTP 音声認識 API（v2）におけるログ保存なしの設定は、同期 HTTP や WebSocket と異なり、接続先 URL のパスを変更する方式ではありません。
+`d`パラメータの`loggingOptOut`へ、`True`または`False`を送信します。
+
+| 設定 | 動作 |
+| --- | --- |
+| `logging_opt_out=True` | 音声ログを保存しない |
+| `logging_opt_out=False` | 音声ログを保存する |
+| 省略または`None` | 値を送信せず、サーバーの既定値（ログ保存あり）に従う |
+
+ライブラリ内部では、非同期 HTTP のエンドポイントとして常に`/v2/recognitions`を使用します。
+
+### ジョブの状態と結果の構造
+
+非同期ジョブの状態（`AsyncJobSnapshot.status`）には以下の 5 つがあります。
+
+1. `queued`: 処理待ち
+2. `started`: 処理開始
+3. `processing`: 処理中
+4. `completed`: 処理完了（終端状態、認識の成否は別途確認）
+5. `error`: ジョブ失敗（終端状態）
+
+`completed`状態でも、音声認識自体の失敗（音声が小さすぎる場合や信頼度拒否など）があり得ます。ジョブ失敗だけでなく認識自体の失敗も含む全体の成否は、`snapshot.is_error`で判定できます。終端状態（`completed`または`error`）に達したかは`snapshot.is_terminal`で判定できます。
+
+認識結果と生データの参照構造は以下のとおりです。
+
+| フィールド | 内容 |
+| --- | --- |
+| `snapshot.recognition` | 完了時の`AsyncRecognitionResult`、処理中やジョブ失敗では`None` |
+| `snapshot.recognition.results` | `tuple[UtteranceResult, ...]`、通常形式では区間内の結果を順番に並べる |
+| `snapshot.recognition.segments` | `tuple[RecognitionResult, ...]`、区間ごとの詳細結果 |
+| `snapshot.recognition.raw` / `data` | 認識結果部分の正規化した JSON 文字列と辞書 |
+| `snapshot.raw` / `data` | 状態取得 API 全体の元の応答文字列と辞書 |
+
+`compatible_with_sync=True`では、`results`にサーバーの集約結果を保持します。
+この形式で区間詳細が返らない場合、`segments`は空のタプルです。
+`snapshot.raw`と`data`には機密情報が含まれ得るため、無条件にログへ出力しないでください。
+
+### 待機制御（wait）とエラーハンドリング
+
+`wait()`メソッドは、ジョブが終端状態になるまでポーリングを行いながら呼び出し元をブロックします。
+
+```python
+from amivoice import AmiVoiceAsyncClient, AsyncJobError, AsyncJobTimeoutError
+
+client = AmiVoiceAsyncClient()
+
+try:
+    snapshot = client.wait("job1", poll_interval=10.0, timeout=300.0)
+except AsyncJobTimeoutError as error:
+    # 待機がタイムアウトした場合（サーバー側のジョブはキャンセルされない）
+    print(f"待機がタイムアウトしました。ジョブID: {error.session_id}")
+    # 同じIDを使って後から再開可能
+except AsyncJobError as error:
+    # ジョブまたは認識処理が失敗した場合（raise_on_error=Trueの既定動作）
+    print(f"ジョブが失敗しました: {error.message}")
+    # error.snapshotで状態を調査できる。詳細本文を無条件にログへ出さない。
+```
+
+`poll_interval`は正の有限数で、単位は秒です。既定値は 10 秒です。
+`timeout`も正の有限数で秒単位ですが、`None`を指定すると無制限になります。
+`0`、負値、`bool`、無限大、`NaN`などの不正値は`ConfigurationError`になります。
+
+待機上限を超えると`AsyncJobTimeoutError`を送出します。サーバーのジョブはキャンセルしません。
+例外の`session_id`と、最後の状態を保持する`snapshot`から取得を再開できます。
+まだ状態を取得できていない場合、`snapshot`は`None`です。
+
+既定の transport は、待機期限にソケット通信を中断します。
+ただし、DNS 名前解決、OS の接続処理、独自 transport など、ソケット中断で止められない処理には待機上限を保証できません。
+`connect_timeout`と`receive_timeout`はミリ秒単位で、`0`は無制限です。
+
+ジョブや認識の失敗は、既定の`raise_on_error=True`で`AsyncJobError`になります。
+`False`では、失敗した終端状態をスナップショットとして返します。
+通信失敗の`ConnectionFailedError`、HTTP エラーや不正応答の`AsyncHttpApiError`は、この設定にかかわらず送出します。
+
+### 通信と運用の注意点
+
+POST の通信が途切れた場合、音声が受理されたか判別できません。
+重複ジョブや二重請求を避けるため、自動再送はしません。GET の自動再試行も行いません。
+`content_id`はデータを紐付ける文字列であり、同じ値の再使用によって重複登録を防ぐことはできません。
+
+結果は処理終了後 7 日間保存されます。存在しない ID や期限切れの結果は HTTP 404 になります。
+ただし、別ユーザーのジョブにアクセスした場合などにも 404 が返るため、期限切れとは断定しません。
+`AsyncHttpApiError.status_code`、`body`、`raw_body`から HTTP 応答を調査できます。
+
+このクライアントでは、話者ダイアライゼーションと感情分析の設定はまだ提供していません。
+`SegmenterProperties`の話者設定は、明示的な`False`も含めて非同期 HTTP では拒否します。
+発話検出と言語識別は利用できます。
+同期 HTTP 用のルール設定、WebSocket 用の途中結果間隔と発話開始待ち設定も対応していません。
 
 ## 使用例CLI
 
@@ -546,9 +714,26 @@ uv run examples/hrp_tester.py audio/test.wav audio/test2.wav \
 # WebSocket・詳細版では送信単位と途中イベントの表示を指定できる
 uv run examples/wrp_tester.py audio/test.wav audio/test2.wav \
   --engine=-a-general --codec 16K --chunk-size 4096 --show-events
+
+# 非同期HTTP・ジョブの登録（アップロードと受付後にジョブIDを表示）
+uv run examples/async_http_tester.py submit audio/test.wav --engine=-a-general
+
+# 非同期HTTP・状態と認識結果の取得
+uv run examples/async_http_tester.py status <session_id>
+
+# 非同期HTTP・ジョブ完了の待機
+uv run examples/async_http_tester.py wait <session_id> --poll-interval 10.0 --timeout 300.0
 ```
 
-`--engine`の値は先頭が`-`のため、`--engine=-a-general`のように`=`で指定する方法を推奨します。既定のエンジンは`-a-general`、音声フォーマットは`16K`です。音声に合った値へ変更してください。
+`--engine`の値は先頭が`-`のため、`--engine=-a-general`のように`=`で指定する方法を推奨します。
+既定のエンジンは`-a-general`です。同期 HTTP・WebSocket CLI の音声フォーマットの既定値は`16K`です。
+非同期 HTTP CLI の`--codec`は省略でき、ヘッダなし音声では明示してください。
+
+非同期 HTTP CLI（`examples/async_http_tester.py`）では、共通引数（`--url`、`--proxy-server-name`、`--connect-timeout`、`--receive-timeout`）をサブコマンド（`submit`、`status`、`wait`）の前に指定します。
+
+```bash
+uv run examples/async_http_tester.py --connect-timeout 10000 --receive-timeout 30000 submit audio/test.wav
+```
 
 ### CLIのオプション
 
@@ -599,6 +784,21 @@ uv run examples/wrp_tester.py audio/test.wav --codec 16K \
 ```bash
 uv run examples/hrp_tester.py --help
 uv run examples/wrp_tester.py --help
+uv run examples/async_http_tester.py --help
+uv run examples/async_http_tester.py submit --help
+uv run examples/async_http_tester.py status --help
+uv run examples/async_http_tester.py wait --help
 ```
 
-終了コードは成功が`0`、認識・通信・ファイル読み込みなどの失敗が`1`です。引数の構文や型が不正な場合は、`argparse`が`2`で終了します。数値の範囲や URL とログ保存設定の組み合わせなど、クライアントが検出する設定エラーは`1`です。
+同期 HTTP と WebSocket の終了コードは成功が`0`、認識・通信・ファイル読み込みなどの失敗が`1`です。
+引数の構文や型が不正な場合は、`argparse`が`2`で終了します。
+数値の範囲や URL とログ保存設定の組み合わせなど、クライアントが検出する設定エラーは`1`です。
+
+非同期 HTTP CLI の終了コードは以下のとおりです。
+
+| 終了コード | 内容 |
+| --- | --- |
+| `0` | 操作成功。`status`では処理中の状態を取得した場合も成功 |
+| `1` | 認識・通信・ジョブ・設定・ファイルなどのエラー |
+| `2` | argparse が検出した引数構文・型のエラー |
+| `3` | `wait()`の待機タイムアウト。サーバーのジョブは継続し、同じ ID で再開できる |
