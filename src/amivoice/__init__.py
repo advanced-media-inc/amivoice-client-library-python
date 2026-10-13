@@ -6,12 +6,17 @@ from ._billing import build_billing_extension
 from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager, StreamSession
 from .api_key import ApiKeyIssuanceClient
+from .async_client import AmiVoiceAsyncClient
+from .async_models import AsyncJobSnapshot, AsyncJobStatus, AsyncJobSubmission, AsyncRecognitionResult
 from .client import AmiVoiceClient, transcribe
 from .constants import Codec, Engine
 from .dictionary import ProfileWord, UserDictionaryClient, build_profile_words
 from .exceptions import (
     AmiVoiceError,
     ApiKeyIssuanceApiError,
+    AsyncHttpApiError,
+    AsyncJobError,
+    AsyncJobTimeoutError,
     AuthenticationError,
     ConfigurationError,
     ConnectionFailedError,
@@ -29,10 +34,18 @@ except PackageNotFoundError:
     __version__ = "0.0.0"
 
 __all__ = [
+    "AmiVoiceAsyncClient",
     "AmiVoiceClient",
     "AmiVoiceError",
     "ApiKeyIssuanceApiError",
     "ApiKeyIssuanceClient",
+    "AsyncHttpApiError",
+    "AsyncJobError",
+    "AsyncJobSnapshot",
+    "AsyncJobStatus",
+    "AsyncJobSubmission",
+    "AsyncJobTimeoutError",
+    "AsyncRecognitionResult",
     "AuthenticationError",
     "Codec",
     "ConfigurationError",

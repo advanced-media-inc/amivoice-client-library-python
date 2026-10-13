@@ -30,7 +30,12 @@ def _optional_string(data: dict[str, object], key: str) -> str | None:
 
 
 def _session_id(value: object) -> str:
-    if not isinstance(value, str) or not value or any(ord(c) <= 32 or ord(c) == 127 for c in value):
+    if (
+        not isinstance(value, str)
+        or not value
+        or value in (".", "..")
+        or any(ord(c) <= 32 or ord(c) == 127 or c in "/\\" for c in value)
+    ):
         raise ValueError("Missing or invalid job ID")
     return value
 
