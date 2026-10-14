@@ -1,5 +1,6 @@
 """AmiVoice クライアントにおける例外クラス。"""
 
+import json
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -104,6 +105,21 @@ class AsyncHttpApiError(AmiVoiceError):
         self.body = raw_body.decode("utf-8", errors="replace")
         self.response_body = self.body
         self.session_id = session_id
+        self.data: dict[str, object] | None = None
+        try:
+            data = json.loads(raw_body.decode("utf-8"))
+            if isinstance(data, dict):
+                self.data = data
+        except (ValueError, RecursionError):
+            pass
+        code = self.data.get("code") if self.data is not None else None
+        api_message = self.data.get("message") if self.data is not None else None
+        self.code = code if isinstance(code, str) else None
+        self.api_message = api_message if isinstance(api_message, str) else None
+
+
+class AsyncHttpAuthenticationError(AsyncHttpApiError, AuthenticationError):
+    """非同期HTTPの認証拒否、HTTP詳細を保持して両方の基底例外で捕捉できる"""
 
 
 class AsyncJobError(RecognitionError):

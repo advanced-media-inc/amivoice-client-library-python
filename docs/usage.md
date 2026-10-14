@@ -689,7 +689,8 @@ POST の通信が途切れた場合、音声が受理されたか判別できま
 
 結果は処理終了後 7 日間保存されます。存在しない ID や期限切れの結果は HTTP 404 になります。
 ただし、別ユーザーのジョブにアクセスした場合などにも 404 が返るため、期限切れとは断定しません。
-`AsyncHttpApiError.status_code`、`body`、`raw_body`から HTTP 応答を調査できます。
+HTTP エラーや不正応答、受付拒否が起きた場合は`AsyncHttpApiError`を送出します。例外の`status_code`、`body`、`raw_body`に加え、JSON オブジェクトの応答であれば`data`（辞書または`None`）、サーバーが返したエラー情報は`code`と`api_message`（文字列または`None`）から取得できます。ライブラリ側で本文を解析するため、利用側での独自の JSON 再解析は不要です。`message`や`str(error)`は機密情報を含まない安全な一般説明を返します。生レスポンスである`body`や`raw_body`、`data`には機密情報が含まれ得るため、無条件にログへ出力しないでください。
+また、認証エラー時は公開例外`AsyncHttpAuthenticationError`を送出します。この例外は`AsyncHttpApiError`と`AuthenticationError`の両方を継承しており、HTTP 401 応答だけでなく、受付時（HTTP 200）の`code="-"`でも発生します。そのため、既存の`AuthenticationError`ハンドラと非同期固有の`AsyncHttpApiError`ハンドラのどちらでも捕捉できます。
 
 このクライアントでは、話者ダイアライゼーションと感情分析の設定はまだ提供していません。
 `SegmenterProperties`の話者設定は、明示的な`False`も含めて非同期 HTTP では拒否します。

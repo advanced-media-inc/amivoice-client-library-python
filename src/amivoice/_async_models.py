@@ -4,7 +4,7 @@ import json
 from typing import cast
 
 from .async_models import AsyncJobSnapshot, AsyncJobStatus, AsyncJobSubmission, AsyncRecognitionResult
-from .exceptions import AsyncHttpApiError, RecognitionError
+from .exceptions import AsyncHttpApiError, AsyncHttpAuthenticationError, RecognitionError
 from .models import parse_result
 
 _STATUSES = frozenset({"queued", "started", "processing", "completed", "error"})
@@ -59,7 +59,10 @@ def parse_submission(body: bytes) -> AsyncJobSubmission:
                 raise ValueError("Job was rejected")
         return AsyncJobSubmission(_session_id(data.get("sessionid")), raw, data)
     except (ValueError, TypeError):
-        raise AsyncHttpApiError("Async HTTP job submission was rejected or invalid", status_code=200, raw_body=body) from None
+        error = AsyncHttpApiError("Async HTTP job submission was rejected or invalid", status_code=200, raw_body=body)
+        if error.code == "-":
+            raise AsyncHttpAuthenticationError(error.message, status_code=200, raw_body=body) from None
+        raise error from None
 
 
 def _recognition(data: dict[str, object], session_id: str) -> AsyncRecognitionResult:

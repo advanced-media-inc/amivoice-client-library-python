@@ -21,7 +21,14 @@ from ._types import AudioSource
 from .async_models import AsyncJobSnapshot, AsyncJobSubmission
 from .constants import Codec
 from .dictionary import ProfileWord
-from .exceptions import AsyncHttpApiError, AsyncJobError, AsyncJobTimeoutError, ConfigurationError, ConnectionFailedError
+from .exceptions import (
+    AsyncHttpApiError,
+    AsyncHttpAuthenticationError,
+    AsyncJobError,
+    AsyncJobTimeoutError,
+    ConfigurationError,
+    ConnectionFailedError,
+)
 
 _DEFAULT_URL = "https://acp-api-async.amivoice.com/v2/recognitions"
 
@@ -265,7 +272,8 @@ class AmiVoiceAsyncClient:
         if deadline is not None and self._clock() >= deadline:
             raise TimeoutError("Job deadline expired")
         if status != 200:
-            raise AsyncHttpApiError(
+            error_type = AsyncHttpAuthenticationError if status == 401 else AsyncHttpApiError
+            raise error_type(
                 f"Async HTTP {method} failed with HTTP {status}", status_code=status, raw_body=response, session_id=session_id
             )
         return response
