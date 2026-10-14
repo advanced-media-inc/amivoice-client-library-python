@@ -136,6 +136,24 @@ class AsyncJobError(RecognitionError):
         self.snapshot = snapshot
         self.session_id = snapshot.session_id
 
+    @property
+    def error_code(self) -> str | None:
+        """スナップショットの原因コードを取得する
+
+        Returns:
+            str | None: 原因コード又はNone
+        """
+        return self.snapshot.error_code
+
+    @property
+    def is_retryable(self) -> bool | None:
+        """スナップショットの再試行の目安を取得する
+
+        Returns:
+            bool | None: 再試行の目安又はNone
+        """
+        return self.snapshot.is_retryable
+
 
 class AsyncJobTimeoutError(AmiVoiceError, TimeoutError):
     """クライアントの待機終了、サーバーのジョブはキャンセルしない"""

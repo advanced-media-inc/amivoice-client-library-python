@@ -681,6 +681,16 @@ except AsyncJobError as error:
 `False`では、失敗した終端状態をスナップショットとして返します。
 通信失敗の`ConnectionFailedError`、HTTP エラーや不正応答の`AsyncHttpApiError`は、この設定にかかわらず送出します。
 
+#### 原因コードと再試行の目安
+
+ジョブ失敗や認識失敗の調査では、`snapshot.error_code`および`AsyncJobError.error_code`で単一の原因コードを参照できます。また、`snapshot.is_retryable`および`AsyncJobError.is_retryable`で再試行を検討する目安を取得できます。`AsyncJobError`のプロパティは、内部の`snapshot`へ処理を委譲します。
+
+ジョブ失敗（`status="error"`）では、サーバーが返した`error_message`から`amineth_code`を抽出します。`error_code="o"`（認識拒否・信頼度拒否など）のときは、`is_retryable`は`False`を返します。その他の 1 文字コードのときは、`is_retryable`は`True`を返します。これは[公式ドキュメント](https://docs.amivoice.com/amivoice-api/manual/async-http-interface)のエラー状態に案内されている「しばらく待ってからの再登録を検討する目安」であり、成功の保証やライブラリによる自動再送ではありません。原因コードが含まれない場合、複数のコードが含まれる場合、1 文字以外のコードなど原因が曖昧な場合は、`error_code`と`is_retryable`はともに`None`を返します。未知の原因に対して再試行可否を断定しません。
+
+ジョブが処理中（`status`が`queued`、`started`、`processing`のいずれか）のときは終端に達していないため、`error_code`と`is_retryable`は常に`None`を返します。
+
+完了後の認識失敗（`status="completed"`かつ`is_error=True`）では、認識結果の`code`が 1 文字の場合に`error_code`として取得できます。信頼度拒否を示す`code="o"`のときは、`is_retryable`は`False`を返します。それ以外の認識失敗コードでは、`is_retryable`は`None`を返します。公式ドキュメントにおけるジョブ`error`状態の再試行案内を、完了後の音声認識エラー全般へ拡張しないためです。
+
 ### 通信と運用の注意点
 
 POST の通信が途切れた場合、音声が受理されたか判別できません。
