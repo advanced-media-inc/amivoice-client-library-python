@@ -308,6 +308,49 @@ class AmiVoiceAsyncClient:
         _communication(params)
         return self._fetch(session_id, self._url(api_url), params)
 
+    def _fetch_with_retries(  # noqa: PLR0913
+        self,
+        session_id: str,
+        url: str,
+        params: RecognitionParams,
+        deadline: float | None,
+        max_retries: int,
+        retry_backoff: float,
+    ) -> AsyncJobSnapshot:
+        """一時的なGET失敗だけを全体期限内で再試行する
+
+        Args:
+            session_id (str): ジョブID
+            url (str): 接続先
+            params (RecognitionParams): 通信設定
+            deadline (float | None): 全体待機期限
+            max_retries (int): 連続失敗時の追加GET上限
+            retry_backoff (float): 初回の待機秒数
+
+        Returns:
+            AsyncJobSnapshot: 正常に取得した状態
+
+        Raises:
+            AsyncHttpApiError: 再試行対象外又は上限到達のHTTPエラー
+            ConnectionFailedError: 再試行上限到達の通信エラー
+            TimeoutError: 全体待機期限を超えた場合
+        """
+        delay = min(retry_backoff, 30.0)
+        for attempt in range(max_retries + 1):
+            if deadline is not None and self._clock() >= deadline:
+                raise TimeoutError("Job deadline expired")
+            try:
+                return self._fetch(session_id, url, params, deadline)
+            except (AsyncHttpApiError, ConnectionFailedError) as error:
+                if isinstance(error, AsyncHttpApiError) and error.status_code not in (429, 500, 502, 503, 504):
+                    raise
+                if attempt == max_retries:
+                    raise
+                remaining = delay if deadline is None else min(delay, max(0, deadline - self._clock()))
+                self._sleep(remaining)
+                delay = min(delay * 2, 30.0)
+        raise AssertionError("Retry loop must return or raise")
+
     def wait(  # noqa: PLR0913
         self,
         session_id: str,
@@ -315,6 +358,8 @@ class AmiVoiceAsyncClient:
         poll_interval: float = 10.0,
         timeout: float | None = None,
         raise_on_error: bool = True,
+        max_retries: int = 3,
+        retry_backoff: float = 1.0,
         api_url: str | _UnsetType = UNSET,
         proxy_server_name: str | None | _UnsetType = UNSET,
         connect_timeout: int | _UnsetType = UNSET,
@@ -327,6 +372,8 @@ class AmiVoiceAsyncClient:
             poll_interval (float): 正のポーリング間隔、秒
             timeout (float | None): 全体の待機上限、秒、Noneのみ無制限
             raise_on_error (bool): ジョブ又は認識失敗を例外にするか
+            max_retries (int): GET連続失敗時の追加試行上限、0で再試行なし
+            retry_backoff (float): GET再試行の初回待機秒数、倍増して最大30秒
             api_url (str | _UnsetType): 接続先の上書き
             proxy_server_name (str | None | _UnsetType): プロキシの上書き
             connect_timeout (int | _UnsetType): 接続待機のミリ秒
@@ -345,6 +392,9 @@ class AmiVoiceAsyncClient:
         duration = None if timeout is None else _seconds(timeout, "timeout")
         if not isinstance(raise_on_error, bool):
             raise ConfigurationError("raise_on_error must be a boolean")
+        if isinstance(max_retries, bool) or not isinstance(max_retries, int) or max_retries < 0:
+            raise ConfigurationError("max_retries must be a non-negative integer")
+        backoff = _seconds(retry_backoff, "retry_backoff")
         params = resolve_recognition_overrides(self._params, locals())
         _communication(params)
         url = self._url(api_url)
@@ -354,7 +404,7 @@ class AmiVoiceAsyncClient:
             if deadline is not None and self._clock() >= deadline:
                 raise AsyncJobTimeoutError(session_id, snapshot)
             try:
-                snapshot = self._fetch(session_id, url, params, deadline)
+                snapshot = self._fetch_with_retries(session_id, url, params, deadline, max_retries, backoff)
             except TimeoutError:
                 raise AsyncJobTimeoutError(session_id, snapshot) from None
             if deadline is not None and self._clock() >= deadline:
