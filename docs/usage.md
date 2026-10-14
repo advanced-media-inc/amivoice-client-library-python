@@ -586,6 +586,33 @@ completed_snapshot = client.wait("job1")
 呼び出し元で寿命を管理してください。
 内部で開いたファイルと一時ファイルは、送信終了時や例外発生時に閉じて回収します。
 
+#### 送信音声の照合
+
+`submit()`は実際に送信した音声チャンクから MD5 チェックサムを計算し、`AsyncJobSubmission`の`audio_size`と`audio_md5`にローカル情報として保持します。
+サーバーから返った受付応答本文（`data`や`raw`）には追加しません。
+なお、ここでの MD5 は転送確認を目的とした値であり、暗号学的な真正性を保証するものではありません。
+
+ジョブ状態を取得した後は、`job.matches_audio(snapshot)`でサーバー側の観測値と照合できます。
+このメソッドは同一のジョブ ID に対してのみ呼び出し可能で、異なるジョブ ID を渡すと`ConfigurationError`を送出します。
+大文字と小文字を区別せずに比較し、サイズと MD5 の両方を比較できて一致した場合は`True`を返します。
+いずれか一方で比較可能な不一致を確認した場合は`False`を返します。
+
+ジョブが`queued`などでサーバー側のメタデータが未到着の場合や、カスタムの transport が音声を最後まで読み切らなかったために MD5 が`None`の場合など、情報が不足しているときは`None`を返します。
+不一致を検出した場合でも、ライブラリ側でジョブの自動再登録やキャンセルは行いません。
+`False`の場合は、元の音声とサーバー応答を確認して原因を調査してください。
+
+```python
+from amivoice import AmiVoiceAsyncClient, Engine
+
+client = AmiVoiceAsyncClient(grammar_file_names=Engine.A_GENERAL)
+job = client.submit("audio.wav")
+snapshot = client.get_job(job.session_id)
+matched = job.matches_audio(snapshot)
+
+if matched is False:
+    print("送信音声の不一致を検出しました。")
+```
+
 ### 共通設定の継承と解除
 
 コンストラクタの認識設定は`submit()`に引き継がれ、呼び出し単位で上書きできます。

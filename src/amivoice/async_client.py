@@ -6,6 +6,7 @@ import math
 import os
 import time
 from collections.abc import Sequence
+from dataclasses import replace
 from urllib.parse import quote
 
 from ._async_audio import AudioUpload, MultipartUpload, validate_async_options
@@ -221,7 +222,7 @@ class AmiVoiceAsyncClient:
             api_url (str | _UnsetType): 今回だけ使用する接続先
 
         Returns:
-            AsyncJobSubmission: 受付済みジョブID、元の応答
+            AsyncJobSubmission: 受付済みジョブID、元の応答、ローカル音声サイズとMD5
 
         Raises:
             ConfigurationError: 認識設定又は音声サイズが不正な場合
@@ -243,7 +244,7 @@ class AmiVoiceAsyncClient:
                 source, params, logging_opt_out=options[0], content_id=options[1], compatible_with_sync=options[2]
             )
             body = self._request("POST", url, upload, params)
-        return parse_submission(body)
+            return replace(parse_submission(body), audio_size=source.size, audio_md5=source.audio_md5)
 
     def _url(self, override: str | _UnsetType) -> str:
         return self._api_url if isinstance(override, _UnsetType) else _endpoint(override)

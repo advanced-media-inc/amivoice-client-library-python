@@ -1,5 +1,6 @@
 """大容量音声を全量コピーせず、長さが既知のmultipartとして送信する"""
 
+import hashlib
 import io
 import os
 import secrets
@@ -64,6 +65,7 @@ class AudioUpload:
         self._resources = ExitStack()
         self._fingerprint: tuple[int, int, int] | None = None
         self.size = 0
+        self.audio_md5: str | None = None
 
     def __enter__(self) -> "AudioUpload":
         """サイズを確定し、所有するリソースを例外時にも閉じる
@@ -144,11 +146,14 @@ class AudioUpload:
         if self._stream is None:
             raise ConfigurationError("Audio upload must be opened before reading")
         remaining = self.size
+        self.audio_md5 = None
+        digest = hashlib.md5(usedforsecurity=False)
         while remaining:
             data = _binary_read(self._stream, min(self._chunk_size, remaining))
             if not data:
                 raise ConfigurationError("Audio source became shorter during upload; submission may have been accepted")
             remaining -= len(data)
+            digest.update(data)
             yield data
         if _binary_read(self._stream, 1):
             raise ConfigurationError("Audio source grew during upload; submission may have been accepted")
@@ -156,6 +161,7 @@ class AudioUpload:
             stat = os.fstat(self._stream.fileno())
             if self._fingerprint != (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns):
                 raise ConfigurationError("Audio file changed during upload; submission may have been accepted")
+        self.audio_md5 = digest.hexdigest()
 
     def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
         """ライブラリが所有するファイルだけを閉じる

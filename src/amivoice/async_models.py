@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from .exceptions import ConfigurationError
 from .models import RecognitionResult
 
 __all__ = ["AsyncJobSnapshot", "AsyncJobStatus", "AsyncJobSubmission", "AsyncRecognitionResult"]
@@ -19,6 +20,33 @@ class AsyncJobSubmission:
     session_id: str
     raw: str
     data: dict[str, object]
+    audio_size: int | None = None
+    audio_md5: str | None = None
+
+    def matches_audio(self, snapshot: "AsyncJobSnapshot") -> bool | None:
+        """受付時の音声サイズとMD5を同じジョブの観測値と照合する
+
+        MD5は転送確認用であり暗号学的な真正性を保証しない
+        値が不足する場合はNone、不一致を確認できた場合はFalseを返す
+
+        Args:
+            snapshot (AsyncJobSnapshot): 同じジョブの状態
+
+        Returns:
+            bool | None: 両方一致ならTrue、不一致ならFalse、未確定ならNone
+
+        Raises:
+            ConfigurationError: ジョブIDが異なる場合
+        """
+        if self.session_id != snapshot.session_id:
+            raise ConfigurationError("Audio verification requires the same job ID")
+        size_known = self.audio_size is not None and snapshot.audio_size is not None
+        md5_known = self.audio_md5 is not None and snapshot.audio_md5 is not None
+        if size_known and self.audio_size != snapshot.audio_size:
+            return False
+        if self.audio_md5 is not None and snapshot.audio_md5 is not None and self.audio_md5.lower() != snapshot.audio_md5.lower():
+            return False
+        return True if size_known and md5_known else None
 
 
 @dataclass(frozen=True)
