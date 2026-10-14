@@ -85,7 +85,7 @@ def test_submit_network_failure_invalid_raise_without_retry() -> None:
     assert "dummy-key" not in str(caught.value) and "proxy-password" not in str(caught.value)
 
 
-@pytest.mark.parametrize("body", [b"not-json", b"\xff", b'{"status":"future","session_id":"job1"}'])
+@pytest.mark.parametrize("body", [b"not-json", b"\xff", b'{"status":"","session_id":"job1"}'])
 def test_wait_raise_disabled_malformed_invalid_raise_AsyncHttpApiError(body: bytes) -> None:
     """raise_on_error=Falseでも壊れた応答は例外"""
     # Given: HTTP200の不正応答

@@ -8,7 +8,8 @@ from .models import RecognitionResult
 
 __all__ = ["AsyncJobSnapshot", "AsyncJobStatus", "AsyncJobSubmission", "AsyncRecognitionResult"]
 
-AsyncJobStatus = Literal["queued", "started", "processing", "completed", "error"]
+# 既知状態を補完しつつ、サービスが今後追加する状態も文字列として保持する
+AsyncJobStatus = Literal["queued", "started", "processing", "completed", "error"] | str
 
 
 @dataclass(frozen=True)

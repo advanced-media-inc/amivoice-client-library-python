@@ -620,17 +620,13 @@ job = client.submit("audio.wav", profile_id=None)
 
 ### ジョブの状態と結果の構造
 
-非同期ジョブの状態（`AsyncJobSnapshot.status`）には以下の 5 つがあります。
+非同期ジョブの状態を表す`AsyncJobSnapshot.status`には、既知の 5 状態があります。処理待ちは`queued`、処理開始は`started`、処理中は`processing`、処理完了は`completed`、ジョブ失敗は`error`です。終端状態に達したかを表す`is_terminal`は、`completed`または`error`のときのみ`True`を返します。これらに加えて、空白や制御文字を含まない非空のラベルであれば、将来追加される未知の状態も文字列として保持します。未知の状態が返ってきた場合、`is_terminal`は`False`になり、`recognition`は`None`のまま扱われます。このとき`wait()`による待機は継続しますが、設定した`timeout`は有効です。応答に含まれる未定義の追加フィールドは、`snapshot.data`や`snapshot.raw`から参照できます。
 
-1. `queued`: 処理待ち
-2. `started`: 処理開始
-3. `processing`: 処理中
-4. `completed`: 処理完了（終端状態、認識の成否は別途確認）
-5. `error`: ジョブ失敗（終端状態）
+ジョブ完了後の認識自体の成否を含む全体の成否は、`snapshot.is_error`で判定できます。将来の応答変更などで空の結果が返った場合も、型が正しい空の`text`や空配列を含む正常な完了結果であれば`AsyncRecognitionResult`として返されます。この場合、認識処理のエラー有無は`code`や`message`に基づく`is_error`で判定し、認識本文が空である点は利用側で確認します。また、失敗を示す`code`や`message`が存在する場合は、`segments`や`results`といった詳細配列が省かれていても認識失敗として扱われます。
 
-`completed`状態でも、音声認識自体の失敗（音声が小さすぎる場合や信頼度拒否など）があり得ます。ジョブ失敗だけでなく認識自体の失敗も含む全体の成否は、`snapshot.is_error`で判定できます。終端状態（`completed`または`error`）に達したかは`snapshot.is_terminal`で判定できます。
+なお、ライブラリはあらゆる未知の形式を無条件に許容するわけではありません。ジョブ ID の不一致や、`completed`時に必須となる`text`、`code`、`message`の欠落・型不正は`AsyncHttpApiError`になります。配列ではない詳細フィールド、平坦形式と入れ子形式が混在する曖昧なエンベロープ、空文字や制御文字を含む不正な`status`も同じ例外を送出します。
 
-認識結果と生データの参照構造は以下のとおりです。
+認識結果と生データの参照構造は以下の表のとおりです。
 
 | フィールド | 内容 |
 | --- | --- |

@@ -1,13 +1,10 @@
 """公式の平坦・resultsオブジェクト・同期互換応答を明示的に解析する"""
 
 import json
-from typing import cast
 
-from .async_models import AsyncJobSnapshot, AsyncJobStatus, AsyncJobSubmission, AsyncRecognitionResult
+from .async_models import AsyncJobSnapshot, AsyncJobSubmission, AsyncRecognitionResult
 from .exceptions import AsyncHttpApiError, AsyncHttpAuthenticationError, RecognitionError
 from .models import parse_result
-
-_STATUSES = frozenset({"queued", "started", "processing", "completed", "error"})
 
 
 def _reject_constant(value: str) -> None:
@@ -86,13 +83,14 @@ def _recognition(data: dict[str, object], session_id: str) -> AsyncRecognitionRe
             ):
                 raise ValueError("Segment requires text and results")
             segments.append(parse_result(json.dumps(segment, ensure_ascii=False), raise_on_error=False))
-    elif not isinstance(payload.get("results"), list):
-        raise ValueError("Completed result requires segments or compatible results")
+    elif "results" in payload:
+        if not isinstance(payload["results"], list):
+            raise ValueError("Compatible results must be an array")
+    elif not (payload["code"] or payload["message"]):
+        raise ValueError("Successful result requires segments or compatible results")
     # parse_resultはresults配列用なので、ネストしたオブジェクトへ直接渡さない
     normalized = parse_result(raw, raise_on_error=False)
     is_error = normalized.is_error or any(segment.is_error for segment in segments)
-    if not is_error and not normalized.text:
-        raise ValueError("Successful recognition contains no text")
     utterances = normalized.results or tuple(utterance for segment in segments for utterance in segment.results)
     return AsyncRecognitionResult(
         raw=raw, data=payload, is_error=is_error, session_id=session_id, results=utterances, segments=tuple(segments)
@@ -117,8 +115,8 @@ def parse_job(body: bytes, session_id: str) -> AsyncJobSnapshot:
         if _session_id(data.get("session_id")) != session_id:
             raise ValueError("Job ID mismatch")
         status = data.get("status")
-        if not isinstance(status, str) or status not in _STATUSES:
-            raise ValueError("Unknown job status")
+        if not isinstance(status, str) or not status or any(ord(char) <= 32 or ord(char) == 127 for char in status):
+            raise ValueError("Job status must be a non-empty label without whitespace or control characters")
         size = data.get("audio_size")
         if size is not None and (isinstance(size, bool) or not isinstance(size, int) or size < 0):
             raise ValueError("audio_size must be a non-negative integer")
@@ -127,7 +125,7 @@ def parse_job(body: bytes, session_id: str) -> AsyncJobSnapshot:
             raise ValueError("Error status requires error_message")
         return AsyncJobSnapshot(
             session_id=session_id,
-            status=cast("AsyncJobStatus", status),
+            status=status,
             raw=raw,
             data=data,
             service_id=_optional_string(data, "service_id"),

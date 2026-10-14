@@ -77,7 +77,7 @@ def test_parse_job_compatible_valid_return_aggregated_results(recognition: dict[
 @pytest.mark.parametrize(
     "data",
     [
-        {"status": "future", "session_id": "job1"},
+        {"status": "", "session_id": "job1"},
         {"status": "queued", "session_id": "wrong"},
         {"status": "error", "session_id": "job1"},
         {"status": "completed", "session_id": "job1"},
@@ -86,7 +86,7 @@ def test_parse_job_compatible_valid_return_aggregated_results(recognition: dict[
     ],
 )
 def test_parse_job_malformed_invalid_raise_AsyncHttpApiError(data: object) -> None:
-    """未知状態と壊れた応答を正常状態に変換しない"""
+    """壊れた必須情報を正常状態に変換しない"""
     # Given: 不正なJSON応答
     body = json.dumps(data).encode()
     # When / Then: 不正応答は詳細付きの例外
