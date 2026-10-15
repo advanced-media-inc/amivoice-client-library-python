@@ -4,8 +4,10 @@ import json
 
 import pytest
 
-from amivoice import AsyncJobError
+from amivoice import AmiVoiceAsyncClient, AsyncJobError, RecognitionSettings
 from amivoice._async_models import parse_job
+
+from .test_async_client import RecordingTransport
 
 
 @pytest.mark.parametrize(
@@ -61,3 +63,22 @@ def test_parse_job_recognition_valid_return_conservative_retry_hint(code: str, r
     # Then: 公式のジョブerrorの再試行案内を全認識エラーへ拡張しない
     assert snapshot.error_code == (code or None)
     assert snapshot.is_retryable is retryable
+
+
+@pytest.mark.parametrize("recognition_failure", [False, True])
+def test_diarization_failed_job_valid_return_snapshot_or_raise(recognition_failure: bool) -> None:
+    """有効時も状態取得・例外化・例外抑制の既存経路を維持する"""
+    # Given: ジョブ失敗と認識拒否の合成応答、音声長固有のエラーとは断定しない
+    response = {"session_id": "job1", "status": "error", "error_message": "unclassified failure"}
+    if recognition_failure:
+        response = {"session_id": "job1", "status": "completed", "code": "o", "message": "rejected", "text": ""}
+    transport = RecordingTransport([response, response, response])
+    client = AmiVoiceAsyncClient(api_key="dummy", transport=transport, settings=RecognitionSettings(speaker_diarization=True))
+    # When: 観測・既定の待機・例外抑制を順に実行する
+    snapshot = client.get_job("job1")
+    with pytest.raises(AsyncJobError) as caught:
+        client.wait("job1")
+    observed = client.wait("job1", raise_on_error=False)
+    # Then: エラースナップショットをそのまま提供する
+    assert snapshot.is_error and observed.is_error and caught.value.snapshot.is_error
+    assert snapshot.data == observed.data == caught.value.snapshot.data == response
