@@ -55,7 +55,7 @@ def parse_submission(body: bytes) -> AsyncJobSubmission:
             if _optional_string(data, key):
                 raise ValueError("Job was rejected")
         return AsyncJobSubmission(_session_id(data.get("sessionid")), raw, data)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):
         error = AsyncHttpApiError("Async HTTP job submission was rejected or invalid", status_code=200, raw_body=body)
         if error.code == "-":
             raise AsyncHttpAuthenticationError(error.message, status_code=200, raw_body=body) from None
@@ -135,7 +135,7 @@ def parse_job(body: bytes, session_id: str) -> AsyncJobSnapshot:
             error_message=error,
             recognition=_recognition(data, session_id) if status == "completed" else None,
         )
-    except (ValueError, TypeError, RecognitionError, OverflowError):
+    except (ValueError, TypeError, RecognitionError, OverflowError, RecursionError):
         raise AsyncHttpApiError(
             "Async HTTP returned an invalid job response", status_code=200, raw_body=body, session_id=session_id
         ) from None

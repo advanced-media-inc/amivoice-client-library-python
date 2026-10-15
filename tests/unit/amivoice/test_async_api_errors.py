@@ -1,6 +1,7 @@
 """非同期HTTPの構造化エラーと安全な表示を検証する"""
 
 import json
+from unittest.mock import Mock
 
 import pytest
 
@@ -53,6 +54,34 @@ def test_request_authentication_invalid_raise_both_error_types(operation: str) -
     # Then: 既存の捕捉方法とHTTP詳細を維持する
     assert isinstance(caught.value, AsyncHttpApiError)
     assert caught.value.status_code == 401
+    assert len(transport.calls) == 1
+
+
+@pytest.mark.parametrize("operation", ["submit", "get_job", "wait"])
+def test_request_json_recursion_error_invalid_raise_AsyncHttpApiError(operation: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """JSONデコーダーの再帰エラーでも公開例外と元の本文を保持する"""
+    # Given: 正常な応答でも再帰エラーを発生させるJSONデコーダー
+    data = {"sessionid": "job1"} if operation == "submit" else {"session_id": "job1", "status": "queued"}
+    body = json.dumps({**data, "extra": "sensitive"}).encode()
+    # ネスト深度での再帰エラー発生はPythonのバージョンやビルドに依存する
+    monkeypatch.setattr(json, "loads", Mock(side_effect=RecursionError("sensitive decoder detail")))
+    transport = RecordingTransport([(200, body)])
+    client = AmiVoiceAsyncClient(
+        api_key="dummy", settings=RecognitionSettings(grammar_file_names="-a-general"), transport=transport
+    )
+    # When: 受付又は状態取得の応答を解析する
+    with pytest.raises(AsyncHttpApiError) as caught:
+        if operation == "wait":
+            client.wait("job1", raise_on_error=False)
+        else:
+            getattr(client, operation)(b"audio" if operation == "submit" else "job1")
+    # Then: RecursionErrorを漏らさず、再試行や生本文のログ出力を行わない
+    error = caught.value
+    assert error.status_code == 200
+    assert error.raw_body == body
+    assert error.data is None
+    assert error.session_id == (None if operation == "submit" else "job1")
+    assert "sensitive" not in str(error)
     assert len(transport.calls) == 1
 
 

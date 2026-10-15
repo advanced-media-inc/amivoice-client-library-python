@@ -1,6 +1,8 @@
 """非同期HTTPのCLIを外部APIなしで検証する"""
 
+import json
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -44,3 +46,34 @@ def test_async_example_public_client_valid_return_result(
     assert result == 0
     output = capsys.readouterr().out
     assert ("job1" if operation == "submit" else "queued" if operation == "status" else "認識") in output
+
+
+@pytest.mark.parametrize("operation", ["submit", "status", "wait"])
+@pytest.mark.parametrize("recursion_error", [False, True])
+def test_async_example_json_decoding_invalid_return_error(
+    operation: str, recursion_error: bool, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """深い不正JSONとデコーダーの再帰エラーを安全に表示する"""
+    # Given: 深い不正JSONまたは正常な応答で再帰エラーを発生させるデコーダー
+    monkeypatch.setenv("AMIVOICE_API_KEY", "dummy")
+    if recursion_error:
+        data = {"sessionid": "job1"} if operation == "submit" else queued()
+        body = json.dumps({**data, "extra": "sensitive"}).encode()
+        monkeypatch.setattr(json, "loads", Mock(side_effect=RecursionError("sensitive decoder detail")))
+    else:
+        depth = 100_000
+        body = b'{"extra":' + b"[" * depth + b'"sensitive"' + b"]" * depth + b"}"
+    transport = RecordingTransport([(200, body)])
+    monkeypatch.setattr(
+        async_http_tester, "AmiVoiceAsyncClient", lambda **settings: AmiVoiceAsyncClient(**settings, transport=transport)
+    )
+    path = tmp_path / "audio.wav"
+    path.write_bytes(b"audio")
+    # When: 各サブコマンドを実行する
+    result = async_http_tester.main([operation, str(path) if operation == "submit" else "job1"])
+    # Then: 生本文やトレースバックを出さず終了コード1を返す
+    output = capsys.readouterr()
+    assert result == 1
+    assert "Async HTTP failed:" in output.err
+    assert "sensitive" not in output.err and "Traceback" not in output.err
+    assert output.out == ""
