@@ -27,8 +27,13 @@ DOCUMENTATION_EXAMPLES = [
 class _IgnoreDocumentationOutput(doctest.OutputChecker):
     """実行時エラーだけを検証し、認識内容や表示順は固定しない"""
 
+    def __init__(self) -> None:
+        """ドキュメント例の分岐確認に使う実行結果を保持する"""
+        self.outputs: list[str] = []
+
     def check_output(self, want: str, got: str, optionflags: int) -> bool:
-        """内容の一致は別の公開APIテストへ委ねる"""
+        """内容の一致は別の公開APIテストへ委ね、表示結果だけ記録する"""
+        self.outputs.append(got)
         return True
 
 
@@ -96,14 +101,28 @@ def test_documentation_python_example_public_api_valid_return_without_network(
             "session_id": session_id,
             "status": "completed",
             **recognition,
-            "segments": [{"text": "recognized", "results": [{"text": "recognized", "tokens": []}]}],
+            "segments": [
+                {
+                    "text": "recognized",
+                    "results": [
+                        {
+                            "text": "recognized",
+                            "tokens": [
+                                {"written": "recognized", "label": "speaker0", "starttime": 0, "endtime": 100},
+                                {"written": "unlabeled"},
+                            ],
+                        }
+                    ],
+                }
+            ],
         }
         return 200, json.dumps(data).encode("utf-8")
 
     monkeypatch.setattr(HttpApiConnection, "request", api_response)
     monkeypatch.setattr(AsyncHttpConnection, "request", async_response)
     # When: Python例を個別の名前空間で最後まで実行する
-    runner = doctest.DocTestRunner(checker=_IgnoreDocumentationOutput())
+    checker = _IgnoreDocumentationOutput()
+    runner = doctest.DocTestRunner(checker=checker)
     example = doctest.DocTest(
         [doctest.Example("if True:\n" + indent(code, "    "), "")],
         {"__name__": "documentation_example"},
@@ -112,6 +131,13 @@ def test_documentation_python_example_public_api_valid_return_without_network(
         0,
         None,
     )
-    result = runner.run(example)
+    result = runner.run(example, clear_globs=False)
     # Then: 全通信がフェイクで完了し、元のAPIキーは使われない
     assert result.failed == 0
+    if 'speaker = token.label if token.label is not None else "ラベルなし"' in code:
+        # ラベルあり/なしと時刻あり/なしの両分岐を最後まで実行したことも確認する
+        assert example.globs["speaker"] == "ラベルなし"
+        assert example.globs["timing"] == "時刻なし"
+        output = "".join(checker.outputs)
+        assert "[speaker0] recognized (0ms - 100ms)" in output
+        assert "[ラベルなし] unlabeled (時刻なし)" in output
