@@ -2,13 +2,14 @@
 
 import http.client
 import ipaddress
+import logging
 import math
 import os
 import time
 from dataclasses import replace
 from urllib.parse import quote
 
-from ._async_audio import AudioUpload, MultipartUpload, validate_async_options
+from ._async_audio import AudioUpload, MultipartUpload, _AsyncRecognitionOptions, validate_async_options
 from ._async_http_transport import AsyncHttpConnection, AsyncHttpTransport
 from ._async_models import parse_job, parse_submission
 from ._connection_settings import parse_http_proxy, parse_service_url
@@ -29,6 +30,7 @@ from .exceptions import (
 from .settings import USE_CLIENT_DEFAULT, RecognitionSettings, UseClientDefault
 
 _DEFAULT_URL = "https://acp-api-async.amivoice.com/v2/recognitions"
+_logger = logging.getLogger(__name__)
 
 
 def _endpoint(url: str) -> str:
@@ -114,13 +116,20 @@ class AmiVoiceAsyncClient:
         self._sleep = time.sleep
 
     @staticmethod
-    def _options(settings: RecognitionSettings) -> tuple[bool | None, str | None, bool | None]:
-        options = (
-            None if settings.logging_opt_out is USE_CLIENT_DEFAULT else settings.logging_opt_out,
-            None if settings.content_id is USE_CLIENT_DEFAULT else settings.content_id,
-            None if settings.compatible_with_sync is USE_CLIENT_DEFAULT else settings.compatible_with_sync,
+    def _options(settings: RecognitionSettings) -> _AsyncRecognitionOptions:
+        options = _AsyncRecognitionOptions(
+            logging_opt_out=None if settings.logging_opt_out is USE_CLIENT_DEFAULT else settings.logging_opt_out,
+            content_id=None if settings.content_id is USE_CLIENT_DEFAULT else settings.content_id,
+            compatible_with_sync=None if settings.compatible_with_sync is USE_CLIENT_DEFAULT else settings.compatible_with_sync,
+            speaker_diarization=None if settings.speaker_diarization is USE_CLIENT_DEFAULT else settings.speaker_diarization,
+            diarization_min_speaker=None
+            if settings.diarization_min_speaker is USE_CLIENT_DEFAULT
+            else settings.diarization_min_speaker,
+            diarization_max_speaker=None
+            if settings.diarization_max_speaker is USE_CLIENT_DEFAULT
+            else settings.diarization_max_speaker,
         )
-        validate_async_options(*options)
+        validate_async_options(options)
         return options
 
     def submit(  # noqa: PLR0913
@@ -160,10 +169,15 @@ class AmiVoiceAsyncClient:
         _communication(params)
         url = self._url(api_url)
         options = self._options(configured)
-        with AudioUpload(audio) as source:
-            upload = MultipartUpload(
-                source, params, logging_opt_out=options[0], content_id=options[1], compatible_with_sync=options[2]
+        if options.speaker_diarization is not True and (
+            options.diarization_min_speaker is not None or options.diarization_max_speaker is not None
+        ):
+            _logger.warning(
+                "Speaker diarization is disabled; diarization_min_speaker / diarization_max_speaker are ignored by the server. "
+                "Set speaker_diarization=True to enable it."
             )
+        with AudioUpload(audio) as source:
+            upload = MultipartUpload(source, params, options=options)
             body = self._request("POST", url, upload, params)
             return replace(parse_submission(body), audio_size=source.size, audio_md5=source.audio_md5)
 
