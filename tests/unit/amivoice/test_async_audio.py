@@ -1,11 +1,12 @@
 """大容量音声の読み込みとmultipart本文の境界を検証する"""
 
+import hashlib
 import io
 from pathlib import Path
 
 import pytest
 
-from amivoice._async_audio import AudioUpload, MultipartUpload
+from amivoice._async_audio import AudioUpload, MultipartUpload, _AsyncRecognitionOptions, validate_async_options
 from amivoice._params import RecognitionParams
 from amivoice.exceptions import ConfigurationError
 
@@ -130,7 +131,11 @@ def test_multipart_fields_valid_return_length_and_logging_parameter() -> None:
     # Given: 日本語と明示Falseを含む設定
     params = RecognitionParams(grammar_file_names="-a-general", codec="LSB16K", profile_words="テスト てすと")
     with AudioUpload(b"audio") as audio:
-        upload = MultipartUpload(audio, params, logging_opt_out=False, content_id="日本 語", compatible_with_sync=True)
+        upload = MultipartUpload(
+            audio,
+            params,
+            options=_AsyncRecognitionOptions(logging_opt_out=False, content_id="日本 語", compatible_with_sync=True),
+        )
         # When: 分割本文を取り出す
         body = b"".join(upload.chunks())
         # Then: 上限は音声サイズ、長さは全multipartである
@@ -148,5 +153,64 @@ def test_multipart_segmenter_invalid_raise_ConfigurationError(properties: str) -
     # Given: 非同期非対応のセグメンター設定
     params = RecognitionParams(grammar_file_names="-a-general", segmenter_properties=properties)
     # When / Then: 本文生成前に拒否する
-    with AudioUpload(b"audio") as audio, pytest.raises(ConfigurationError):
+    with AudioUpload(b"audio") as audio, pytest.raises(ConfigurationError) as caught:
         MultipartUpload(audio, params)
+    assert "RecognitionSettings(speaker_diarization=True)" in str(caught.value)
+    assert "synchronous HTTP / WebSocket" in str(caught.value)
+
+
+@pytest.mark.parametrize("enabled", [True, False, None])
+def test_multipart_diarization_valid_return_exact_domain_and_md5(enabled: bool | None, caplog: pytest.LogCaptureFixture) -> None:
+    """新設定を正確に直列化しURLエンコード・長さ・末尾音声・MD5を維持する"""
+    # Given: 日本語のユーザーIDと人数の境界値
+    options = _AsyncRecognitionOptions(
+        content_id="日本 語", speaker_diarization=enabled, diarization_min_speaker=1, diarization_max_speaker=20
+    )
+    params = RecognitionParams(grammar_file_names="-a-general")
+    with AudioUpload(b"audio", chunk_size=2) as audio:
+        validate_async_options(options)
+        upload = MultipartUpload(audio, params, options=options)
+        # When: 音声をチャンク送信する
+        body = b"".join(upload.chunks())
+        # Then: dの文字列全体とMD5が期待通りで警告は発行しない
+        domain = b"grammarFileNames=-a-general contentId=%E6%97%A5%E6%9C%AC%20%E8%AA%9E"
+        if enabled is not None:
+            domain += f" speakerDiarization={enabled}".encode()
+        domain += b" diarizationMinSpeaker=1 diarizationMaxSpeaker=20"
+        assert body.split(b"\r\n\r\n", 1)[1].split(b"\r\n", 1)[0] == domain
+        assert len(body) == upload.content_length
+        assert body.endswith(b"audio\r\n--" + upload.boundary.encode() + b"--\r\n")
+        assert audio.audio_md5 == hashlib.md5(b"audio", usedforsecurity=False).hexdigest()
+        assert not caplog.records
+
+
+def test_multipart_unset_options_valid_return_omitted_domain() -> None:
+    """Noneの専用設定は一切送信しない"""
+    # Given: 非同期固有設定を指定しない
+    with AudioUpload(b"audio") as audio:
+        # When: 既定optionsで本文を生成する
+        upload = MultipartUpload(audio, RecognitionParams(grammar_file_names="-a-general"))
+        # Then: dにはエンジンだけを含める
+        assert b"".join(upload.chunks()).split(b"\r\n\r\n", 1)[1].split(b"\r\n", 1)[0] == b"grammarFileNames=-a-general"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("speaker_diarization", 1),
+        ("diarization_min_speaker", True),
+        ("diarization_max_speaker", 21),
+        ("logging_opt_out", 1),
+        ("compatible_with_sync", "True"),
+        ("content_id", "bad\n"),
+    ],
+)
+def test_multipart_invalid_options_invalid_raise_defensively(field: str, value: object) -> None:
+    """内部直接呼び出しでも設定検証を省略しない"""
+    # Given: 不正な解決済み設定
+    options = _AsyncRecognitionOptions(**{field: value})
+    # When / Then: 純粋関数とmultipartの双方でフィールド名付きエラー
+    with pytest.raises(ConfigurationError, match=field):
+        validate_async_options(options)
+    with AudioUpload(b"audio") as audio, pytest.raises(ConfigurationError, match=field):
+        MultipartUpload(audio, RecognitionParams(grammar_file_names="-a-general"), options=options)

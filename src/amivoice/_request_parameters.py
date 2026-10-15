@@ -107,7 +107,12 @@ def _request_values(params: RecognitionParams, interface: str) -> list[tuple[str
             raise ConfigurationError("Recognition parameter is not supported by async HTTP")
         for property_value in (params.segmenter_properties or "").split():
             if property_value.partition("=")[0] in ("useDiarizer", "diarizerAlpha", "diarizerTransitionBias"):
-                raise ConfigurationError("Segmenter diarization is not supported by async HTTP")
+                raise ConfigurationError(
+                    "SegmenterProperties speaker_diarization / diarizer_alpha / diarizer_transition_bias "
+                    "(useDiarizer / diarizerAlpha / diarizerTransitionBias) are exclusive to synchronous HTTP / WebSocket. "
+                    "For async HTTP, use RecognitionSettings(speaker_diarization=True); "
+                    "add diarization_min_speaker / diarization_max_speaker to constrain the speaker count."
+                )
         # v2のaudioFilterPropertiesを含み、HTTP共通項目だけを再利用する
         interface = "http"
     values = []
