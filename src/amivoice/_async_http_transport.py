@@ -29,6 +29,41 @@ def _interrupt(sock: socket.socket) -> None:
         sock.shutdown(socket.SHUT_RDWR)
 
 
+class _ConnectionDeadline:
+    """TCP接続直後からCONNECT・TLS・送受信に同じ絶対期限を適用する"""
+
+    def __init__(self, connection: http.client.HTTPConnection, deadline: float | None) -> None:
+        self._deadline = deadline
+        self._create_connection = connection._create_connection
+        self._socket: socket.socket | None = None
+        self._timer: Timer | None = None
+        if deadline is not None:
+            # HTTPConnectionの接続生成フックで、CONNECT応答の読み取りより前に監視する
+            connection._create_connection = self._connect
+
+    def _connect(self, address: tuple[str, int], timeout: float | None, source_address: tuple[str, int] | None) -> socket.socket:
+        sock = self._create_connection(address, timeout, source_address)
+        try:
+            remaining = _timeout(0, self._deadline)
+            # TLSによるsocketの置き換え後も同じTCP接続をshutdownできるよう複製する
+            self._socket = sock.dup()
+            self._timer = Timer(remaining, _interrupt, args=(self._socket,))
+            self._timer.daemon = True
+            self._timer.start()
+            return sock
+        except BaseException:
+            sock.close()
+            raise
+
+    def close(self) -> None:
+        """監視スレッドを終了して監視用ソケットだけを閉じる"""
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer.join()
+        if self._socket is not None:
+            self._socket.close()
+
+
 class AsyncHttpTransport(Protocol):
     """テスト注入用のPOST・GET通信、deadlineはmonotonicの絶対時刻"""
 
@@ -114,16 +149,11 @@ class AsyncHttpConnection:
             TimeoutError: 締め切りを過ぎた場合
         """
         connection, target, request_headers = self._connection(url, headers, params, deadline)
-        timer = None
+        guard = _ConnectionDeadline(connection, deadline)
         try:
             connection.connect()
             if connection.sock is not None:
                 connection.sock.settimeout(_timeout(params.receive_timeout, deadline))
-                if deadline is not None:
-                    # ゆっくり到着するHTTPヘッダやチャンクでも全体の待機を延ばさない
-                    timer = Timer(max(0, deadline - time.monotonic()), _interrupt, args=(connection.sock,))
-                    timer.daemon = True
-                    timer.start()
             connection.putrequest(method, target, skip_accept_encoding=True)
             if body is not None:
                 request_headers["Content-Length"] = str(body.content_length)
@@ -146,7 +176,5 @@ class AsyncHttpConnection:
                 raise TimeoutError("Async HTTP wait deadline expired") from None
             raise ConnectionFailedError("Async HTTP connection failed") from None
         finally:
-            if timer is not None:
-                timer.cancel()
-                timer.join()
+            guard.close()
             connection.close()
