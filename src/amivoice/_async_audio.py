@@ -95,6 +95,13 @@ class AudioUpload:
             self._fingerprint = (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
         elif callable(getattr(source, "read", None)):
             self._stream = source
+            try:
+                stat = os.fstat(source.fileno())
+            except (AttributeError, OSError, ValueError):
+                # BytesIOや独自ストリームにはファイル記述子がない
+                pass
+            else:
+                self._fingerprint = (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
         else:
             raise ConfigurationError("Audio source must be bytes, a file path or a binary stream")
         stream = self._stream

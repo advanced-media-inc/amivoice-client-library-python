@@ -72,19 +72,24 @@ def test_audio_spool_failure_invalid_return_closed_temporary(monkeypatch: pytest
     assert temporary.closed
 
 
-def test_audio_same_size_modified_invalid_raise_ConfigurationError(tmp_path: Path) -> None:
+@pytest.mark.parametrize("source_kind", ["path", "stream"])
+def test_audio_same_size_modified_invalid_raise_ConfigurationError(tmp_path: Path, source_kind: str) -> None:
     """同じ長さのファイル変更を時刻情報で検出する"""
     # Given: 測定後に書き換える音声
     path = tmp_path / "audio.wav"
     path.write_bytes(b"before")
-    with AudioUpload(path, chunk_size=2) as audio:
-        chunks = audio.chunks()
-        next(chunks)
-        # When: 同じサイズの音声に書き換える
-        path.write_bytes(b"after!")
-        # ファイルシステムの時刻分解能に依存せず、観測可能な変更時刻を設定する
-        stat = path.stat()
-        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
-        # Then: 全体を送った後も変更を通知
-        with pytest.raises(ConfigurationError):
-            list(chunks)
+    with path.open("rb") as stream:
+        source = path if source_kind == "path" else stream
+        with AudioUpload(source, chunk_size=2) as audio:
+            chunks = audio.chunks()
+            next(chunks)
+            # When: 同じサイズの音声に書き換える
+            path.write_bytes(b"after!")
+            # ファイルシステムの時刻分解能に依存せず、観測可能な変更時刻を設定する
+            stat = path.stat()
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+            # Then: 全体を送った後も変更を通知し、未完了のMD5を公開しない
+            with pytest.raises(ConfigurationError, match="changed during upload"):
+                list(chunks)
+            assert audio.audio_md5 is None
+        assert not stream.closed
