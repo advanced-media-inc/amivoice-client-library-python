@@ -77,7 +77,13 @@ def run_package_smoke_test(distribution_name: str, expected_version: str) -> Non
     if not callable(client.transcribe) or not callable(client.stream):
         raise PackageSmokeTestError("AmiVoiceClient public methods are not callable")
     async_client = amivoice.AmiVoiceAsyncClient(
-        settings=RecognitionSettings(grammar_file_names=amivoice.Engine.A_GENERAL), api_key="package-smoke-test"
+        settings=RecognitionSettings(
+            grammar_file_names=amivoice.Engine.A_GENERAL,
+            speaker_diarization=True,
+            diarization_min_speaker=1,
+            diarization_max_speaker=1,
+        ),
+        api_key="package-smoke-test",
     )
     if any(not callable(getattr(async_client, name, None)) for name in ("submit", "get_job", "wait")):
         raise PackageSmokeTestError("AmiVoiceAsyncClient public methods are not callable")
