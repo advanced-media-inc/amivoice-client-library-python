@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from amivoice import AmiVoiceAsyncClient
+from amivoice import AmiVoiceAsyncClient, AsyncJobTimeoutError
 from examples import async_http_tester
 
 from .amivoice.test_async_client import RecordingTransport, completed, queued
@@ -77,3 +77,70 @@ def test_async_example_json_decoding_invalid_return_error(
     assert "Async HTTP failed:" in output.err
     assert "sensitive" not in output.err and "Traceback" not in output.err
     assert output.out == ""
+
+
+@pytest.mark.parametrize("flag", ["--speaker-diarization", "--no-speaker-diarization", None])
+def test_async_example_diarization_valid_return_settings_and_wire(
+    flag: str | None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """CLIから新設定の指定・否定・未指定をRecognitionSettingsへ渡す"""
+    # Given: フェイクの通信処理と音声ファイル
+    monkeypatch.setenv("AMIVOICE_API_KEY", "dummy")
+    transport = RecordingTransport([{"sessionid": "job1", "text": "..."}])
+    monkeypatch.setattr(
+        async_http_tester, "AmiVoiceAsyncClient", lambda **kwargs: AmiVoiceAsyncClient(**kwargs, transport=transport)
+    )
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"audio")
+    arguments = ["submit", str(audio)]
+    if flag is not None:
+        arguments.extend([flag, "--diarization-min-speaker", "1", "--diarization-max-speaker", "20"])
+    # When: CLIを実行する
+    assert async_http_tester.main(arguments) == 0
+    # Then: True/Falseを大文字始まりで送信し、未指定は送信しない
+    body = transport.calls[0][3]
+    if flag is None:
+        assert all(key not in body for key in (b"speakerDiarization", b"diarizationMinSpeaker", b"diarizationMaxSpeaker"))
+    else:
+        enabled = flag == "--speaker-diarization"
+        assert f"speakerDiarization={enabled}".encode() in body
+        assert b"diarizationMinSpeaker=1" in body and b"diarizationMaxSpeaker=20" in body
+
+
+@pytest.mark.parametrize("arguments", [["submit", "audio.wav", "--diarization-min-speaker", "bad"], ["unknown"]])
+def test_async_example_syntax_invalid_raise_exit_two(arguments: list[str]) -> None:
+    """構文エラーの終了コード2を維持する"""
+    # Given: argparseで解析できない指定
+    # When / Then: キー確認や通信より前に終了する
+    with pytest.raises(SystemExit) as caught:
+        async_http_tester.main(arguments)
+    assert caught.value.code == 2
+
+
+def test_async_example_invalid_count_invalid_return_exit_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    """設定エラーは音声読込・通信より前に終了コード1を返す"""
+    # Given: 不正な話者数
+    monkeypatch.setenv("AMIVOICE_API_KEY", "dummy")
+    transport = RecordingTransport([])
+    monkeypatch.setattr(
+        async_http_tester, "AmiVoiceAsyncClient", lambda **kwargs: AmiVoiceAsyncClient(**kwargs, transport=transport)
+    )
+    # When: 整数だが範囲外の値でsubmitする
+    result = async_http_tester.main(["submit", "does-not-exist.wav", "--speaker-diarization", "--diarization-min-speaker", "21"])
+    # Then: 従来のエラー終了コードを維持する
+    assert result == 1 and not transport.calls
+
+
+def test_async_example_timeout_edge_return_exit_three(monkeypatch: pytest.MonkeyPatch) -> None:
+    """待機上限の終了コード3を維持する"""
+
+    # Given: 全体の待機上限を迎えたクライアント
+    def timeout_wait(self: AmiVoiceAsyncClient, session_id: str, **kwargs: object) -> None:
+        raise AsyncJobTimeoutError(session_id, None)
+
+    monkeypatch.setenv("AMIVOICE_API_KEY", "dummy")
+    monkeypatch.setattr(AmiVoiceAsyncClient, "wait", timeout_wait)
+    # When: 保存済みIDの完了を待機する
+    result = async_http_tester.main(["wait", "job1", "--timeout", "1"])
+    # Then: キャンセルせず同じ終了コードを返す
+    assert result == 3
