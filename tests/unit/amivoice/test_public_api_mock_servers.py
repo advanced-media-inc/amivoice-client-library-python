@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from amivoice import AmiVoiceClient
+from amivoice import AmiVoiceClient, RecognitionSettings
 from amivoice.exceptions import RecognitionError
 
 from .recognition_mock_servers import RecordedHttpServer, RecordedWebSocketServer
@@ -20,14 +20,15 @@ def test_transcribe_local_chunked_recording_valid_return_full_response(recorded_
     with RecordedHttpServer(json.dumps(body, ensure_ascii=False).encode()) as server:
         client = AmiVoiceClient(
             api_key="dummy",
-            grammar_file_names="-a-general",
-            codec="LSB16K",
+            settings=RecognitionSettings(grammar_file_names="-a-general", codec="LSB16K"),
             http_api_url=server.url,
             connect_timeout=1000,
             receive_timeout=2000,
         )
         # When: モック通信処理を注入せず、公開APIで認識する
-        result = client.transcribe(audio, profile_words="テスト とりぷるだぶりゅー", raise_on_error=False)
+        result = client.transcribe(
+            audio, settings=RecognitionSettings(profile_words="テスト とりぷるだぶりゅー"), raise_on_error=False
+        )
     # Then: チャンクを正しく結合し、成功判定と認証情報の置き場所を守る
     assert result.data == body
     assert result.is_error == bool(body["code"])
@@ -50,7 +51,12 @@ def test_transcribe_local_http_200_rejection_invalid_raise_RecognitionError(
     # Given: HTTPステータスは200で、本文が認識失敗のサーバー
     body = recorded_responses["http"][name]
     with RecordedHttpServer(json.dumps(body).encode()) as server:
-        client = AmiVoiceClient(api_key="dummy", grammar_file_names="-a-general", http_api_url=server.url, receive_timeout=2000)
+        client = AmiVoiceClient(
+            api_key="dummy",
+            settings=RecognitionSettings(grammar_file_names="-a-general"),
+            http_api_url=server.url,
+            receive_timeout=2000,
+        )
         # When / Then: 本文の失敗を検出し、その結果を添付する
         with pytest.raises(RecognitionError) as caught:
             client.transcribe(b"audio")
@@ -68,11 +74,13 @@ def test_stream_local_recorded_labels_valid_return_events_and_masked_audio(
     with RecordedWebSocketServer(packets, fragment_final=fragment_final) as server:
         client = AmiVoiceClient(
             api_key="dummy",
-            grammar_file_names="-a-general",
-            codec="16K",
+            settings=RecognitionSettings(
+                grammar_file_names="-a-general",
+                codec="16K",
+                segmenter_properties="useDiarizer=1 useLid=ja",
+                profile_words="テスト とりぷるだぶりゅー",
+            ),
             ws_api_url=server.url,
-            segmenter_properties="useDiarizer=1 useLid=ja",
-            profile_words="テスト とりぷるだぶりゅー",
             connect_timeout=1000,
             receive_timeout=2000,
         )
@@ -114,10 +122,8 @@ def test_stream_local_updates_disabled_valid_return_no_partial(recorded_response
     with RecordedWebSocketServer(packets) as server:
         client = AmiVoiceClient(
             api_key="dummy",
-            grammar_file_names="-a-general",
-            codec="16K",
+            settings=RecognitionSettings(grammar_file_names="-a-general", codec="16K", result_updated_interval=0),
             ws_api_url=server.url,
-            result_updated_interval=0,
             receive_timeout=2000,
         )
         # When: 音声送信と終了待機を行う
@@ -138,10 +144,8 @@ def test_stream_local_no_input_error_invalid_raise_RecognitionError(recorded_res
     with RecordedWebSocketServer([], end_error=error_packet) as server:
         client = AmiVoiceClient(
             api_key="dummy",
-            grammar_file_names="-a-general",
-            codec="LSB16K",
+            settings=RecognitionSettings(grammar_file_names="-a-general", codec="LSB16K", no_input_timeout=200),
             ws_api_url=server.url,
-            no_input_timeout=200,
             receive_timeout=2000,
         )
         # When / Then: 終了待機で実際のメッセージを含む例外を通知する

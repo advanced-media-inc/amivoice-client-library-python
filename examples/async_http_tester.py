@@ -5,7 +5,15 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from amivoice import AmiVoiceAsyncClient, AmiVoiceError, AsyncJobSnapshot, AsyncJobTimeoutError, Codec, Engine
+from amivoice import (
+    AmiVoiceAsyncClient,
+    AmiVoiceError,
+    AsyncJobSnapshot,
+    AsyncJobTimeoutError,
+    Codec,
+    Engine,
+    RecognitionSettings,
+)
 
 
 class AsyncHttpTester:
@@ -84,7 +92,7 @@ class AsyncHttpTester:
                 for name in ("operation", "audio", "url", "proxy_server_name", "connect_timeout", "receive_timeout"):
                     options.pop(name)
                 options["grammar_file_names"] = options.pop("engine")
-                print(client.submit(parsed.audio, **options).session_id)
+                print(client.submit(parsed.audio, settings=RecognitionSettings(**options)).session_id)
                 return 0
             if parsed.operation == "status":
                 return self._show(client.get_job(parsed.session_id))

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from amivoice import AmiVoiceAsyncClient, AsyncHttpApiError, AuthenticationError
+from amivoice import AmiVoiceAsyncClient, AsyncHttpApiError, AuthenticationError, RecognitionSettings
 from amivoice._async_models import parse_submission
 
 from .test_async_client import RecordingTransport
@@ -44,7 +44,9 @@ def test_request_authentication_invalid_raise_both_error_types(operation: str) -
     """HTTP401は認証例外と非同期HTTP例外の両方で捕捉できる"""
     # Given: 認証失敗のHTTP応答
     transport = RecordingTransport([(401, b"Failed to authorize for the API key")])
-    client = AmiVoiceAsyncClient(api_key="dummy", grammar_file_names="-a-general", transport=transport)
+    client = AmiVoiceAsyncClient(
+        settings=RecognitionSettings(grammar_file_names="-a-general"), api_key="dummy", transport=transport
+    )
     # When: 認証が必要な操作を行う
     with pytest.raises(AuthenticationError) as caught:
         getattr(client, operation)(b"audio" if operation == "submit" else "job1")

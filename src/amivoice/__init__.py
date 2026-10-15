@@ -28,7 +28,7 @@ from .exceptions import (
 from .grammar import build_grammar_file_names, encode_grammar
 from .models import NotificationEvent, RecognitionResult, StreamEvent, StreamEventType, Token, UtteranceEvent, UtteranceResult
 from .sentiment_analysis import SentimentAnalysisClient, SentimentParameterDefinition
-from .settings import USE_CLIENT_DEFAULT, UseClientDefault
+from .settings import USE_CLIENT_DEFAULT, RecognitionSettings, UseClientDefault
 
 try:
     __version__ = version("amivoice-api-client")
@@ -60,6 +60,7 @@ __all__ = [
     "ProfileWord",
     "RecognitionError",
     "RecognitionResult",
+    "RecognitionSettings",
     "SegmenterProperties",
     "SentimentAnalysisApiError",
     "SentimentAnalysisClient",

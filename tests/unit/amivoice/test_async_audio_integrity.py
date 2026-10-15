@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from amivoice import AmiVoiceAsyncClient, AsyncJobSnapshot, AsyncJobSubmission, ConfigurationError
+from amivoice import AmiVoiceAsyncClient, AsyncJobSnapshot, AsyncJobSubmission, ConfigurationError, RecognitionSettings
 from amivoice._async_audio import AudioUpload
 
 from .async_mock_server import AsyncMockServer
@@ -42,7 +42,9 @@ def test_submit_audio_valid_return_local_integrity(kind: str, tmp_path: Path) ->
     path.write_bytes(_AUDIO)
     inputs = {"bytes": _AUDIO, "path": path, "stream": stream, "nonseekable": nonseekable}
     transport = RecordingTransport([{"sessionid": "job1", "text": "..."}])
-    client = AmiVoiceAsyncClient(api_key="dummy", grammar_file_names="-a-general", transport=transport)
+    client = AmiVoiceAsyncClient(
+        settings=RecognitionSettings(grammar_file_names="-a-general"), api_key="dummy", transport=transport
+    )
     # When: 音声を登録する
     submission = client.submit(inputs[kind])
     # Then: multipartではなく送信音声のMD5とサイズを保持する
@@ -59,7 +61,9 @@ def test_submit_stream_position_valid_return_remaining_integrity() -> None:
     stream = io.BytesIO(_AUDIO)
     stream.seek(len(b"prefix-"))
     client = AmiVoiceAsyncClient(
-        api_key="dummy", grammar_file_names="-a-general", transport=RecordingTransport([{"sessionid": "job1"}])
+        settings=RecognitionSettings(grammar_file_names="-a-general"),
+        api_key="dummy",
+        transport=RecordingTransport([{"sessionid": "job1"}]),
     )
     # When: 残り部分を送信する
     submission = client.submit(stream)
@@ -116,7 +120,9 @@ def test_submit_local_http_valid_return_matching_audio() -> None:
         (200, {"session_id": "job1", "status": "processing", "audio_size": len(audio), "audio_md5": digest}),
     ]
     with AsyncMockServer(responses) as server:
-        client = AmiVoiceAsyncClient(api_key="dummy", grammar_file_names="-a-general", api_url=server.url)
+        client = AmiVoiceAsyncClient(
+            settings=RecognitionSettings(grammar_file_names="-a-general"), api_key="dummy", api_url=server.url
+        )
         # When: 登録した音声をサーバー観測値と照合する
         submission = client.submit(audio)
         snapshot = client.get_job(submission.session_id)

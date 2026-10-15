@@ -8,7 +8,7 @@ from ._params import RecognitionParams, merge_params
 from ._segmenter import SegmenterProperties
 from .dictionary import ProfileWord, build_profile_words
 from .exceptions import ConfigurationError
-from .settings import USE_CLIENT_DEFAULT, UseClientDefault
+from .settings import USE_CLIENT_DEFAULT, RecognitionSettings, UseClientDefault
 
 
 def _validate_custom_url_logging_opt_out(url: str, nolog_url: str) -> None:
@@ -301,3 +301,62 @@ def resolve_recognition_overrides(base: RecognitionParams, supplied: dict[str, o
         supplied.get("selected_channel", USE_CLIENT_DEFAULT), supplied.get("audio_filter_properties", USE_CLIENT_DEFAULT)
     )
     return merge_params(base, **changes)
+
+
+def merge_recognition_settings(
+    base: RecognitionSettings,
+    override: RecognitionSettings | None | UseClientDefault,
+) -> RecognitionSettings:
+    """設定差分を適用し、型付き指定とraw指定の切り替えを解決する
+
+    Args:
+        base (RecognitionSettings): クライアント設定
+        override (RecognitionSettings | None | UseClientDefault): 差分、Noneは全設定を解除
+
+    Returns:
+        RecognitionSettings: 呼び出し専用設定
+
+    Raises:
+        ConfigurationError: 設定オブジェクトが不正な場合
+    """
+    if override is USE_CLIENT_DEFAULT:
+        return base
+    if override is None:
+        return RecognitionSettings()
+    if not isinstance(override, RecognitionSettings):
+        raise ConfigurationError("settings must be RecognitionSettings, None or USE_CLIENT_DEFAULT")
+    values = {field.name: getattr(base, field.name) for field in fields(base)}
+    changes = {
+        field.name: getattr(override, field.name)
+        for field in fields(override)
+        if getattr(override, field.name) is not USE_CLIENT_DEFAULT
+    }
+    for typed, raw in (
+        ("segmenter", "segmenter_properties"),
+        ("selected_channel", "audio_filter_properties"),
+        ("billing_key", "extension"),
+    ):
+        if typed in changes and raw not in changes:
+            values[raw] = USE_CLIENT_DEFAULT
+        if raw in changes and typed not in changes:
+            values[typed] = USE_CLIENT_DEFAULT
+    values.update(changes)
+    return RecognitionSettings(**values)
+
+
+def settings_to_params(settings: RecognitionSettings, communication: RecognitionParams) -> RecognitionParams:
+    """認識設定を通信設定と組み合わせて内部のwire設定へ変換する
+
+    Args:
+        settings (RecognitionSettings): 公開認識設定
+        communication (RecognitionParams): 通信設定
+
+    Returns:
+        RecognitionParams: 検証済み設定
+    """
+    values = {
+        field.name: getattr(settings, field.name)
+        for field in fields(settings)
+        if getattr(settings, field.name) is not USE_CLIENT_DEFAULT
+    }
+    return resolve_recognition_overrides(communication, values)

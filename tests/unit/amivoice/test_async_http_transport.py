@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from amivoice import AmiVoiceAsyncClient, AsyncJobTimeoutError
+from amivoice import AmiVoiceAsyncClient, AsyncJobTimeoutError, RecognitionSettings
 from amivoice._async_http_transport import AsyncHttpConnection
 from amivoice._params import RecognitionParams
 
@@ -20,15 +20,14 @@ def test_client_local_http_valid_return_completed_and_multipart() -> None:
     audio = b"\x00\xff\r\naudio" * 10000
     with AsyncMockServer(responses) as server:
         client = AmiVoiceAsyncClient(
+            settings=RecognitionSettings(grammar_file_names="-a-general", logging_opt_out=True),
             api_key="dummy",
-            grammar_file_names="-a-general",
             api_url=server.url,
-            logging_opt_out=True,
             connect_timeout=1000,
             receive_timeout=1000,
         )
         # When: 登録と完了待機を実行する
-        job = client.submit(audio, content_id="日本語", selected_channel=0)
+        job = client.submit(audio, settings=RecognitionSettings(content_id="日本語", selected_channel=0))
         snapshot = client.wait(job.session_id, poll_interval=0.01, timeout=2)
         # Then: 元の音声と認証の配置を保持する
         assert snapshot.recognition.text == "認識"

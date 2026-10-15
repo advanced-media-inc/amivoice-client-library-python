@@ -5,7 +5,14 @@ from collections import deque
 
 import pytest
 
-from amivoice import AmiVoiceAsyncClient, AsyncHttpApiError, AsyncJobError, AsyncJobTimeoutError, ConfigurationError
+from amivoice import (
+    AmiVoiceAsyncClient,
+    AsyncHttpApiError,
+    AsyncJobError,
+    AsyncJobTimeoutError,
+    ConfigurationError,
+    RecognitionSettings,
+)
 from amivoice._async_audio import MultipartUpload
 from amivoice._params import RecognitionParams
 
@@ -59,15 +66,15 @@ def test_submit_overrides_valid_return_job_and_encoded_domain() -> None:
     # Given: 既定のログ保存なしと辞書
     transport = RecordingTransport([{"sessionid": "job1", "text": "..."}])
     client = AmiVoiceAsyncClient(
+        settings=RecognitionSettings(grammar_file_names="-a-general", logging_opt_out=True, profile_id=":test", content_id="old"),
         api_key="dummy",
-        grammar_file_names="-a-general",
-        logging_opt_out=True,
-        profile_id=":test",
-        content_id="old",
         transport=transport,
     )
     # When: 既定値を今回だけ解除する
-    job = client.submit(b"audio", profile_id=None, logging_opt_out=False, content_id="日本 語", compatible_with_sync=True)
+    job = client.submit(
+        b"audio",
+        settings=RecognitionSettings(profile_id=None, logging_opt_out=False, content_id="日本 語", compatible_with_sync=True),
+    )
     # Then: 非同期はURLをnologへ変えずパラメータで制御
     assert job.session_id == "job1"
     method, url, headers, body, _, _ = transport.calls[0]

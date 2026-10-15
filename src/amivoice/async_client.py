@@ -5,7 +5,6 @@ import ipaddress
 import math
 import os
 import time
-from collections.abc import Sequence
 from dataclasses import replace
 from urllib.parse import quote
 
@@ -15,13 +14,10 @@ from ._async_models import parse_job, parse_submission
 from ._connection_settings import parse_http_proxy, parse_service_url
 from ._http_api import validate_service_api_key
 from ._params import RecognitionParams
-from ._recognition_settings import resolve_recognition_overrides
+from ._recognition_settings import merge_recognition_settings, resolve_recognition_overrides, settings_to_params
 from ._request_parameters import _request_values
-from ._segmenter import SegmenterProperties
 from ._types import AudioSource
 from .async_models import AsyncJobSnapshot, AsyncJobSubmission
-from .constants import Codec
-from .dictionary import ProfileWord
 from .exceptions import (
     AsyncHttpApiError,
     AsyncHttpAuthenticationError,
@@ -30,7 +26,7 @@ from .exceptions import (
     ConfigurationError,
     ConnectionFailedError,
 )
-from .settings import USE_CLIENT_DEFAULT, UseClientDefault
+from .settings import USE_CLIENT_DEFAULT, RecognitionSettings, UseClientDefault
 
 _DEFAULT_URL = "https://acp-api-async.amivoice.com/v2/recognitions"
 
@@ -84,109 +80,57 @@ class AmiVoiceAsyncClient:
         self,
         api_key: str | None = None,
         *,
-        grammar_file_names: str | None = None,
-        codec: Codec | str | None = None,
+        settings: RecognitionSettings | None = None,
         proxy_server_name: str | None = None,
         connect_timeout: int = 0,
         receive_timeout: int = 0,
-        profile_id: str | None = None,
-        profile_words: str | Sequence[ProfileWord] | None = None,
-        segmenter: SegmenterProperties | None = None,
-        segmenter_properties: str | None = None,
-        selected_channel: int | tuple[int, int] | None = None,
-        audio_filter_properties: str | None = None,
-        confidence_level: float | None = None,
-        keep_filler_token: bool | None = None,
-        extension: str | None = None,
-        billing_key: str | None = None,
-        recognition_timeout: int | None = None,
-        max_decoding_time: int | None = None,
-        max_response_time: int | None = None,
-        max_decoding_rate: float | None = None,
-        target_response_time: int | None = None,
-        target_decoding_rate: float | None = None,
-        logging_opt_out: bool | None = None,
-        content_id: str | None = None,
-        compatible_with_sync: bool | None = None,
         api_url: str = _DEFAULT_URL,
         transport: AsyncHttpTransport | None = None,
     ) -> None:
         """認識設定と非同期HTTPの接続先を保持する
 
         Args:
+            settings (RecognitionSettings | None): 認識設定、未指定は継承、Noneは全認識設定を解除
             api_key (str | None): Bearer認証情報、省略時はAMIVOICE_API_KEY
-            grammar_file_names (str | None): 作成時に必須の接続エンジン名、取得だけなら不要
-            codec (Codec | str | None): 音声形式、ヘッダ付き音声では省略可
             proxy_server_name (str | None): HTTPプロキシ
             connect_timeout (int): 接続待機のミリ秒、0は無制限
             receive_timeout (int): ソケット送受信待機のミリ秒、0は無制限
-            profile_id (str | None): 辞書参照ID
-            profile_words (str | Sequence[ProfileWord] | None): セッション単語
-            segmenter (SegmenterProperties | None): 発話検出と言語識別設定、同期話者設定は不可
-            segmenter_properties (str | None): 発話検出と言語識別の設定文字列
-            selected_channel (int | tuple[int, int] | None): 単一チャネル又は先頭からの平均範囲
-            audio_filter_properties (str | None): チャネル指定の設定文字列
-            confidence_level (float | None): 信頼度のしきい値
-            keep_filler_token (bool | None): フィラーの保持、E2Eでは未指定にする
-            extension (str | None): 使用量集計のJSON
-            billing_key (str | None): 使用量集計タグ、extensionと排他
-            recognition_timeout (int | None): サーバー側の認識完了制御、ミリ秒
-            max_decoding_time (int | None): 最大認識処理時間、ミリ秒
-            max_response_time (int | None): 最大応答時間、ミリ秒、バッチ音声では無効
-            max_decoding_rate (float | None): 最大認識時間倍率
-            target_response_time (int | None): 目標応答時間、ミリ秒、バッチ音声では無効
-            target_decoding_rate (float | None): 目標認識時間倍率
-            logging_opt_out (bool | None): 音声ログ保存なし、Noneはサーバー既定値
-            content_id (str | None): ユーザー定義ID、冪等性キーではない
-            compatible_with_sync (bool | None): 同期互換の結果形式
             api_url (str): v2エンドポイント、HTTPS又はローカルHTTP
             transport (AsyncHttpTransport | None): テスト用の通信処理
         """
         self._api_key = validate_service_api_key(api_key if api_key is not None else os.environ.get("AMIVOICE_API_KEY"))
-        self._params = resolve_recognition_overrides(
-            RecognitionParams(connect_timeout=connect_timeout, receive_timeout=receive_timeout),
-            {name: value for name, value in locals().items() if value is not None},
+        self._settings = merge_recognition_settings(RecognitionSettings(), settings)
+        self._params = RecognitionParams(
+            proxy_server_name=proxy_server_name, connect_timeout=connect_timeout, receive_timeout=receive_timeout
         )
-        _communication(self._params)
-        if self._params.grammar_file_names is not None:
-            _request_values(self._params, "async_http")
-        validate_async_options(logging_opt_out, content_id, compatible_with_sync)
-        self._logging_opt_out = logging_opt_out
-        self._content_id = content_id
-        self._compatible_with_sync = compatible_with_sync
+        params = settings_to_params(self._settings, self._params)
+        _communication(params)
+        if params.grammar_file_names is not None:
+            _request_values(params, "async_http")
+        self._options(self._settings)
         self._api_url = _endpoint(api_url)
         self._transport = transport if transport is not None else AsyncHttpConnection()
         self._clock = time.monotonic
         self._sleep = time.sleep
 
+    @staticmethod
+    def _options(settings: RecognitionSettings) -> tuple[bool | None, str | None, bool | None]:
+        options = (
+            None if settings.logging_opt_out is USE_CLIENT_DEFAULT else settings.logging_opt_out,
+            None if settings.content_id is USE_CLIENT_DEFAULT else settings.content_id,
+            None if settings.compatible_with_sync is USE_CLIENT_DEFAULT else settings.compatible_with_sync,
+        )
+        validate_async_options(*options)
+        return options
+
     def submit(  # noqa: PLR0913
         self,
         audio: AudioSource,
         *,
-        grammar_file_names: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        codec: Codec | str | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        settings: RecognitionSettings | None | UseClientDefault = USE_CLIENT_DEFAULT,
         proxy_server_name: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
         connect_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
         receive_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
-        profile_id: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        profile_words: str | Sequence[ProfileWord] | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        segmenter: SegmenterProperties | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        segmenter_properties: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        selected_channel: int | tuple[int, int] | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        audio_filter_properties: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        confidence_level: float | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        keep_filler_token: bool | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        extension: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        billing_key: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        recognition_timeout: int | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        max_decoding_time: int | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        max_response_time: int | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        max_decoding_rate: float | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        target_response_time: int | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        target_decoding_rate: float | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        logging_opt_out: bool | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        content_id: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
-        compatible_with_sync: bool | None | UseClientDefault = USE_CLIENT_DEFAULT,
         api_url: str | UseClientDefault = USE_CLIENT_DEFAULT,
     ) -> AsyncJobSubmission:
         """音声を登録し、認識完了を待たず受付済みIDを返す
@@ -195,31 +139,11 @@ class AmiVoiceAsyncClient:
         通信失敗時に受理済みか分からないため、音声を自動再送しない
 
         Args:
+            settings (RecognitionSettings | None | UseClientDefault): 認識設定、未指定は継承、Noneは全認識設定を解除
             audio (AudioSource): bytes、Path、ファイルパス、バイナリストリーム
-            grammar_file_names (str | None | UseClientDefault): 今回のエンジン名
-            codec (Codec | str | None | UseClientDefault): 今回の音声形式
             proxy_server_name (str | None | UseClientDefault): HTTPプロキシ
             connect_timeout (int | UseClientDefault): 接続待機のミリ秒
             receive_timeout (int | UseClientDefault): 送受信待機のミリ秒
-            profile_id (str | None | UseClientDefault): 辞書参照
-            profile_words (str | Sequence[ProfileWord] | None | UseClientDefault): セッション単語
-            segmenter (SegmenterProperties | None | UseClientDefault): 発話検出と言語識別
-            segmenter_properties (str | None | UseClientDefault): 設定文字列
-            selected_channel (int | tuple[int, int] | None | UseClientDefault): チャネル指定
-            audio_filter_properties (str | None | UseClientDefault): 音声フィルタの文字列
-            confidence_level (float | None | UseClientDefault): 信頼度しきい値
-            keep_filler_token (bool | None | UseClientDefault): フィラーの保持
-            extension (str | None | UseClientDefault): 集計設定JSON
-            billing_key (str | None | UseClientDefault): 集計タグ
-            recognition_timeout (int | None | UseClientDefault): サーバーの認識完了制御
-            max_decoding_time (int | None | UseClientDefault): 最大認識処理時間
-            max_response_time (int | None | UseClientDefault): 最大応答時間
-            max_decoding_rate (float | None | UseClientDefault): 最大倍率
-            target_response_time (int | None | UseClientDefault): 目標応答時間
-            target_decoding_rate (float | None | UseClientDefault): 目標倍率
-            logging_opt_out (bool | None | UseClientDefault): ログ保存設定
-            content_id (str | None | UseClientDefault): ユーザー定義ID
-            compatible_with_sync (bool | None | UseClientDefault): 同期互換結果
             api_url (str | UseClientDefault): 今回だけ使用する接続先
 
         Returns:
@@ -230,16 +154,12 @@ class AmiVoiceAsyncClient:
             AsyncHttpApiError: 受付失敗、HTTPエラー、不正応答
             ConnectionFailedError: 通信失敗、ジョブが受理された可能性がある
         """
-        params = resolve_recognition_overrides(self._params, locals())
+        configured = merge_recognition_settings(self._settings, settings)
+        params = settings_to_params(configured, resolve_recognition_overrides(self._params, locals()))
         _request_values(params, "async_http")
         _communication(params)
         url = self._url(api_url)
-        options = (
-            self._logging_opt_out if isinstance(logging_opt_out, UseClientDefault) else logging_opt_out,
-            self._content_id if isinstance(content_id, UseClientDefault) else content_id,
-            self._compatible_with_sync if isinstance(compatible_with_sync, UseClientDefault) else compatible_with_sync,
-        )
-        validate_async_options(*options)
+        options = self._options(configured)
         with AudioUpload(audio) as source:
             upload = MultipartUpload(
                 source, params, logging_opt_out=options[0], content_id=options[1], compatible_with_sync=options[2]

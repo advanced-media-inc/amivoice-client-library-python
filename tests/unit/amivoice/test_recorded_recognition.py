@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from amivoice import AmiVoiceClient, SentimentAnalysisClient
+from amivoice import AmiVoiceClient, RecognitionSettings, SentimentAnalysisClient
 from amivoice.exceptions import RecognitionError
 
 from .test_amivoice_client import HttpFake, WebSocketFake
@@ -17,7 +17,7 @@ def test_transcribe_recorded_response_valid_return_body_status(recorded_response
     # Given: 認識成功、無音拒否、処理時間超過の実応答を返す通信処理
     body = recorded_responses["http"][name]
     fake = HttpFake(body)
-    client = AmiVoiceClient(api_key="dummy", grammar_file_names="-a-general", hrp_transport=fake)
+    client = AmiVoiceClient(api_key="dummy", settings=RecognitionSettings(grammar_file_names="-a-general"), hrp_transport=fake)
     # When: エラーも結果として読み取る
     result = client.transcribe(b"audio", raise_on_error=False)
     # Then: 200だけで成功扱いせず、単語や区間の情報を保持する
@@ -32,7 +32,9 @@ def test_transcribe_recorded_rejection_invalid_raise_RecognitionError(recorded_r
     """拒否結果を例外に添付し、code oも成功にしない"""
     # Given: 実APIで取得した拒否結果
     body = recorded_responses["http"][name]
-    client = AmiVoiceClient(api_key="dummy", grammar_file_names="-a-general", hrp_transport=HttpFake(body))
+    client = AmiVoiceClient(
+        api_key="dummy", settings=RecognitionSettings(grammar_file_names="-a-general"), hrp_transport=HttpFake(body)
+    )
     # When: 既定のエラー処理で呼び出す
     with pytest.raises(RecognitionError) as caught:
         client.transcribe(b"audio")
@@ -50,7 +52,9 @@ def test_stream_recorded_rejection_then_success_valid_return_both_results(
     # Given: 実際にAで受信した2区間を、AとRの両方で再現する
     bodies = recorded_responses["websocket"]["rejected_then_successful"]
     fake = WebSocketFake([kind + " " + json.dumps(body) for body in bodies])
-    client = AmiVoiceClient(api_key="dummy", grammar_file_names="-a-general", codec="16K", wrp_transport=fake)
+    client = AmiVoiceClient(
+        api_key="dummy", settings=RecognitionSettings(grammar_file_names="-a-general", codec="16K"), wrp_transport=fake
+    )
     # When: 終了応答まで待機する
     with client.stream() as session:
         session.write(b"audio")

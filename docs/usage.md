@@ -51,15 +51,17 @@ issued_api_key = api_key_issuance_client.issue(
 
 ## HTTP音声認識
 
-`grammar_file_names`には接続エンジン名を指定します。
-コンストラクタで共通の設定を保持し、`transcribe()`の呼び出し時に上書きできます。
+`RecognitionSettings.grammar_file_names`には接続エンジン名を指定します。
+共通の認識設定はコンストラクタの`settings`へ渡し、`transcribe()`の`settings`で呼び出しごとに上書きできます。
 
 ```python
-from amivoice import AmiVoiceClient, Codec, Engine
+from amivoice import AmiVoiceClient, Codec, Engine, RecognitionSettings
 
 client = AmiVoiceClient(
-    grammar_file_names=Engine.A_GENERAL,
-    codec=Codec.HEADER_16K,
+    settings=RecognitionSettings(
+        grammar_file_names=Engine.A_GENERAL,
+        codec=Codec.HEADER_16K,
+    ),
 )
 result = client.transcribe("audio.wav")
 print(result.text)
@@ -70,9 +72,9 @@ print(result.text)
 モジュールレベルの`transcribe()`でも同期 HTTP で認識できます。
 
 ```python
-from amivoice import Engine, transcribe
+from amivoice import Engine, RecognitionSettings, transcribe
 
-result = transcribe("audio.wav", grammar_file_names=Engine.A_GENERAL)
+result = transcribe("audio.wav", settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL))
 print(result.text)
 ```
 
@@ -97,9 +99,9 @@ HTTP ステータスが 200 でも、認識に成功したとは限りません�
 `transcribe()`は既定の`raise_on_error=True`で、認識失敗時に`RecognitionError`を送出します。失敗した結果をアプリケーションで調べる場合は、`raise_on_error=False`を指定します。
 
 ```python
-from amivoice import AmiVoiceClient, Engine
+from amivoice import AmiVoiceClient, Engine, RecognitionSettings
 
-client = AmiVoiceClient(grammar_file_names=Engine.A_GENERAL)
+client = AmiVoiceClient(settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL))
 result = client.transcribe("audio.wav", raise_on_error=False)
 if result.is_error:
     print("認識失敗:", result.data["code"])
@@ -114,9 +116,9 @@ else:
 `RecognitionResult.results`から発話区間と単語を参照できます。信頼度、時刻、話者ラベル、言語ラベルも型付きで取得できます。
 
 ```python
-from amivoice import AmiVoiceClient, Engine
+from amivoice import AmiVoiceClient, Engine, RecognitionSettings
 
-client = AmiVoiceClient(grammar_file_names=Engine.A_GENERAL)
+client = AmiVoiceClient(settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL))
 result = client.transcribe("audio.wav")
 
 print(result.utterance_id)
@@ -141,7 +143,7 @@ for utterance in result.results:
 以下はヘッダ付きの音声ファイルを開き、4096 バイトずつ送信する例です。送信中と送信終了後のイベントを、同じ処理で読み取ります。
 
 ```python
-from amivoice import AmiVoiceClient, Codec, Engine, StreamEvent
+from amivoice import AmiVoiceClient, Codec, Engine, RecognitionSettings, StreamEvent
 
 
 def show_event(event: StreamEvent) -> None:
@@ -159,8 +161,10 @@ def show_event(event: StreamEvent) -> None:
 
 
 client = AmiVoiceClient(
-    grammar_file_names=Engine.A_GENERAL,
-    codec=Codec.HEADER_16K,
+    settings=RecognitionSettings(
+        grammar_file_names=Engine.A_GENERAL,
+        codec=Codec.HEADER_16K,
+    ),
 )
 with open("audio.wav", "rb") as audio, client.stream() as session:
     for chunk in iter(lambda: audio.read(4096), b""):
@@ -194,18 +198,100 @@ print("失敗区間数:", sum(result.is_error for result in results))
 
 ## 共通の認識設定
 
-コンストラクタで指定した値は、各認識呼び出しの設定として引き継がれます。対応する引数を`transcribe()`や`stream()`に指定すると、その呼び出しだけ上書きします。任意の認識パラメータを指定しない場合、ライブラリはサーバーの既定値を勝手に補って送信しません。公式に記載された既定値も、予告なく変更される場合があります。
+認識設定は`RecognitionSettings`にまとめ、`AmiVoiceClient`、`AmiVoiceAsyncClient`のコンストラクタと、`transcribe()`、`stream()`、`submit()`の`settings`へ渡します。モジュールレベルの`transcribe()`も同じ形式です。旧 API の個別の認識引数は削除されています。
+プロキシ、通信タイムアウト、接続 URL、`raise_on_error`、`wait()`の待機制御は、引き続き独立した引数です。
+任意の認識パラメータを指定しない場合、ライブラリはサーバーの既定値を補って送信しません。公式に記載された既定値も、予告なく変更される場合があります。
+
+### 個別引数からの移行
+
+以前は`AmiVoiceClient(grammar_file_names=Engine.A_GENERAL, confidence_level=0.2)`のように指定していました。現在は、同じ設定を次のようにまとめます。呼び出し時の上書きも`settings`へ移してください。
+
+```python
+from amivoice import AmiVoiceClient, Engine, RecognitionSettings
+
+client = AmiVoiceClient(
+    settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL, confidence_level=0.2),
+    connect_timeout=10_000,
+)
+result = client.transcribe(
+    "audio.wav",
+    settings=RecognitionSettings(confidence_level=0.3),
+    raise_on_error=False,
+)
+```
+
+### 設定項目一覧
+
+以下は`RecognitionSettings`の全項目です。各項目の既定値は`USE_CLIENT_DEFAULT`です。インタフェースによる制限は、後述の各設定の説明を確認してください。
+
+| 項目 | 内容 |
+| --- | --- |
+| `grammar_file_names` | 接続エンジン名 |
+| `codec` | 音声フォーマット |
+| `profile_id` | ユーザー辞書の参照名 |
+| `profile_words` | セッション単語。設定文字列または`ProfileWord`の一覧 |
+| `segmenter` | 型付きの`SegmenterProperties` |
+| `segmenter_properties` | セグメンターの設定文字列 |
+| `selected_channel` | 認識対象チャネル。整数または混合範囲のタプル |
+| `audio_filter_properties` | 同期 HTTP のチャネル設定文字列 |
+| `confidence_level` | 信頼度しきい値 |
+| `keep_filler_token` | フィラーを残すか |
+| `result_updated_interval` | WebSocket の途中結果間隔。ミリ秒 |
+| `extension` | 使用量集計などの JSON 設定文字列 |
+| `billing_key` | 使用量集計タグ |
+| `recognition_timeout` | 認識完了のタイムアウト。ミリ秒 |
+| `complete_timeout` | ルール認識の確定待ち時間。ミリ秒 |
+| `wildcard_model_penalty` | ルール認識のワイルドカードペナルティ |
+| `max_decoding_time` | 認識処理時間の上限。ミリ秒 |
+| `max_response_time` | 最大応答時間。ミリ秒 |
+| `max_decoding_rate` | 認識処理時間の上限倍率 |
+| `target_response_time` | 目標応答時間。ミリ秒 |
+| `target_decoding_rate` | 認識処理時間の目標倍率 |
+| `no_input_timeout` | WebSocket の発話開始待ち時間。ミリ秒 |
+| `logging_opt_out` | 音声ログを保存しないか |
+| `content_id` | 非同期 HTTP のユーザー定義 ID。冪等性キーではない |
+| `compatible_with_sync` | 非同期 HTTP の同期互換の結果形式 |
+
+`RecognitionSettings`は`frozen=True`、`kw_only=True`のデータクラスです。生成時はキーワード引数を使い、生成後に項目を変更できません。
+`profile_words`へ渡した単語一覧は、生成時にタプルへコピーします。元のリストを変更しても設定には反映されません。
+値や設定の組み合わせ、インタフェースごとの対応可否は、クライアントの初期化時と呼び出し時に検証します。設定オブジェクトを生成しただけでは、すべての値の検証は行いません。
 
 ### クライアント設定の継承と解除（USE_CLIENT_DEFAULT）
 
-`transcribe()`や`stream()`などの呼び出しメソッドでは、各引数を省略するか公開 sentinel の`USE_CLIENT_DEFAULT`（型は`UseClientDefault`）を指定すると、クライアントに保持された設定を継承します。
-任意の認識設定を解除して送信しない場合は`None`を指定します。`False`や`0`は解除ではなく、明示的な指定値として扱われます。
-一方、コンストラクタの URL 引数（`http_api_url`、`ws_api_url`）は既存どおり`None`を拒否し、`USE_CLIENT_DEFAULT`で既定 URL を選択します。
+コンストラクタで`settings`を省略するか`None`を指定すると、空の認識設定になります。
+呼び出しメソッドの`settings`は、次のように扱います。
+
+| 指定 | 動作 |
+| --- | --- |
+| 省略または`USE_CLIENT_DEFAULT` | クライアントの認識設定を継承 |
+| 空の`RecognitionSettings()` | すべての項目を継承 |
+| 項目を指定した`RecognitionSettings(...)` | 指定した項目だけ上書き |
+| `None` | 全認識設定を解除 |
+
+`settings=None`は接続エンジンも解除します。そのまま認識を送信すると、必須設定の不足で`ConfigurationError`になります。
+`RecognitionSettings`の各項目では、省略または公開 sentinel の`USE_CLIENT_DEFAULT`（型は`UseClientDefault`）が継承、`None`が解除です。`False`や`0`は明示値として扱います。
+同期 HTTP・WebSocket の`logging_opt_out`は真偽値が必要で、項目単位の`None`による解除はできません。ログ保存なしを無効にする場合は`False`を指定してください。
+
+次の組み合わせは、片方だけを上書きすると、クライアントに保持されたもう片方の形式を解除します。`None`による片方の解除でも同じ動作です。
+
+- `segmenter`と`segmenter_properties`
+- `selected_channel`と`audio_filter_properties`
+- `billing_key`と`extension`
+
+同期クライアントのコンストラクタの URL 引数（`http_api_url`、`ws_api_url`）は、`USE_CLIENT_DEFAULT`で既定 URL を選択します。
+呼び出し時の`api_url`は、省略または`USE_CLIENT_DEFAULT`でクライアントの接続先を継承します。カスタム URL も継承し、既定 URL へリセットする指定ではありません。URL に`None`は指定できません。
 
 ラッパー関数などで引数をそのまま転送する場合も、未指定を表す引数に`USE_CLIENT_DEFAULT`を指定します。
 
 ```python
-from amivoice import USE_CLIENT_DEFAULT, AmiVoiceClient, Engine, RecognitionResult, UseClientDefault
+from amivoice import (
+    USE_CLIENT_DEFAULT,
+    AmiVoiceClient,
+    Engine,
+    RecognitionResult,
+    RecognitionSettings,
+    UseClientDefault,
+)
 
 
 def recognize_speech(
@@ -214,23 +300,24 @@ def recognize_speech(
     client: AmiVoiceClient,
     confidence_level: float | None | UseClientDefault = USE_CLIENT_DEFAULT,
 ) -> RecognitionResult:
-    return client.transcribe(audio, confidence_level=confidence_level)
+    return client.transcribe(audio, settings=RecognitionSettings(confidence_level=confidence_level))
 
 
-client = AmiVoiceClient(grammar_file_names=Engine.A_GENERAL, confidence_level=0.2)
+client = AmiVoiceClient(
+    settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL, confidence_level=0.2)
+)
 result = recognize_speech(b"RIFF...", client=client)
 ```
 
 ### ログ保存なしの認識
 
-サーバー側に音声を保存しない設定で認識する場合は、`logging_opt_out=True`を指定します。同期 HTTP と WebSocket の既定 URL が、それぞれログ保存なしの URL に切り替わります。`transcribe()`や`stream()`の呼び出し時にも指定できます。
+サーバー側に音声を保存しない設定で認識する場合は、`RecognitionSettings(logging_opt_out=True)`を指定します。同期 HTTP と WebSocket の既定 URL が、それぞれログ保存なしの URL に切り替わります。`transcribe()`や`stream()`の`settings`でも指定できます。
 
 ```python
-from amivoice import AmiVoiceClient, Engine
+from amivoice import AmiVoiceClient, Engine, RecognitionSettings
 
 client = AmiVoiceClient(
-    grammar_file_names=Engine.A_GENERAL,
-    logging_opt_out=True,
+    settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL, logging_opt_out=True),
 )
 result = client.transcribe("audio.wav")
 print(result.text)
@@ -248,11 +335,10 @@ WebSocket の URL は末尾の`/`まで必要です。`wss://acp-api.amivoice.co
 AWS PrivateLink で接続する場合は、ホスト名を`acp-api-private.amivoice.com`へ変えた URL を指定します。以下のクライアントは WebSocket でも利用できます。`stream()`の呼び出し時には、音声のフォーマットと合う`codec`を指定してください。
 
 ```python
-from amivoice import AmiVoiceClient, Engine
+from amivoice import AmiVoiceClient, Engine, RecognitionSettings
 
 client = AmiVoiceClient(
-    grammar_file_names=Engine.A_GENERAL,
-    logging_opt_out=True,
+    settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL, logging_opt_out=True),
     http_api_url="https://acp-api-private.amivoice.com/v1/nolog/recognize",
     ws_api_url="wss://acp-api-private.amivoice.com/v1/nolog/",
 )
@@ -277,9 +363,9 @@ WebSocket の開始・終了応答には、クライアント側の待機上限�
 
 ### インタフェース専用の設定
 
-`selected_channel`と`audio_filter_properties`は同期 HTTP 専用です。これらをコンストラクタに設定したクライアントで`stream()`を呼ぶと、設定を無視せず`ConfigurationError`を送出します。WebSocket では音声フィルタを指定しないクライアントを使用してください。
+`selected_channel`と`audio_filter_properties`は HTTP 用の設定で、WebSocket では利用できません。これらをクライアントの`settings`に保持したまま`stream()`を呼ぶと、`ConfigurationError`を送出します。WebSocket の呼び出しでは、`settings=RecognitionSettings(selected_channel=None)`などでチャネル設定を解除してください。
 
-`result_updated_interval`と`no_input_timeout`は WebSocket 専用です。共通のコンストラクタに指定しても、HTTP の`transcribe()`ではサーバーへ送信しません。
+`result_updated_interval`と`no_input_timeout`は WebSocket 専用です。共通のコンストラクタの`settings`に指定しても、HTTP の`transcribe()`ではサーバーへ送信しません。
 
 `result_updated_interval`は途中結果を発行する間隔で、単位はミリ秒です。`0`を指定すると途中結果を発行しません。`no_input_timeout`は発話開始までのタイムアウトをミリ秒で指定し、`0`で無効になります。
 
@@ -290,11 +376,10 @@ WebSocket の開始・終了応答には、クライアント側の待機上限�
 `(0, 1)`はチャネル 0 と 1 を混合する指定です。`(1, 2)`のように先頭が 0 以外の範囲や、`(0, 0)`のように開始と終了が同じ範囲は`ConfigurationError`になります。チャネル 0 だけを認識する場合は`selected_channel=0`を使用してください。
 
 ```python
-from amivoice import AmiVoiceClient, Engine
+from amivoice import AmiVoiceClient, Engine, RecognitionSettings
 
 client = AmiVoiceClient(
-    grammar_file_names=Engine.A_GENERAL,
-    selected_channel=(0, 1),
+    settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL, selected_channel=(0, 1)),
 )
 result = client.transcribe("stereo.wav")
 print(result.text)
@@ -309,13 +394,15 @@ API の設定文字列を直接指定する場合は`audio_filter_properties`を
 認識セッションだけで有効にする単語は、`ProfileWord`のシーケンスで指定できます。ハイブリッドエンジンでは`spoken`を必須とし、クラスを指定する場合は`classname`を追加します。End to End エンジンでは`alternative_written`と`biasing`を使用します。公式の送信形式に沿った設定文字列も指定できます。
 
 ```python
-from amivoice import AmiVoiceClient, Engine, ProfileWord
+from amivoice import AmiVoiceClient, Engine, ProfileWord, RecognitionSettings
 
 client = AmiVoiceClient(
-    grammar_file_names=Engine.A_GENERAL,
-    profile_words=(
-        ProfileWord("AmiVoice", "あみぼいす", "固有名詞"),
-        ProfileWord("WWW", "とりぷるだぶる"),
+    settings=RecognitionSettings(
+        grammar_file_names=Engine.A_GENERAL,
+        profile_words=(
+            ProfileWord("AmiVoice", "あみぼいす", "固有名詞"),
+            ProfileWord("WWW", "とりぷるだぶる"),
+        ),
     ),
 )
 result = client.transcribe("audio.wav")
@@ -331,14 +418,16 @@ print(result.text)
 発話検出、話者ダイアライゼーション、言語識別は`SegmenterProperties`で指定できます。同期 HTTP と WebSocket の両方で利用できます。
 
 ```python
-from amivoice import AmiVoiceClient, Engine, SegmenterProperties
+from amivoice import AmiVoiceClient, Engine, RecognitionSettings, SegmenterProperties
 
 client = AmiVoiceClient(
-    grammar_file_names=Engine.A_GENERAL,
-    segmenter=SegmenterProperties(
-        speaker_diarization=True,
-        diarizer_alpha="1e-20",
-        languages=("ja", "en"),
+    settings=RecognitionSettings(
+        grammar_file_names=Engine.A_GENERAL,
+        segmenter=SegmenterProperties(
+            speaker_diarization=True,
+            diarizer_alpha="1e-20",
+            languages=("ja", "en"),
+        ),
     ),
 )
 result = client.transcribe("audio.wav")
@@ -352,11 +441,10 @@ print(result.text)
 発話区間の認識結果を信頼度で拒否する場合は、`confidence_level`を指定します。同期 HTTP と WebSocket の両方で利用でき、範囲は`0.0`以上`1.0`以下です。
 
 ```python
-from amivoice import AmiVoiceClient, Engine
+from amivoice import AmiVoiceClient, Engine, RecognitionSettings
 
 client = AmiVoiceClient(
-    grammar_file_names=Engine.A_GENERAL,
-    confidence_level=0.3,
+    settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL, confidence_level=0.3),
 )
 result = client.transcribe("audio.wav", raise_on_error=False)
 if result.is_error:
@@ -373,7 +461,7 @@ else:
 
 ### 処理時間とレスポンスの制御
 
-処理時間の制御は、認識処理を途中で打ち切ったり、処理速度と認識率を調整したりする上級者向けの設定です。値を小さくしすぎると、認識結果が途中で終了する場合があります。コンストラクタ、`transcribe()`、`stream()`、モジュールレベルの`transcribe()`で指定できます。
+処理時間の制御は、認識処理を途中で打ち切ったり、処理速度と認識率を調整したりする上級者向けの設定です。値を小さくしすぎると、認識結果が途中で終了する場合があります。コンストラクタ、`transcribe()`、`stream()`、モジュールレベルの`transcribe()`の`settings`で指定できます。
 
 | 設定 | 単位 | 用途 |
 | --- | --- | --- |
@@ -388,13 +476,15 @@ else:
 バッチ音声の HTTP 認識では、処理時間を音声時間に対する倍率で制御できます。
 
 ```python
-from amivoice import AmiVoiceClient, Engine
+from amivoice import AmiVoiceClient, Engine, RecognitionSettings
 
 client = AmiVoiceClient(
-    grammar_file_names=Engine.A_GENERAL,
-    max_decoding_time=30_000,
-    max_decoding_rate=2.0,
-    target_decoding_rate=1.5,
+    settings=RecognitionSettings(
+        grammar_file_names=Engine.A_GENERAL,
+        max_decoding_time=30_000,
+        max_decoding_rate=2.0,
+        target_decoding_rate=1.5,
+    ),
 )
 result = client.transcribe("audio.wav")
 print(result.text)
@@ -411,7 +501,7 @@ AmiVoice API Private の「音声入力_ルール」エンジンを使う場合�
 ```python
 from pathlib import Path
 
-from amivoice import AmiVoiceClient, build_grammar_file_names, encode_grammar
+from amivoice import AmiVoiceClient, RecognitionSettings, build_grammar_file_names, encode_grammar
 
 grammar_file_names = build_grammar_file_names(
     encode_grammar(Path("Number.gram").read_text(encoding="utf-8")),
@@ -419,9 +509,11 @@ grammar_file_names = build_grammar_file_names(
     fallback=True,
 )
 client = AmiVoiceClient(
-    grammar_file_names=grammar_file_names,
-    complete_timeout=5_000,
-    wildcard_model_penalty=4.0,
+    settings=RecognitionSettings(
+        grammar_file_names=grammar_file_names,
+        complete_timeout=5_000,
+        wildcard_model_penalty=4.0,
+    ),
 )
 result = client.transcribe("audio.wav")
 print(result.text)
@@ -438,11 +530,10 @@ Private 環境の既定値は異なる場合があります。JSGF や SRGS の�
 使用量をユーザーやアプリケーション単位で集計する場合は、`billing_key`を指定します。同期 HTTP と WebSocket の両方で利用できます。
 
 ```python
-from amivoice import AmiVoiceClient, Engine
+from amivoice import AmiVoiceClient, Engine, RecognitionSettings
 
 client = AmiVoiceClient(
-    grammar_file_names=Engine.A_GENERAL,
-    billing_key="user01",
+    settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL, billing_key="user01"),
 )
 result = client.transcribe("audio.wav")
 print(result.text)
@@ -522,11 +613,10 @@ user_dictionary.register_words(
 音声認識で参照する場合は、登録時と同じ接続エンジンを使い、`profile_id`の先頭に`:`を付けます。辞書 API の登録・取得・削除には`:`を付けない ID を渡してください。
 
 ```python
-from amivoice import AmiVoiceClient, Engine
+from amivoice import AmiVoiceClient, Engine, RecognitionSettings
 
 recognition_client = AmiVoiceClient(
-    grammar_file_names=Engine.A_GENERAL,
-    profile_id=":user01",
+    settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL, profile_id=":user01"),
 )
 result = recognition_client.transcribe("audio.wav")
 print(result.text)
@@ -567,9 +657,9 @@ for parameter in parameters:
 非同期 HTTP 認識は、ジョブの登録（`submit()`）、状態取得（`get_job()`）、完了待機（`wait()`）の 3 つの操作で利用します。
 
 ```python
-from amivoice import AmiVoiceAsyncClient, Engine
+from amivoice import AmiVoiceAsyncClient, Engine, RecognitionSettings
 
-client = AmiVoiceAsyncClient(grammar_file_names=Engine.A_GENERAL)
+client = AmiVoiceAsyncClient(settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL))
 
 # 音声のアップロードと受付応答を待つ。認識完了までは待たない。
 submission = client.submit("audio.wav")
@@ -627,9 +717,9 @@ completed_snapshot = client.wait("job1")
 `False`の場合は、元の音声とサーバー応答を確認して原因を調査してください。
 
 ```python
-from amivoice import AmiVoiceAsyncClient, Engine
+from amivoice import AmiVoiceAsyncClient, Engine, RecognitionSettings
 
-client = AmiVoiceAsyncClient(grammar_file_names=Engine.A_GENERAL)
+client = AmiVoiceAsyncClient(settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL))
 job = client.submit("audio.wav")
 snapshot = client.get_job(job.session_id)
 matched = job.matches_audio(snapshot)
@@ -640,35 +730,37 @@ if matched is False:
 
 ### 共通設定の継承と解除
 
-コンストラクタの認識設定は`submit()`に引き継がれ、呼び出し単位で上書きできます。
-プロキシ、通信タイムアウト、接続先は`get_job()`と`wait()`でも継承・上書きできます。
-各引数は省略するか`USE_CLIENT_DEFAULT`を渡すとクライアントの設定を継承し、任意の認識設定やプロキシは`None`を渡すと解除できます。
-`False`や`0`は解除ではなく明示的な指定値として扱われます。
-通信タイムアウトは非負整数が必要で、`None`による解除には対応しません。
-接続先 URL は既存どおり`None`を拒否し、`USE_CLIENT_DEFAULT`で既定 URL を選択します。
+コンストラクタの`settings`は`submit()`に引き継がれ、呼び出し単位で上書きできます。
+`settings`と各項目の継承・解除は、前述の共通の認識設定と同じです。
+プロキシ、通信タイムアウト、接続先は独立した引数で、`get_job()`と`wait()`でも継承・上書きできます。
+プロキシは省略または`USE_CLIENT_DEFAULT`で継承し、`None`で解除します。
+通信タイムアウトは非負整数が必要で、`None`による解除には対応しません。`0`は明示値です。
+
+非同期クライアントのコンストラクタの`api_url`は、URL 文字列のみを受け付けます。省略時の URL は`https://acp-api.amivoice.com/v2/recognitions`です。コンストラクタに`USE_CLIENT_DEFAULT`や`None`は渡せません。
+`submit()`、`get_job()`、`wait()`では、`api_url`を省略するか`USE_CLIENT_DEFAULT`を渡すと、カスタム URL も含めてクライアントの接続先を継承します。既定 URL へリセットする指定ではありません。呼び出し時も URL に`None`は指定できません。
 
 ```python
-from amivoice import AmiVoiceAsyncClient, Engine
+from amivoice import AmiVoiceAsyncClient, Engine, RecognitionSettings
 
 client = AmiVoiceAsyncClient(
-    grammar_file_names=Engine.A_GENERAL,
-    profile_id=":user01",
+    settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL, profile_id=":user01"),
 )
 
-# この呼び出しだけプロファイル辞書を使用しない
-job = client.submit("audio.wav", profile_id=None)
+# この呼び出しだけプロファイル辞書を使用しない。接続エンジンは継承する。
+job = client.submit("audio.wav", settings=RecognitionSettings(profile_id=None))
 ```
 
 ### ログ保存なしの設定（logging_opt_out）
 
 非同期 HTTP 音声認識 API（v2）におけるログ保存なしの設定は、同期 HTTP や WebSocket と異なり、接続先 URL のパスを変更する方式ではありません。
-`d`パラメータの`loggingOptOut`へ、`True`または`False`を送信します。
+`RecognitionSettings.logging_opt_out`の値を`d`パラメータの`loggingOptOut`へ送信します。`True`と`False`の両方を指定できます。
 
 | 設定 | 動作 |
 | --- | --- |
 | `logging_opt_out=True` | 音声ログを保存しない |
 | `logging_opt_out=False` | 音声ログを保存する |
-| 省略または`None` | 値を送信せず、サーバーの既定値（ログ保存あり）に従う |
+| `None` | 値を解除して送信せず、サーバーの既定値（ログ保存あり）に従う |
+| 省略または`USE_CLIENT_DEFAULT` | クライアントの値を継承。継承する値もなければ送信しない |
 
 ライブラリ内部では、非同期 HTTP のエンドポイントとして常に`/v2/recognitions`を使用します。
 

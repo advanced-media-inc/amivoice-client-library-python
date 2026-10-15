@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from amivoice import Codec, Engine, transcribe
+from amivoice import Codec, Engine, RecognitionSettings, transcribe
 from amivoice.exceptions import ConfigurationError
 
 
@@ -17,10 +17,9 @@ def test_transcribe_official_parameters_valid_return_result() -> None:
     result = transcribe(
         b"audio",
         api_key="dummy",
-        grammar_file_names=Engine.A_GENERAL,
-        codec=Codec.LSB16K,
-        selected_channel=1,
-        logging_opt_out=True,
+        settings=RecognitionSettings(
+            grammar_file_names=Engine.A_GENERAL, codec=Codec.LSB16K, selected_channel=1, logging_opt_out=True
+        ),
         _transport=transport,
     )
     # Then: 認識結果と公式multipartパートを確認する

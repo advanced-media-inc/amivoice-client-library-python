@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from amivoice import AmiVoiceClient
+from amivoice import AmiVoiceClient, RecognitionSettings
 from amivoice.exceptions import RecognitionError
 
 from .test_amivoice_client import WebSocketFake
@@ -32,7 +32,9 @@ def test_stream_end_concurrent_write_valid_preserve_command_order() -> None:
 
     fake.send_audio = delayed_audio
     fake.send_text = tracked_text
-    manager = AmiVoiceClient(api_key="dummy", grammar_file_names="-a-general", codec="16K", wrp_transport=fake).stream()
+    manager = AmiVoiceClient(
+        api_key="dummy", settings=RecognitionSettings(grammar_file_names="-a-general", codec="16K"), wrp_transport=fake
+    ).stream()
     session = manager.enter()
     failures = []
 
@@ -74,7 +76,9 @@ def test_stream_end_send_failure_invalid_close_session() -> None:
         original(text)
 
     fake.send_text = fail_end
-    manager = AmiVoiceClient(api_key="dummy", grammar_file_names="-a-general", codec="16K", wrp_transport=fake).stream()
+    manager = AmiVoiceClient(
+        api_key="dummy", settings=RecognitionSettings(grammar_file_names="-a-general", codec="16K"), wrp_transport=fake
+    ).stream()
     session = manager.enter()
     # When / Then: 終了失敗は例外として通知し切断する
     try:
@@ -90,7 +94,9 @@ def test_stream_q_and_g_events_valid_ignore_and_finish() -> None:
     """QとGイベントを無視し認識セッションを正常終了する"""
     # Given: 終了応答の前にQとGイベントを返す通信処理
     fake = WebSocketFake(events=["Q ignored", "G ignored"])
-    manager = AmiVoiceClient(api_key="dummy", grammar_file_names="-a-general", codec="16K", wrp_transport=fake).stream()
+    manager = AmiVoiceClient(
+        api_key="dummy", settings=RecognitionSettings(grammar_file_names="-a-general", codec="16K"), wrp_transport=fake
+    ).stream()
 
     # When: セッションを終了して到着済みイベントを取得する
     with manager as session:

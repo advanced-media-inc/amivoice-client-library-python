@@ -4,7 +4,14 @@ import inspect
 
 import pytest
 
-from amivoice import AmiVoiceAsyncClient, AsyncHttpApiError, AsyncJobTimeoutError, ConfigurationError, ConnectionFailedError
+from amivoice import (
+    AmiVoiceAsyncClient,
+    AsyncHttpApiError,
+    AsyncJobTimeoutError,
+    ConfigurationError,
+    ConnectionFailedError,
+    RecognitionSettings,
+)
 from amivoice._async_models import parse_job
 from amivoice._params import RecognitionParams
 from amivoice._request_parameters import _request_values
@@ -26,7 +33,9 @@ def test_client_override_none_timeout_invalid_raise_ConfigurationError(operation
     """上書きでも通信待機Noneを送らない"""
     # Given: 通信を許可しないクライアント
     transport = RecordingTransport([])
-    client = AmiVoiceAsyncClient(api_key="dummy", grammar_file_names="-a-general", transport=transport)
+    client = AmiVoiceAsyncClient(
+        settings=RecognitionSettings(grammar_file_names="-a-general"), api_key="dummy", transport=transport
+    )
     # When / Then: 全操作で通信前に拒否
     with pytest.raises(ConfigurationError):
         getattr(client, operation)(b"audio" if operation == "submit" else "job1", receive_timeout=None)
@@ -47,7 +56,9 @@ def test_submit_invalid_returned_id_invalid_raise_AsyncHttpApiError(session_id: 
     """安全に再開できない受付IDは不正応答"""
     # Given: 有効な音声に対する壊れた受付応答
     transport = RecordingTransport([{"sessionid": session_id, "text": "..."}])
-    client = AmiVoiceAsyncClient(api_key="dummy", grammar_file_names="-a-general", transport=transport)
+    client = AmiVoiceAsyncClient(
+        settings=RecognitionSettings(grammar_file_names="-a-general"), api_key="dummy", transport=transport
+    )
     # When / Then: 受付成功としない
     with pytest.raises(AsyncHttpApiError):
         client.submit(b"audio")
@@ -76,7 +87,9 @@ def test_submit_network_failure_invalid_raise_without_retry() -> None:
     """POST通信失敗後に重複ジョブを作らない"""
     # Given: 認証情報を含む接続例外
     transport = RecordingTransport([OSError("dummy-key proxy-password connection lost")])
-    client = AmiVoiceAsyncClient(api_key="dummy-key", grammar_file_names="-a-general", transport=transport)
+    client = AmiVoiceAsyncClient(
+        settings=RecognitionSettings(grammar_file_names="-a-general"), api_key="dummy-key", transport=transport
+    )
     # When / Then: 安全な説明と受付済み不明の警告を返す
     with pytest.raises(ConnectionFailedError) as caught:
         client.submit(b"audio")

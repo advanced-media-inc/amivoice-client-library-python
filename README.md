@@ -19,7 +19,7 @@ src/
     ├── api_key.py            # APIキーの発行
     ├── sentiment_analysis.py # 感情パラメータの定義取得
     ├── grammar.py            # ルールグラマの指定
-    ├── settings.py           # クライアント既定値の継承指定
+    ├── settings.py           # 認識設定とクライアント既定値の継承指定
     └── exceptions.py         # 公開例外
 ```
 
@@ -35,14 +35,15 @@ API キーを環境変数`AMIVOICE_API_KEY`に設定してから実行してく�
 クライアントは環境変数からキーを読み取るため、ソースコードや実行時の引数にキーを書く必要はありません。
 
 ```python
-from amivoice import AmiVoiceClient, Engine
+from amivoice import AmiVoiceClient, Engine, RecognitionSettings
 
-client = AmiVoiceClient(grammar_file_names=Engine.A_GENERAL)
+client = AmiVoiceClient(settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL))
 result = client.transcribe("audio.wav")
 print(result.text)
 ```
 
-`grammar_file_names`は HTTP と WebSocket の両方で必須です。HTTP ではヘッダ付き音声であれば`codec`を省略できます。
+認識設定は`RecognitionSettings`にまとめて`settings`へ渡します。旧 API の個別の認識引数は使用できません。
+`RecognitionSettings.grammar_file_names`は HTTP と WebSocket の両方で必須です。HTTP ではヘッダ付き音声であれば`codec`を省略できます。
 WebSocket では`codec`も必ず指定してください。
 
 長時間の音声やバッチ処理には、非同期 HTTP 音声認識 API（v2）を利用できる`AmiVoiceAsyncClient`も用意されています。
@@ -52,14 +53,27 @@ Python の`async`/`await`構文ではなく通常の同期（ブロッキング�
 
 ## クライアント既定値の継承（USE_CLIENT_DEFAULT）
 
-クライアントの認識メソッド（`transcribe()`、`stream()`、`submit()`など）では、個別引数を省略するか`USE_CLIENT_DEFAULT`（型は`UseClientDefault`）を指定すると、コンストラクタで保持した設定を継承します。
-任意設定を解除して送信しない場合は`None`を渡し、`False`や`0`は解除ではなく明示的な指定値として扱われます。
-なお、コンストラクタの URL 引数（`http_api_url`、`ws_api_url`）は既存どおり`None`を拒否し、`USE_CLIENT_DEFAULT`で既定 URL を選択します。
+コンストラクタの`settings=None`は空の認識設定を表します。
+認識メソッド（`transcribe()`、`stream()`、`submit()`）では、`settings`を省略するか`USE_CLIENT_DEFAULT`（型は`UseClientDefault`）を指定すると、クライアントの設定を継承します。空の`RecognitionSettings()`もすべての項目を継承します。
+呼び出し時の`settings=None`は全認識設定を解除します。接続エンジンも解除されるため、そのまま送信すると必須設定の不足で`ConfigurationError`になります。
+
+`RecognitionSettings`の各項目は、省略または`USE_CLIENT_DEFAULT`で継承し、`None`で解除します。`False`や`0`は解除ではなく明示値です。
+プロキシ、通信タイムアウト、接続 URL、`raise_on_error`、完了待機の引数は、引き続き独立した引数です。
+同期クライアントのコンストラクタでは、URL 引数に`USE_CLIENT_DEFAULT`を指定すると既定 URL を選択します。
+非同期クライアントのコンストラクタの`api_url`は URL 文字列のみを受け付けます。
+呼び出し時の`api_url=USE_CLIENT_DEFAULT`は、カスタム URL も含めてクライアントの接続先を継承し、既定 URL へリセットしません。URL に`None`は指定できません。
 
 ラッパー関数などで引数をそのまま転送する場合も、未指定の既定値に`USE_CLIENT_DEFAULT`を使用します。
 
 ```python
-from amivoice import USE_CLIENT_DEFAULT, AmiVoiceClient, Engine, RecognitionResult, UseClientDefault
+from amivoice import (
+    USE_CLIENT_DEFAULT,
+    AmiVoiceClient,
+    Engine,
+    RecognitionResult,
+    RecognitionSettings,
+    UseClientDefault,
+)
 
 
 def recognize_speech(
@@ -68,10 +82,12 @@ def recognize_speech(
     client: AmiVoiceClient,
     confidence_level: float | None | UseClientDefault = USE_CLIENT_DEFAULT,
 ) -> RecognitionResult:
-    return client.transcribe(audio, confidence_level=confidence_level)
+    return client.transcribe(audio, settings=RecognitionSettings(confidence_level=confidence_level))
 
 
-client = AmiVoiceClient(grammar_file_names=Engine.A_GENERAL, confidence_level=0.2)
+client = AmiVoiceClient(
+    settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL, confidence_level=0.2)
+)
 result = recognize_speech(b"RIFF...", client=client)
 ```
 
