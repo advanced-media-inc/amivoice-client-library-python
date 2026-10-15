@@ -103,3 +103,67 @@ def test_parse_job_rejected_valid_return_error(recognition: dict[str, object]) -
     snapshot = parse_job(json.dumps(data).encode(), "job1")
     # Then: ジョブ完了とは別に認識失敗を返す
     assert snapshot.is_terminal and snapshot.is_error
+
+
+@pytest.mark.parametrize("layout", ["flat", "wrapped", "compatible"])
+@pytest.mark.parametrize("labels", [["speaker0", "speaker1", "speaker3", None], [None, None], []])
+def test_parse_job_labels_valid_return_unmodified_tokens(layout: str, labels: list[str | None]) -> None:
+    """全応答形式で欠番・欠落・無音を補完せず保持する"""
+    # Given: 公式形式の単語ラベルと将来追加されるフィールド
+    tokens = [
+        {
+            "written": f"単語{index}",
+            "starttime": index * 100,
+            "endtime": (index + 1) * 100,
+            "future_token": {"value": index},
+            **({"label": label} if label is not None else {}),
+        }
+        for index, label in enumerate(labels)
+    ]
+    utterances = [{"text": "認識", "tokens": tokens}]
+    segment = {"text": "認識", "results": utterances, "future_segment": True}
+    payload = {"text": "認識" if labels else "", "code": "", "message": "", "future_result": {"retained": True}}
+    payload.update({"results": utterances} if layout == "compatible" else {"segments": [segment]})
+    data = {
+        "status": "completed",
+        "session_id": "job1",
+        "future_job": [1],
+        **({"results": payload} if layout == "wrapped" else payload),
+    }
+    body = json.dumps(data, ensure_ascii=False).encode()
+    # When: 取得応答を解析する
+    snapshot = parse_job(body, "job1")
+    result = snapshot.recognition
+    parsed_tokens = result.results[0].tokens
+    # Then: raw・dataとlabelを改変せず、segmentsとflatten結果も一致する
+    assert [token.label for token in parsed_tokens] == labels
+    assert [token.starttime for token in parsed_tokens] == [index * 100 for index in range(len(labels))]
+    assert snapshot.raw == body.decode() and snapshot.data == data
+    assert json.loads(result.raw) == result.data == (payload if layout == "wrapped" else data)
+    if layout != "compatible":
+        nested_tokens = result.segments[0].results[0].tokens
+        assert [token.label for token in nested_tokens] == labels
+        assert nested_tokens == parsed_tokens
+        assert result.segments[0].data == segment
+    else:
+        assert result.segments == ()
+
+
+def test_parse_job_same_label_valid_return_independent_requests() -> None:
+    """同じspeaker0でも別リクエストの結果を名寄せしない"""
+    # Given: 同一ラベルを持つ別リクエストの結果
+    payload = {
+        "status": "completed",
+        "text": "認識",
+        "code": "",
+        "message": "",
+        "results": [{"text": "認識", "tokens": [{"written": "認識", "label": "speaker0"}]}],
+    }
+    # When: リクエストを独立に解析する
+    first = parse_job(json.dumps({**payload, "session_id": "job1"}).encode(), "job1")
+    second = parse_job(json.dumps({**payload, "session_id": "job2"}).encode(), "job2")
+    # Then: IDも結果も独立して保持される
+    assert first.recognition.session_id == "job1" and second.recognition.session_id == "job2"
+    assert first.recognition is not second.recognition
+    assert first.recognition.results[0].tokens[0] is not second.recognition.results[0].tokens[0]
+    assert first.recognition.results[0].tokens[0].label == second.recognition.results[0].tokens[0].label == "speaker0"
