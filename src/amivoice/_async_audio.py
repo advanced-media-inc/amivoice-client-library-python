@@ -120,12 +120,31 @@ class AudioUpload:
             stream.seek(0, io.SEEK_END)
             end = stream.tell()
         except (AttributeError, OSError, ValueError):
-            # seekに失敗しても呼び出し元の位置を失わない
-            stream.seek(start)
+            self._restore_position(stream, start)
             return False
-        stream.seek(start)
+        self._restore_position(stream, start)
         self.size = end - start
         return True
+
+    @staticmethod
+    def _restore_position(stream: BinaryIO, start: int) -> None:
+        """測定前の位置を維持し、復元不能な入力の部分送信を防ぐ
+
+        Args:
+            stream (BinaryIO): サイズ測定を試みたストリーム
+            start (int): 測定前の位置
+
+        Raises:
+            ConfigurationError: 測定前の位置を復元できない場合
+        """
+        try:
+            # seekを持たない又は拒否する入力は、位置が変わっていなければ退避できる
+            if stream.tell() != start:
+                stream.seek(start)
+                if stream.tell() != start:
+                    raise ValueError("Stream position was not restored")
+        except (AttributeError, OSError, ValueError):
+            raise ConfigurationError("Audio stream position could not be restored after measuring") from None
 
     def _spool(self, stream: BinaryIO) -> None:
         temporary = self._resources.enter_context(tempfile.TemporaryFile(mode="w+b"))  # noqa: SIM115 -- ExitStackが寿命を管理

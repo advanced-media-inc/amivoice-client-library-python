@@ -23,6 +23,22 @@ class NonSeekable:
         return self.stream.read(size)
 
 
+class TellOnlyStream(NonSeekable):
+    """位置は取得できるがseekを提供しない入力"""
+
+    def tell(self) -> int:
+        """現在の読み取り位置を返す"""
+        return self.stream.tell()
+
+
+class UnsupportedSeekStream(TellOnlyStream):
+    """seek操作を常に拒否する入力"""
+
+    def seek(self, offset: int, whence: int = io.SEEK_SET) -> None:
+        """位置を変えずにseek非対応を通知する"""
+        raise io.UnsupportedOperation("seek is unavailable")
+
+
 @pytest.mark.parametrize("source_kind", ["bytes", "path", "stream", "nonseek"])
 def test_upload_input_valid_return_same_audio(tmp_path: Path, source_kind: str) -> None:
     """各入力形式を小さいチャンクで送信し所有権を守る"""
@@ -40,6 +56,41 @@ def test_upload_input_valid_return_same_audio(tmp_path: Path, source_kind: str) 
     # Then: 元音声を保持し利用者のファイルを閉じない
     assert sent == data
     assert not stream.closed
+
+
+@pytest.mark.parametrize("stream_type", [TellOnlyStream, UnsupportedSeekStream])
+def test_upload_tell_without_seek_valid_return_remaining_audio(stream_type: type[TellOnlyStream]) -> None:
+    """tellのみ又はseekを拒否する入力を現在位置から退避する"""
+    # Given: 先頭を読み取り済みの非seekable入力
+    source = stream_type(b"skip-audio")
+    source.read(5)
+    # When: 長さ不明の入力を退避して送信する
+    with AudioUpload(source, chunk_size=2) as audio:
+        assert audio.size == 5
+        sent = b"".join(audio.chunks())
+    # Then: 現在位置からの全音声を保持し利用者のストリームを閉じない
+    assert sent == b"audio"
+    assert not source.stream.closed
+
+
+def test_upload_failed_seek_restore_invalid_raise_ConfigurationError() -> None:
+    """位置を変えた後の復元不能な入力を部分音声として送信しない"""
+
+    # Given: 終端への移動後に失敗し、元の位置へ戻せない入力
+    class MovingSeekStream(TellOnlyStream):
+        """失敗時にも位置を変更する独自ストリーム"""
+
+        def seek(self, offset: int, whence: int = io.SEEK_SET) -> None:
+            """終端へ移動した後に例外を送出する"""
+            if whence == io.SEEK_END:
+                self.stream.seek(0, io.SEEK_END)
+            raise io.UnsupportedOperation("cannot restore")
+
+    source = MovingSeekStream(b"audio")
+    # When / Then: 元の音声を失った状態で退避せず、安全な設定例外を送出する
+    with pytest.raises(ConfigurationError, match="could not be restored"), AudioUpload(source):
+        pass
+    assert not source.stream.closed
 
 
 @pytest.mark.parametrize("size", [0, 11])
