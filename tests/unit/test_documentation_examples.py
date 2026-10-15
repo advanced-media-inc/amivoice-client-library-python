@@ -19,7 +19,7 @@ from .amivoice.test_amivoice_client import HttpFake, WebSocketFake
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DOCUMENTATION_EXAMPLES = [
     pytest.param(code, id=f"{path.stem}-{index}")
-    for path in (REPOSITORY_ROOT / "README.md", REPOSITORY_ROOT / "docs/usage.md")
+    for path in (REPOSITORY_ROOT / "README.md", *sorted((REPOSITORY_ROOT / "docs").glob("usage*.md")))
     for index, code in enumerate(re.findall(r"```python\n(.*?)\n```", path.read_text(encoding="utf-8"), re.DOTALL), start=1)
 ]
 

@@ -49,7 +49,12 @@ WebSocket では`codec`も必ず指定してください。
 長時間の音声やバッチ処理には、非同期 HTTP 音声認識 API（v2）を利用できる`AmiVoiceAsyncClient`も用意されています。
 Python の`async`/`await`構文ではなく通常の同期（ブロッキング）メソッドを提供し、ジョブの登録（`submit`）、状態取得（`get_job`）、完了待機（`wait`）を行えます。
 
-詳細な利用方法は[利用方法](https://github.com/advanced-media-inc/amivoice-client-library-python/blob/main/docs/usage.md)を参照してください。
+詳細な利用方法は以下のガイドを参照してください。
+
+- [共通利用ガイド（インストール・認証・共通設定・辞書管理）](https://github.com/advanced-media-inc/amivoice-client-library-python/blob/main/docs/usage.md)
+- [同期 HTTP 音声認識ガイド](./docs/usage-sync-http.md)
+- [非同期 HTTP 音声認識（v2）ガイド](./docs/usage-async-http.md)
+- [WebSocket ストリーミング認識ガイド](./docs/usage-websocket.md)
 
 ## クライアント既定値の継承（USE_CLIENT_DEFAULT）
 
