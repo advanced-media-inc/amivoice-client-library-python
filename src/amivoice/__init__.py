@@ -28,6 +28,7 @@ from .exceptions import (
 from .grammar import build_grammar_file_names, encode_grammar
 from .models import NotificationEvent, RecognitionResult, StreamEvent, StreamEventType, Token, UtteranceEvent, UtteranceResult
 from .sentiment_analysis import SentimentAnalysisClient, SentimentParameterDefinition
+from .settings import USE_CLIENT_DEFAULT, UseClientDefault
 
 try:
     __version__ = version("amivoice-api-client")
@@ -35,6 +36,7 @@ except PackageNotFoundError:
     __version__ = "0.0.0"
 
 __all__ = [
+    "USE_CLIENT_DEFAULT",
     "AmiVoiceAsyncClient",
     "AmiVoiceClient",
     "AmiVoiceError",
@@ -67,6 +69,7 @@ __all__ = [
     "StreamEventType",
     "StreamSession",
     "Token",
+    "UseClientDefault",
     "UserDictionaryClient",
     "UtteranceEvent",
     "UtteranceResult",

@@ -14,7 +14,7 @@ from ._async_http_transport import AsyncHttpConnection, AsyncHttpTransport
 from ._async_models import parse_job, parse_submission
 from ._connection_settings import parse_http_proxy, parse_service_url
 from ._http_api import validate_service_api_key
-from ._params import UNSET, RecognitionParams, _UnsetType
+from ._params import RecognitionParams
 from ._recognition_settings import resolve_recognition_overrides
 from ._request_parameters import _request_values
 from ._segmenter import SegmenterProperties
@@ -30,6 +30,7 @@ from .exceptions import (
     ConfigurationError,
     ConnectionFailedError,
 )
+from .settings import USE_CLIENT_DEFAULT, UseClientDefault
 
 _DEFAULT_URL = "https://acp-api-async.amivoice.com/v2/recognitions"
 
@@ -162,31 +163,31 @@ class AmiVoiceAsyncClient:
         self,
         audio: AudioSource,
         *,
-        grammar_file_names: str | None | _UnsetType = UNSET,
-        codec: Codec | str | None | _UnsetType = UNSET,
-        proxy_server_name: str | None | _UnsetType = UNSET,
-        connect_timeout: int | _UnsetType = UNSET,
-        receive_timeout: int | _UnsetType = UNSET,
-        profile_id: str | None | _UnsetType = UNSET,
-        profile_words: str | Sequence[ProfileWord] | None | _UnsetType = UNSET,
-        segmenter: SegmenterProperties | None | _UnsetType = UNSET,
-        segmenter_properties: str | None | _UnsetType = UNSET,
-        selected_channel: int | tuple[int, int] | None | _UnsetType = UNSET,
-        audio_filter_properties: str | None | _UnsetType = UNSET,
-        confidence_level: float | None | _UnsetType = UNSET,
-        keep_filler_token: bool | None | _UnsetType = UNSET,
-        extension: str | None | _UnsetType = UNSET,
-        billing_key: str | None | _UnsetType = UNSET,
-        recognition_timeout: int | None | _UnsetType = UNSET,
-        max_decoding_time: int | None | _UnsetType = UNSET,
-        max_response_time: int | None | _UnsetType = UNSET,
-        max_decoding_rate: float | None | _UnsetType = UNSET,
-        target_response_time: int | None | _UnsetType = UNSET,
-        target_decoding_rate: float | None | _UnsetType = UNSET,
-        logging_opt_out: bool | None | _UnsetType = UNSET,
-        content_id: str | None | _UnsetType = UNSET,
-        compatible_with_sync: bool | None | _UnsetType = UNSET,
-        api_url: str | _UnsetType = UNSET,
+        grammar_file_names: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        codec: Codec | str | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        proxy_server_name: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        connect_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
+        receive_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
+        profile_id: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        profile_words: str | Sequence[ProfileWord] | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        segmenter: SegmenterProperties | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        segmenter_properties: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        selected_channel: int | tuple[int, int] | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        audio_filter_properties: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        confidence_level: float | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        keep_filler_token: bool | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        extension: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        billing_key: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        recognition_timeout: int | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        max_decoding_time: int | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        max_response_time: int | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        max_decoding_rate: float | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        target_response_time: int | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        target_decoding_rate: float | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        logging_opt_out: bool | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        content_id: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        compatible_with_sync: bool | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        api_url: str | UseClientDefault = USE_CLIENT_DEFAULT,
     ) -> AsyncJobSubmission:
         """音声を登録し、認識完了を待たず受付済みIDを返す
 
@@ -195,31 +196,31 @@ class AmiVoiceAsyncClient:
 
         Args:
             audio (AudioSource): bytes、Path、ファイルパス、バイナリストリーム
-            grammar_file_names (str | None | _UnsetType): 今回のエンジン名
-            codec (Codec | str | None | _UnsetType): 今回の音声形式
-            proxy_server_name (str | None | _UnsetType): HTTPプロキシ
-            connect_timeout (int | _UnsetType): 接続待機のミリ秒
-            receive_timeout (int | _UnsetType): 送受信待機のミリ秒
-            profile_id (str | None | _UnsetType): 辞書参照
-            profile_words (str | Sequence[ProfileWord] | None | _UnsetType): セッション単語
-            segmenter (SegmenterProperties | None | _UnsetType): 発話検出と言語識別
-            segmenter_properties (str | None | _UnsetType): 設定文字列
-            selected_channel (int | tuple[int, int] | None | _UnsetType): チャネル指定
-            audio_filter_properties (str | None | _UnsetType): 音声フィルタの文字列
-            confidence_level (float | None | _UnsetType): 信頼度しきい値
-            keep_filler_token (bool | None | _UnsetType): フィラーの保持
-            extension (str | None | _UnsetType): 集計設定JSON
-            billing_key (str | None | _UnsetType): 集計タグ
-            recognition_timeout (int | None | _UnsetType): サーバーの認識完了制御
-            max_decoding_time (int | None | _UnsetType): 最大認識処理時間
-            max_response_time (int | None | _UnsetType): 最大応答時間
-            max_decoding_rate (float | None | _UnsetType): 最大倍率
-            target_response_time (int | None | _UnsetType): 目標応答時間
-            target_decoding_rate (float | None | _UnsetType): 目標倍率
-            logging_opt_out (bool | None | _UnsetType): ログ保存設定
-            content_id (str | None | _UnsetType): ユーザー定義ID
-            compatible_with_sync (bool | None | _UnsetType): 同期互換結果
-            api_url (str | _UnsetType): 今回だけ使用する接続先
+            grammar_file_names (str | None | UseClientDefault): 今回のエンジン名
+            codec (Codec | str | None | UseClientDefault): 今回の音声形式
+            proxy_server_name (str | None | UseClientDefault): HTTPプロキシ
+            connect_timeout (int | UseClientDefault): 接続待機のミリ秒
+            receive_timeout (int | UseClientDefault): 送受信待機のミリ秒
+            profile_id (str | None | UseClientDefault): 辞書参照
+            profile_words (str | Sequence[ProfileWord] | None | UseClientDefault): セッション単語
+            segmenter (SegmenterProperties | None | UseClientDefault): 発話検出と言語識別
+            segmenter_properties (str | None | UseClientDefault): 設定文字列
+            selected_channel (int | tuple[int, int] | None | UseClientDefault): チャネル指定
+            audio_filter_properties (str | None | UseClientDefault): 音声フィルタの文字列
+            confidence_level (float | None | UseClientDefault): 信頼度しきい値
+            keep_filler_token (bool | None | UseClientDefault): フィラーの保持
+            extension (str | None | UseClientDefault): 集計設定JSON
+            billing_key (str | None | UseClientDefault): 集計タグ
+            recognition_timeout (int | None | UseClientDefault): サーバーの認識完了制御
+            max_decoding_time (int | None | UseClientDefault): 最大認識処理時間
+            max_response_time (int | None | UseClientDefault): 最大応答時間
+            max_decoding_rate (float | None | UseClientDefault): 最大倍率
+            target_response_time (int | None | UseClientDefault): 目標応答時間
+            target_decoding_rate (float | None | UseClientDefault): 目標倍率
+            logging_opt_out (bool | None | UseClientDefault): ログ保存設定
+            content_id (str | None | UseClientDefault): ユーザー定義ID
+            compatible_with_sync (bool | None | UseClientDefault): 同期互換結果
+            api_url (str | UseClientDefault): 今回だけ使用する接続先
 
         Returns:
             AsyncJobSubmission: 受付済みジョブID、元の応答、ローカル音声サイズとMD5
@@ -234,9 +235,9 @@ class AmiVoiceAsyncClient:
         _communication(params)
         url = self._url(api_url)
         options = (
-            self._logging_opt_out if isinstance(logging_opt_out, _UnsetType) else logging_opt_out,
-            self._content_id if isinstance(content_id, _UnsetType) else content_id,
-            self._compatible_with_sync if isinstance(compatible_with_sync, _UnsetType) else compatible_with_sync,
+            self._logging_opt_out if isinstance(logging_opt_out, UseClientDefault) else logging_opt_out,
+            self._content_id if isinstance(content_id, UseClientDefault) else content_id,
+            self._compatible_with_sync if isinstance(compatible_with_sync, UseClientDefault) else compatible_with_sync,
         )
         validate_async_options(*options)
         with AudioUpload(audio) as source:
@@ -246,8 +247,8 @@ class AmiVoiceAsyncClient:
             body = self._request("POST", url, upload, params)
             return replace(parse_submission(body), audio_size=source.size, audio_md5=source.audio_md5)
 
-    def _url(self, override: str | _UnsetType) -> str:
-        return self._api_url if isinstance(override, _UnsetType) else _endpoint(override)
+    def _url(self, override: str | UseClientDefault) -> str:
+        return self._api_url if isinstance(override, UseClientDefault) else _endpoint(override)
 
     def _request(  # noqa: PLR0913
         self,
@@ -287,19 +288,19 @@ class AmiVoiceAsyncClient:
         self,
         session_id: str,
         *,
-        api_url: str | _UnsetType = UNSET,
-        proxy_server_name: str | None | _UnsetType = UNSET,
-        connect_timeout: int | _UnsetType = UNSET,
-        receive_timeout: int | _UnsetType = UNSET,
+        api_url: str | UseClientDefault = USE_CLIENT_DEFAULT,
+        proxy_server_name: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        connect_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
+        receive_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
     ) -> AsyncJobSnapshot:
         """状態と結果を取得する、error状態もスナップショットとして返す
 
         Args:
             session_id (str): 保存したジョブID
-            api_url (str | _UnsetType): 接続先の上書き
-            proxy_server_name (str | None | _UnsetType): プロキシの上書き
-            connect_timeout (int | _UnsetType): 接続待機のミリ秒
-            receive_timeout (int | _UnsetType): 受信待機のミリ秒
+            api_url (str | UseClientDefault): 接続先の上書き
+            proxy_server_name (str | None | UseClientDefault): プロキシの上書き
+            connect_timeout (int | UseClientDefault): 接続待機のミリ秒
+            receive_timeout (int | UseClientDefault): 受信待機のミリ秒
 
         Returns:
             AsyncJobSnapshot: 認識結果又は処理中・失敗の状態
@@ -361,10 +362,10 @@ class AmiVoiceAsyncClient:
         raise_on_error: bool = True,
         max_retries: int = 3,
         retry_backoff: float = 1.0,
-        api_url: str | _UnsetType = UNSET,
-        proxy_server_name: str | None | _UnsetType = UNSET,
-        connect_timeout: int | _UnsetType = UNSET,
-        receive_timeout: int | _UnsetType = UNSET,
+        api_url: str | UseClientDefault = USE_CLIENT_DEFAULT,
+        proxy_server_name: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        connect_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
+        receive_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
     ) -> AsyncJobSnapshot:
         """呼び出し元をブロックして終端状態を待つ、中断はジョブのキャンセルではない
 
@@ -375,10 +376,10 @@ class AmiVoiceAsyncClient:
             raise_on_error (bool): ジョブ又は認識失敗を例外にするか
             max_retries (int): GET連続失敗時の追加試行上限、0で再試行なし
             retry_backoff (float): GET再試行の初回待機秒数、倍増して最大30秒
-            api_url (str | _UnsetType): 接続先の上書き
-            proxy_server_name (str | None | _UnsetType): プロキシの上書き
-            connect_timeout (int | _UnsetType): 接続待機のミリ秒
-            receive_timeout (int | _UnsetType): 受信待機のミリ秒
+            api_url (str | UseClientDefault): 接続先の上書き
+            proxy_server_name (str | None | UseClientDefault): プロキシの上書き
+            connect_timeout (int | UseClientDefault): 接続待機のミリ秒
+            receive_timeout (int | UseClientDefault): 受信待機のミリ秒
 
         Returns:
             AsyncJobSnapshot: 終端状態と認識結果

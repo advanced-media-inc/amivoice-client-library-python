@@ -11,13 +11,11 @@ from typing import Final
 
 from ._billing import resolve_billing_extension
 from .exceptions import ConfigurationError
+from .settings import USE_CLIENT_DEFAULT, UseClientDefault
 
-
-class _UnsetType:
-    """キーワード引数未指定を表す内部 sentinel。"""
-
-
-UNSET: Final = _UnsetType()
+# 内部利用者向けの互換エイリアス
+UNSET: Final = USE_CLIENT_DEFAULT
+_UnsetType = UseClientDefault
 
 _PROCESSING_TIME_FIELDS: Final[tuple[str, ...]] = (
     "connect_timeout",

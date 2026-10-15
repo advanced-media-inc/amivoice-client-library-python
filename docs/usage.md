@@ -196,6 +196,31 @@ print("失敗区間数:", sum(result.is_error for result in results))
 
 コンストラクタで指定した値は、各認識呼び出しの設定として引き継がれます。対応する引数を`transcribe()`や`stream()`に指定すると、その呼び出しだけ上書きします。任意の認識パラメータを指定しない場合、ライブラリはサーバーの既定値を勝手に補って送信しません。公式に記載された既定値も、予告なく変更される場合があります。
 
+### クライアント設定の継承と解除（USE_CLIENT_DEFAULT）
+
+`transcribe()`や`stream()`などの呼び出しメソッドでは、各引数を省略するか公開 sentinel の`USE_CLIENT_DEFAULT`（型は`UseClientDefault`）を指定すると、クライアントに保持された設定を継承します。
+任意の認識設定を解除して送信しない場合は`None`を指定します。`False`や`0`は解除ではなく、明示的な指定値として扱われます。
+一方、コンストラクタの URL 引数（`http_api_url`、`ws_api_url`）は既存どおり`None`を拒否し、`USE_CLIENT_DEFAULT`で既定 URL を選択します。
+
+ラッパー関数などで引数をそのまま転送する場合も、未指定を表す引数に`USE_CLIENT_DEFAULT`を指定します。
+
+```python
+from amivoice import USE_CLIENT_DEFAULT, AmiVoiceClient, Engine, RecognitionResult, UseClientDefault
+
+
+def recognize_speech(
+    audio: bytes,
+    *,
+    client: AmiVoiceClient,
+    confidence_level: float | None | UseClientDefault = USE_CLIENT_DEFAULT,
+) -> RecognitionResult:
+    return client.transcribe(audio, confidence_level=confidence_level)
+
+
+client = AmiVoiceClient(grammar_file_names=Engine.A_GENERAL, confidence_level=0.2)
+result = recognize_speech(b"RIFF...", client=client)
+```
+
 ### ログ保存なしの認識
 
 サーバー側に音声を保存しない設定で認識する場合は、`logging_opt_out=True`を指定します。同期 HTTP と WebSocket の既定 URL が、それぞれログ保存なしの URL に切り替わります。`transcribe()`や`stream()`の呼び出し時にも指定できます。
@@ -617,8 +642,10 @@ if matched is False:
 
 コンストラクタの認識設定は`submit()`に引き継がれ、呼び出し単位で上書きできます。
 プロキシ、通信タイムアウト、接続先は`get_job()`と`wait()`でも継承・上書きできます。
-任意の認識設定やプロキシは、`None`を渡すと解除できます。
+各引数は省略するか`USE_CLIENT_DEFAULT`を渡すとクライアントの設定を継承し、任意の認識設定やプロキシは`None`を渡すと解除できます。
+`False`や`0`は解除ではなく明示的な指定値として扱われます。
 通信タイムアウトは非負整数が必要で、`None`による解除には対応しません。
+接続先 URL は既存どおり`None`を拒否し、`USE_CLIENT_DEFAULT`で既定 URL を選択します。
 
 ```python
 from amivoice import AmiVoiceAsyncClient, Engine
