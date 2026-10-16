@@ -35,6 +35,7 @@ class _AsyncRecognitionOptions:
     logging_opt_out: bool | None = None
     content_id: str | None = None
     compatible_with_sync: bool | None = None
+    sentiment_analysis: bool | None = None
     speaker_diarization: bool | None = None
     diarization_min_speaker: int | None = None
     diarization_max_speaker: int | None = None
@@ -49,7 +50,7 @@ def validate_async_options(options: _AsyncRecognitionOptions) -> None:
     Raises:
         ConfigurationError: 設定の型・範囲・大小関係又は制御文字が不正な場合
     """
-    for name in ("logging_opt_out", "compatible_with_sync", "speaker_diarization"):
+    for name in ("logging_opt_out", "compatible_with_sync", "speaker_diarization", "sentiment_analysis"):
         value = getattr(options, name)
         if value is not None and not isinstance(value, bool):
             raise ConfigurationError(f"{name} must be bool or None")
@@ -248,6 +249,7 @@ class MultipartUpload:
             ("loggingOptOut", options.logging_opt_out),
             ("contentId", options.content_id),
             ("compatibleWithSync", options.compatible_with_sync),
+            ("sentimentAnalysis", options.sentiment_analysis),
             ("speakerDiarization", options.speaker_diarization),
             ("diarizationMinSpeaker", options.diarization_min_speaker),
             ("diarizationMaxSpeaker", options.diarization_max_speaker),
