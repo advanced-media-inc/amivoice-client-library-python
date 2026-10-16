@@ -133,7 +133,7 @@ job = client.submit("audio.wav", settings=RecognitionSettings(profile_id=None))
 | `diarization_max_speaker` | `int \| None \| UseClientDefault` | `USE_CLIENT_DEFAULT` | `diarizationMaxSpeaker` | 最大話者数。`1` 以上 `20` 以下の整数。省略時のサーバー既定値は `10` |
 
 `diarization_min_speaker` と `diarization_max_speaker` には `1` から `20` までの整数を、`diarization_min_speaker <= diarization_max_speaker` となるように指定します。話者数が分かっている場合は、最小話者数と最大話者数を同じ値にします。片方だけを指定した場合、未指定側はサーバーの既定値（最小 `1`、最大 `10`）が使われます。例えば `diarization_min_speaker=15` のみを指定すると、サーバー既定の最大値 `10` を超えるため受付に失敗する場合があります。
-`bool`、`float`、`str` や範囲外（`1`〜`20` 以外）の値を指定すると、通信前に `ConfigurationError` を送出します。また、`speaker_diarization=True` で最小・最大話者数の両方を指定した際に大小関係が逆転している場合も `ConfigurationError` になります。話者ダイアライゼーションが無効でも、逆転した人数設定が残っていると、受付時に `AsyncHttpApiError` を送出することがあります。
+`bool`、`float`、`str` や範囲外（`1`〜`20` 以外）の値を指定すると、通信前に `ConfigurationError` を送出します。最小・最大話者数の両方を指定し、最小話者数が最大話者数を超える場合も、通信前に `ConfigurationError` を送出します。この制約は、話者ダイアライゼーションが無効・未指定の場合も同じです。
 
 これら 3 項目は非同期 HTTP（`AmiVoiceAsyncClient`）専用です。同期 HTTP（`AmiVoiceClient.transcribe()`）や WebSocket（`AmiVoiceClient.stream()`）、`AmiVoiceClient` のコンストラクタでは、明示的な `False` を含めて `ConfigurationError` で拒否します。`None` と `USE_CLIENT_DEFAULT` は許容します。同期 HTTP や WebSocket で話者ダイアライゼーションを利用する場合は、`segmenter=SegmenterProperties(speaker_diarization=True)` を使用してください。
 
@@ -185,7 +185,7 @@ if snapshot.recognition is not None:
 各項目は `USE_CLIENT_DEFAULT` でクライアント既定値を継承し、明示値で上書き、`None` でクライアント既定値を解除します。`speaker_diarization=False` または `None` を指定すると、どちらも話者ダイアライゼーション機能を使用しません。
 
 `diarization_min_speaker` や `diarization_max_speaker` だけを指定しても、`speaker_diarization` は自動で `True` になりません。
-また、`speaker_diarization=False` または `None` で機能を無効化しても、指定または継承された人数設定は送信されます。最小話者数が最大話者数を超えるなど、不正な設定が残っていると受付時に拒否されます。
+また、`speaker_diarization=False` または `None` で機能を無効化しても、指定または継承された人数設定はそのまま送信されます。継承した設定でも、最小話者数が最大話者数を超える場合は、通信前に `ConfigurationError` を送出します。片方だけを指定し、サーバーの既定値との組み合わせが不正になる場合は、受付時に拒否されることがあります。
 話者ダイアライゼーションが無効な状態で最小・最大話者数の設定が残っている場合、`submit()` 実行時に標準の `logging`（`logging.WARNING`）で警告を 1 回出力します。警告が出てもリクエストの送信自体は止まりません。機能を無効化する際に人数設定の送信と警告も止めたい場合は、`diarization_min_speaker=None` と `diarization_max_speaker=None` を指定して解除するか、新しいクライアントを作成してください。なお、ライブラリは `logging.basicConfig()` などの全体設定を変更しません。
 
 以下のコードは、呼び出し単位で設定を上書き・無効化・解除する例です。
