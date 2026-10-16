@@ -121,6 +121,124 @@ job = client.submit("audio.wav", settings=RecognitionSettings(profile_id=None))
 
 ライブラリ内部では、非同期 HTTP のエンドポイントとして常に `/v2/recognitions` を使用します。
 
+## 話者ダイアライゼーションの設定
+
+非同期 HTTP 音声認識（v2）の話者ダイアライゼーションは、`RecognitionSettings` の 3 項目で設定します。
+サーバーへはマルチパートフィールド `d` 内のパラメータとして送信します。仕様の詳細は公式マニュアルの[話者ダイアライゼーション](https://docs.amivoice.com/amivoice-api/manual/speaker-diarization)、[リクエストパラメータ一覧](https://docs.amivoice.com/amivoice-api/manual/request-parameters)、[非同期 HTTP 音声認識インターフェース](https://docs.amivoice.com/amivoice-api/manual/async-http-interface)、[認識結果フォーマット](https://docs.amivoice.com/amivoice-api/manual/result-format)を参照してください。
+
+| 項目 | 型 | 既定値 | `d` パラメータ | 内容 |
+| --- | --- | --- | --- | --- |
+| `speaker_diarization` | `bool \| None \| UseClientDefault` | `USE_CLIENT_DEFAULT` | `speakerDiarization` | 話者ダイアライゼーションの有効化。`True` は `"True"`、`False` は `"False"`（先頭大文字）を送信。省略時のサーバー既定値は `False` |
+| `diarization_min_speaker` | `int \| None \| UseClientDefault` | `USE_CLIENT_DEFAULT` | `diarizationMinSpeaker` | 最小話者数。`1` 以上 `20` 以下の整数。省略時のサーバー既定値は `1` |
+| `diarization_max_speaker` | `int \| None \| UseClientDefault` | `USE_CLIENT_DEFAULT` | `diarizationMaxSpeaker` | 最大話者数。`1` 以上 `20` 以下の整数。省略時のサーバー既定値は `10` |
+
+`diarization_min_speaker` と `diarization_max_speaker` には `1` から `20` までの整数を、`diarization_min_speaker <= diarization_max_speaker` となるように指定します。話者数が分かっている場合は、最小話者数と最大話者数を同じ値にします。片方だけを指定した場合、未指定側はサーバーの既定値（最小 `1`、最大 `10`）が使われます。例えば `diarization_min_speaker=15` のみを指定すると、サーバー既定の最大値 `10` を超えるため受付に失敗する場合があります。
+`bool`、`float`、`str` や範囲外（`1`〜`20` 以外）の値を指定すると、通信前に `ConfigurationError` を送出します。最小・最大話者数の両方を指定し、最小話者数が最大話者数を超える場合も、通信前に `ConfigurationError` を送出します。この制約は、話者ダイアライゼーションが無効・未指定の場合も同じです。
+
+これら 3 項目は非同期 HTTP（`AmiVoiceAsyncClient`）専用です。同期 HTTP（`AmiVoiceClient.transcribe()`）や WebSocket（`AmiVoiceClient.stream()`）、`AmiVoiceClient` のコンストラクタでは、明示的な `False` を含めて `ConfigurationError` で拒否します。`None` と `USE_CLIENT_DEFAULT` は許容します。同期 HTTP や WebSocket で話者ダイアライゼーションを利用する場合は、`segmenter=SegmenterProperties(speaker_diarization=True)` を使用してください。
+
+非同期 HTTP では `SegmenterProperties` の話者設定である`speaker_diarization`、`diarizer_alpha`、`diarizer_transition_bias`は別方式のため使用できず、指定すると `ConfigurationError` になります。
+`SegmenterProperties` の発話区間検出（VAD）と言語識別（LID）は非同期 HTTP でも利用できます。
+
+### 基本的な実行とラベル参照
+
+単一話者のサンプル音声 `audio.wav` に合わせて、`speaker_diarization=True`、`diarization_min_speaker=1`、`diarization_max_speaker=1` を指定し、完了後に単語ごとの話者ラベルを参照する例です。
+
+```python
+from amivoice import AmiVoiceAsyncClient, Engine, RecognitionSettings
+
+client = AmiVoiceAsyncClient(
+    settings=RecognitionSettings(
+        grammar_file_names=Engine.A_GENERAL,
+        speaker_diarization=True,
+        diarization_min_speaker=1,
+        diarization_max_speaker=1,
+    ),
+)
+
+submission = client.submit("audio.wav")
+snapshot = client.wait(submission.session_id)
+
+if snapshot.recognition is not None:
+    for utterance in snapshot.recognition.results:
+        for token in utterance.tokens:
+            # label はすべての単語に付くとは限らないため None を区別する
+            # 公式のラベル文字列は小文字の "speaker0" などであり、リクエスト内でのみ有効（個人名には変換しない）
+            speaker = token.label if token.label is not None else "ラベルなし"
+            # starttime / endtime も任意フィールド（単位はミリ秒）のため None を区別する
+            if token.starttime is not None and token.endtime is not None:
+                timing = f"{token.starttime}ms - {token.endtime}ms"
+            else:
+                timing = "時刻なし"
+            print(f"[{speaker}] {token.written} ({timing})")
+```
+
+認識結果の各単語（`utterance.tokens` の各 `Token`）から、`token.label`、`token.written`、`token.starttime`、`token.endtime` を参照できます。
+
+`token.label` には `"speaker0"`、`"speaker1"` などの文字列、または `None` が入ります。実 API で全単語にラベルが付く保証はなく、未付与の単語は `None` のまま保持します。`speaker0`、`speaker1`、`speaker3` のように欠番になる場合もあります。
+ラベルは 1 リクエスト内でのみ有効です。複数リクエスト間で同じ話者に同じラベルが付く保証はなく、個人を特定するものでもありません。
+`token.starttime` と `token.endtime` はミリ秒単位の任意フィールドで、存在しない場合は `None` です。
+ライブラリはサーバーが返した話者ラベルをそのまま保持します。話者ごとの発話結合や集約は行いません。
+
+### 呼び出し単位での上書き・無効化・解除と警告
+
+各項目は `USE_CLIENT_DEFAULT` でクライアント既定値を継承し、明示値で上書き、`None` でクライアント既定値を解除します。`speaker_diarization=False` または `None` を指定すると、どちらも話者ダイアライゼーション機能を使用しません。
+
+`diarization_min_speaker` や `diarization_max_speaker` だけを指定しても、`speaker_diarization` は自動で `True` になりません。
+また、`speaker_diarization=False` または `None` で機能を無効化しても、指定または継承された人数設定はそのまま送信されます。継承した設定でも、最小話者数が最大話者数を超える場合は、通信前に `ConfigurationError` を送出します。片方だけを指定し、サーバーの既定値との組み合わせが不正になる場合は、受付時に拒否されることがあります。
+話者ダイアライゼーションが無効な状態で最小・最大話者数の設定が残っている場合、`submit()` 実行時に標準の `logging`（`logging.WARNING`）で警告を 1 回出力します。警告が出てもリクエストの送信自体は止まりません。機能を無効化する際に人数設定の送信と警告も止めたい場合は、`diarization_min_speaker=None` と `diarization_max_speaker=None` を指定して解除するか、新しいクライアントを作成してください。なお、ライブラリは `logging.basicConfig()` などの全体設定を変更しません。
+
+以下のコードは、呼び出し単位で設定を上書き・無効化・解除する例です。
+
+```python
+from amivoice import AmiVoiceAsyncClient, Engine, RecognitionSettings
+
+client = AmiVoiceAsyncClient(
+    settings=RecognitionSettings(
+        grammar_file_names=Engine.A_GENERAL,
+        speaker_diarization=True,
+        diarization_min_speaker=2,
+        diarization_max_speaker=6,
+    ),
+)
+
+# 1. この呼び出しだけ話者数の範囲を 3〜4 人に上書きする（speaker_diarization=True は継承）
+job_override = client.submit(
+    "audio.wav",
+    settings=RecognitionSettings(
+        diarization_min_speaker=3,
+        diarization_max_speaker=4,
+    ),
+)
+
+# 2. この呼び出しだけ話者ダイアライゼーション機能のみを無効化する
+# クライアント既定の人数設定（2〜6）は引き継がれて送信されるため、警告（logging.WARNING）が出る
+job_disable = client.submit(
+    "audio.wav",
+    settings=RecognitionSettings(
+        speaker_diarization=False,
+    ),
+)
+
+# 3. 話者ダイアライゼーション機能と人数設定の両方を None で解除する（人数は送信されず警告も出ない）
+job_clear = client.submit(
+    "audio.wav",
+    settings=RecognitionSettings(
+        speaker_diarization=None,
+        diarization_min_speaker=None,
+        diarization_max_speaker=None,
+    ),
+)
+```
+
+### 音声・運用上の制約と精度特性
+
+認識可能な話者数は最大 20 人です。話者ダイアライゼーション有効時は、1 リクエストあたり最大 3 時間までの音声が対象となり、通常より処理時間が増加します。
+
+ライブラリ側では送信前の音声長の解析や 3 時間超の音声の自動分割をせず、サーバー側の判定に委ねます。受付時（POST）に拒否された場合は `AsyncHttpApiError` を送出します。受付後のジョブ失敗や認識失敗では、`get_job()` はエラースナップショットを返します。`wait()` は `raise_on_error=True`（既定）で `AsyncJobError`、`False` でエラースナップショットを返します。待機が `AsyncJobTimeoutError` となった場合も、同じジョブ ID で後から `get_job()` や `wait()` を再開できます。
+
+ノイズ、エコー、同時発話が含まれる音声では、複数の話者が単一のラベルになる場合があります。ノイズやエコー、同時発話を避けて録音し、`diarization_min_speaker` と `diarization_max_speaker` で話者数の範囲を指定すると推定精度を改善できる可能性があります。ただし、本ライブラリは推定精度を保証しません。
+
 ## ジョブの状態と結果の構造
 
 非同期ジョブの状態を表す `AsyncJobSnapshot.status` には、既知の 5 状態があります。処理待ちは `queued`、処理開始は `started`、処理中は `processing`、処理完了は `completed`、ジョブ失敗は `error` です。終端状態に達したかを表す `is_terminal` は、`completed` または `error` のときのみ `True` を返します。
@@ -164,17 +282,23 @@ except AsyncJobError as error:
     # error.snapshotで状態を調査できる。詳細本文を無条件にログへ出さない。
 ```
 
-`poll_interval` は正の有限数で、単位は秒です。既定値は 10 秒です。
-`timeout` も正の有限数で秒単位ですが、`None` を指定すると無制限になります。
-`0`、負値、`bool`、無限大、`NaN` などの不正値は `ConfigurationError` になります。
+`poll_interval` は正の有限数（秒）で、最大 3600 秒（1 時間）、既定値は 10 秒です。
+`timeout` は正の有限数（秒）で最大 604800 秒（7 日）、`None`（既定値）を指定すると無制限になります。
+上限ちょうどの値は指定できます。上限超過や `0`、負値、`bool`、無限大、`NaN` などの不正な値は、通信や待機を始める前に `ConfigurationError` を送出します。
 
-待機上限を超えると `AsyncJobTimeoutError` を送出します。サーバーのジョブはキャンセルしません。
+待機期限に達し、取得済みの応答から終端状態を確認できなかった場合は、`AsyncJobTimeoutError` を送出します。サーバーのジョブはキャンセルしません。
 例外の `session_id` と、最後の状態を保持する `snapshot` から取得を再開できます。
 まだ状態を取得できていない場合、`snapshot` は `None` です。
 
-既定の transport は、待機期限にソケット通信を中断します。
+既定の transport は、通信中に待機期限へ達するとソケット通信を中断します。
 ただし、DNS 名前解決、OS の接続処理、独自 transport など、ソケット中断で止められない処理には待機上限を保証できません。
 `connect_timeout` と `receive_timeout` はミリ秒単位で、`0` は無制限です。
+
+一方で、本文を最後まで読み切った応答は、受信完了や解析の時点で待機期限に達していても破棄せずに検証・解析します。
+取得した応答が終端状態であればタイムアウトより優先し、正常完了は `snapshot` を返し、ジョブまたは認識の失敗は `raise_on_error` の設定に従います。
+非終端状態であり、かつ待機期限に達している場合は、その最新 `snapshot` を保持して `AsyncJobTimeoutError` を送出します。
+通信途中の失敗や受信中断で応答を取得できず、待機期限に達した場合は、それまでに取得できた最後の `snapshot`（未取得なら `None`）でタイムアウトします。
+なお、待機期限の経過後に新しい GET を開始したり、待機期限自体を延長したりすることはありません。
 
 ジョブや認識の失敗は、既定の `raise_on_error=True` で `AsyncJobError` になります。
 `False` では、失敗した終端状態をスナップショットとして返します。
@@ -211,9 +335,9 @@ HTTP 200 の不正応答や HTTP 401、404 など、その他の失敗は再試�
 HTTP エラーや不正応答、受付拒否が起きた場合は `AsyncHttpApiError` を送出します。例外の `status_code`、`body`、`raw_body` に加え、JSON オブジェクトの応答であれば `data`（辞書または `None`）、サーバーが返したエラー情報は `code` と `api_message`（文字列または `None`）から取得できます。ライブラリ側で本文を解析するため、利用側での独自の JSON 再解析は不要です。`message` や `str(error)` は機密情報を含まない安全な一般説明を返します。生レスポンスである `body` や `raw_body`、`data` には機密情報が含まれ得るため、無条件にログへ出力しないでください。
 また、認証エラー時は公開例外 `AsyncHttpAuthenticationError` を送出します。この例外は `AsyncHttpApiError` と `AuthenticationError` の両方を継承しており、HTTP 401 応答だけでなく、受付時（HTTP 200）の `code="-"` でも発生します。そのため、既存の `AuthenticationError` ハンドラと非同期固有の `AsyncHttpApiError` ハンドラのどちらでも捕捉できます。
 
-このクライアントでは、話者ダイアライゼーションと感情分析の設定はまだ提供していません。
-`SegmenterProperties` の話者設定は、明示的な `False` も含めて非同期 HTTP では拒否します。
-発話検出と言語識別は利用できます。
+このクライアントでは、感情分析の設定はまだ提供していません。
+非同期 HTTP の話者ダイアライゼーションは `RecognitionSettings` の `speaker_diarization`、`diarization_min_speaker`、`diarization_max_speaker` で指定します。`SegmenterProperties` の話者設定は同期 HTTP・WebSocket 専用の別方式であり、明示的な `False` も含めて非同期 HTTP では拒否します。
+`SegmenterProperties` の発話検出と言語識別は利用できます。
 同期 HTTP 用のルール設定、WebSocket 用の途中結果間隔と発話開始待ち設定も対応していません。
 
 ## 使用例 CLI
@@ -232,7 +356,8 @@ uv run examples/async_http_tester.py wait <session_id> --poll-interval 10.0 --ti
 ```
 
 非同期 HTTP CLI（`examples/async_http_tester.py`）では、共通引数（`--url`、`--proxy-server-name`、`--connect-timeout`、`--receive-timeout`）をサブコマンド（`submit`、`status`、`wait`）の前に指定します。
-`submit` サブコマンドでは、[共通の認識オプション](./usage.md#共通の-cli-オプション)を指定できます。加えて `--selected-channel`、`--content-id`、`--compatible-with-sync` / `--no-compatible-with-sync`、`--logging-opt-out` / `--no-logging-opt-out` も指定可能です。`--codec` は省略でき、ヘッダなし音声では明示してください。
+`submit` サブコマンドでは、[共通の認識オプション](./usage.md#共通の-cli-オプション)を指定できます。加えて `--selected-channel`、`--content-id`、`--compatible-with-sync` / `--no-compatible-with-sync`、`--logging-opt-out` / `--no-logging-opt-out` も指定可能です。話者ダイアライゼーション用には `--speaker-diarization` / `--no-speaker-diarization`（`BooleanOptionalAction`、省略時は `None`）を指定できます。話者数の範囲には `--diarization-min-speaker` と `--diarization-max-speaker`（ともに整数、省略時は `None`）を指定します。`--codec` は省略でき、ヘッダなし音声では明示してください。
+`status` と `wait` の標準出力形式と終了コードは変わらず、CLI 独自の話者別の集約表示は行いません。単語ごとの話者ラベル（`token.label`）を参照する場合は、[話者ダイアライゼーションの設定](#話者ダイアライゼーションの設定)の Python コード例を参照してください。
 
 ```bash
 uv run examples/async_http_tester.py --connect-timeout 10000 --receive-timeout 30000 submit audio/test.wav

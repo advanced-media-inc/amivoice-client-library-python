@@ -15,6 +15,7 @@ from amivoice import (
 )
 from amivoice._recognition_settings import merge_recognition_settings
 
+from .test_amivoice_client import HttpFake
 from .test_async_client import RecordingTransport, completed, queued
 
 FIELDS = ("speaker_diarization", "diarization_min_speaker", "diarization_max_speaker")
@@ -39,18 +40,19 @@ def test_settings_diarization_override_valid_return_immutable_values(enabled: bo
 
 
 @pytest.mark.parametrize("operation", ["init", "submit"])
+@pytest.mark.parametrize("enabled", [True, False])
 @pytest.mark.parametrize(
     ("field", "value", "expected"),
     [("speaker_diarization", value, "bool or None") for value in (1, 0, "True")]
     + [(name, value, "1..20") for name in FIELDS[1:] for value in (0, 21, -1, True, False, 1.5, "5")],
 )
-def test_client_diarization_invalid_raise_before_audio(
-    operation: str, field: str, value: object, expected: str, caplog: pytest.LogCaptureFixture
+def test_client_diarization_invalid_raise_before_audio(  # noqa: PLR0913 -- 入力と操作の組み合わせを検証する
+    operation: str, enabled: bool, field: str, value: object, expected: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     """エンジン未指定の初期化でも型・範囲を検証し音声を開かない"""
     # Given: 不正設定と通信禁止のクライアント
     transport = RecordingTransport([])
-    settings = RecognitionSettings(**{field: value})
+    settings = RecognitionSettings(**{"speaker_diarization": enabled, field: value})
     # When / Then: 音声ファイルを開く前に原因と許容値を案内する
     with pytest.raises(ConfigurationError) as caught:
         if operation == "init":
@@ -65,7 +67,9 @@ def test_client_diarization_invalid_raise_before_audio(
 
 
 @pytest.mark.parametrize("counts", [(1, 1), (5, 5), (1, 20), (20, 20), (15, None), (None, 1), (None, None)])
-def test_submit_diarization_bounds_valid_return_wire(counts: tuple[int | None, int | None]) -> None:
+def test_submit_diarization_bounds_valid_return_wire(
+    counts: tuple[int | None, int | None], caplog: pytest.LogCaptureFixture
+) -> None:
     """既知人数と片側指定を許可しサーバー既定値を補完しない"""
     # Given: 有効な人数範囲
     transport = RecordingTransport([{"sessionid": "job1", "text": "..."}])
@@ -84,28 +88,52 @@ def test_submit_diarization_bounds_valid_return_wire(counts: tuple[int | None, i
     # Then: 指定した項目だけが送信される
     body = transport.calls[0][3]
     assert b"speakerDiarization=True" in body
+    assert not caplog.records
     for key, value in zip(("diarizationMinSpeaker", "diarizationMaxSpeaker"), counts, strict=True):
         assert (f"{key}={value}".encode() in body) if value is not None else (key.encode() not in body)
 
 
 @pytest.mark.parametrize("operation", ["init", "submit", "inherited"])
-def test_client_diarization_reversed_invalid_raise_condition(operation: str) -> None:
-    """有効時の両側指定はマージ後に大小比較する"""
+@pytest.mark.parametrize("enabled", [True, False, None, USE_CLIENT_DEFAULT])
+def test_client_diarization_reversed_invalid_raise_condition(
+    operation: str, enabled: object, caplog: pytest.LogCaptureFixture
+) -> None:
+    """話者機能の有効無効にかかわらず両側指定は大小比較する"""
     # Given: 最小値が最大値より大きい設定
     transport = RecordingTransport([])
     settings = RecognitionSettings(
-        grammar_file_names="-a-general", speaker_diarization=True, diarization_min_speaker=15, diarization_max_speaker=10
+        grammar_file_names="-a-general", speaker_diarization=enabled, diarization_min_speaker=15, diarization_max_speaker=10
     )
     # When / Then: 直接指定と片側継承のいずれも通信前に拒否する
     with pytest.raises(ConfigurationError, match=r"diarization_min_speaker.*<=.*diarization_max_speaker"):
         if operation == "init":
             AmiVoiceAsyncClient(api_key="dummy", settings=settings, transport=transport)
         else:
-            base = RecognitionSettings(grammar_file_names="-a-general", speaker_diarization=True, diarization_max_speaker=10)
+            base = RecognitionSettings(grammar_file_names="-a-general", speaker_diarization=enabled, diarization_max_speaker=10)
             client = AmiVoiceAsyncClient(api_key="dummy", settings=base, transport=transport)
             override = RecognitionSettings(diarization_min_speaker=15) if operation == "inherited" else settings
-            client.submit(b"audio", settings=override)
-    assert not transport.calls
+            client.submit("does-not-exist.wav", settings=override)
+    assert not transport.calls and not caplog.records
+
+
+@pytest.mark.parametrize("enabled", [False, None])
+def test_submit_diarization_disabled_inherited_counts_invalid_raise_before_audio(
+    enabled: bool | None, caplog: pytest.LogCaptureFixture
+) -> None:
+    """有効な既定設定を無効化しても継承した人数との大小関係を検証する"""
+    # Given: 有効な話者設定と人数範囲を持つクライアント
+    transport = RecordingTransport([])
+    client = AmiVoiceAsyncClient(
+        api_key="dummy",
+        settings=RecognitionSettings(
+            grammar_file_names="-a-general", speaker_diarization=True, diarization_min_speaker=2, diarization_max_speaker=6
+        ),
+        transport=transport,
+    )
+    # When / Then: 機能を無効化し最小値のみ上書きしても、音声読込・警告・通信前に拒否する
+    with pytest.raises(ConfigurationError, match=r"diarization_min_speaker.*<=.*diarization_max_speaker"):
+        client.submit("does-not-exist.wav", settings=RecognitionSettings(speaker_diarization=enabled, diarization_min_speaker=9))
+    assert not transport.calls and not caplog.records
 
 
 def test_submit_diarization_clear_one_side_valid_return_no_default_comparison() -> None:
@@ -125,13 +153,13 @@ def test_submit_diarization_clear_one_side_valid_return_no_default_comparison() 
 
 
 @pytest.mark.parametrize("enabled", [False, None, USE_CLIENT_DEFAULT])
-@pytest.mark.parametrize("counts", [(15, None), (None, 1), (15, 1)])
+@pytest.mark.parametrize("counts", [(15, None), (None, 1), (1, 15), (1, 1), (20, 20)])
 @pytest.mark.parametrize("inherited", [False, True])
 def test_submit_diarization_disabled_valid_return_one_warning(
     enabled: object, counts: tuple[int | None, int | None], inherited: bool, caplog: pytest.LogCaptureFixture
 ) -> None:
     """人数設定だけでは有効化せず警告を一度だけ出して送信する"""
-    # Given: 型と範囲は有効だが話者設定は無効、逆転も許可する
+    # Given: 人数範囲は有効だが話者設定は無効
     caplog.set_level(logging.WARNING)
     transport = RecordingTransport([{"sessionid": "job1", "text": "..."}, queued(), completed()])
     values = dict(zip(FIELDS, (enabled, *counts), strict=True))
@@ -223,8 +251,80 @@ def test_sync_diarization_unset_valid_return_segmenter(value: object) -> None:
     settings = RecognitionSettings(
         grammar_file_names="-a-general", segmenter=SegmenterProperties(speaker_diarization=True), **dict.fromkeys(FIELDS, value)
     )
-    client = AmiVoiceClient(api_key="dummy", settings=settings)
-    # When: WebSocketセッションを作る（接続はしない）
-    manager = client.stream(settings=RecognitionSettings(**dict.fromkeys(FIELDS, value)))
-    # Then: 拒否されない
-    assert manager is not None
+    transport = HttpFake()
+    client = AmiVoiceClient(api_key="dummy", settings=settings, hrp_transport=transport)
+    # When: 同期HTTPを実行しWebSocketセッションを作る（実通信はしない）
+    override = RecognitionSettings(**dict.fromkeys(FIELDS, value))
+    result = client.transcribe(b"audio", settings=override)
+    manager = client.stream(settings=override)
+    # Then: 全入口で未指定・解除を許容し同期話者設定を保持する
+    assert manager is not None and result.text == "hello"
+    assert b"segmenterProperties=useDiarizer%3D1" in transport.calls[0][2]
+
+
+def test_submit_diarization_override_valid_return_inherited_enabled_and_new_counts() -> None:
+    """submitの両人数上書きは既定のTrueを継承し設定を変更しない"""
+    # Given: クライアントの人数範囲と空のoverride
+    base = RecognitionSettings(
+        grammar_file_names="-a-general", speaker_diarization=True, diarization_min_speaker=2, diarization_max_speaker=6
+    )
+    override = RecognitionSettings(diarization_min_speaker=3, diarization_max_speaker=4)
+    transport = RecordingTransport([{"sessionid": "job1", "text": "..."}])
+    client = AmiVoiceAsyncClient(api_key="dummy", settings=base, transport=transport)
+    # When: 呼び出し単位で人数を上書きする
+    client.submit(b"audio", settings=override)
+    # Then: 既定のTrueだけを継承し元オブジェクトは不変
+    body = transport.calls[0][3]
+    assert b"speakerDiarization=True diarizationMinSpeaker=3 diarizationMaxSpeaker=4" in body
+    assert base.diarization_min_speaker == 2 and base.diarization_max_speaker == 6
+    assert override.speaker_diarization is USE_CLIENT_DEFAULT
+
+
+@pytest.mark.parametrize(
+    "invalid_override",
+    [
+        {"settings": RecognitionSettings(grammar_file_names=None)},
+        {"receive_timeout": -1},
+        {"api_url": "http://example.com/v2/recognitions"},
+        {"settings": RecognitionSettings(content_id="bad\n")},
+    ],
+)
+def test_submit_other_invalid_settings_invalid_raise_without_warning(
+    invalid_override: dict[str, object], caplog: pytest.LogCaptureFixture
+) -> None:
+    """全設定を検証するまで人数設定の警告を発行しない"""
+    # Given: 無効な話者機能に人数だけ指定した既定値
+    transport = RecordingTransport([])
+    client = AmiVoiceAsyncClient(
+        api_key="dummy",
+        transport=transport,
+        settings=RecognitionSettings(grammar_file_names="-a-general", diarization_min_speaker=2),
+    )
+    # When / Then: 他の設定エラーでも音声・警告・通信より前に拒否する
+    with pytest.raises(ConfigurationError):
+        client.submit("does-not-exist.wav", **invalid_override)
+    assert not caplog.records and not transport.calls
+
+
+def test_submit_diarization_warning_valid_return_before_audio_upload(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """警告は全設定の検証後かつ音声読込の直前に一度だけ出す"""
+    # Given: 人数のみを設定し、音声ソースを開く際のログを観測する
+    transport = RecordingTransport([])
+    client = AmiVoiceAsyncClient(
+        api_key="dummy",
+        transport=transport,
+        settings=RecognitionSettings(grammar_file_names="-a-general", diarization_max_speaker=2),
+    )
+
+    def observe_audio(source: object) -> None:
+        assert len(caplog.records) == 1
+        assert caplog.records[0].name == "amivoice.async_client"
+        raise OSError("synthetic audio-open failure")
+
+    monkeypatch.setattr("amivoice.async_client.AudioUpload", observe_audio)
+    # When / Then: 音声を開く前に発行済みで二重発行もない
+    with pytest.raises(OSError, match="synthetic audio-open failure"):
+        client.submit(b"audio")
+    assert len(caplog.records) == 1 and not transport.calls

@@ -30,6 +30,8 @@ from .exceptions import (
 from .settings import USE_CLIENT_DEFAULT, RecognitionSettings, UseClientDefault
 
 _DEFAULT_URL = "https://acp-api-async.amivoice.com/v2/recognitions"
+_MAX_WAIT_SECONDS = 7 * 24 * 60 * 60
+_MAX_POLL_INTERVAL_SECONDS = 60 * 60
 _logger = logging.getLogger(__name__)
 
 
@@ -58,13 +60,15 @@ def _job_id(value: str) -> str:
     return value
 
 
-def _seconds(value: float, name: str) -> float:
+def _seconds(value: float, name: str, *, maximum: float | None = None) -> float:
     try:
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
             raise ValueError("Invalid seconds")
-        return float(value)
     except (ValueError, OverflowError):
         raise ConfigurationError(name + " must be a finite positive number of seconds") from None
+    if maximum is not None and value > maximum:
+        raise ConfigurationError(f"{name} must not exceed {maximum} seconds")
+    return float(value)
 
 
 def _communication(params: RecognitionParams) -> None:
@@ -205,8 +209,7 @@ class AmiVoiceAsyncClient:
             if method == "POST":
                 message += "; submission may have been accepted, automatic retry is disabled"
             raise ConnectionFailedError(message) from None
-        if deadline is not None and self._clock() >= deadline:
-            raise TimeoutError("Job deadline expired")
+        # 受信済みの応答は期限に関係なく検証し、waitで最新状態を判断する
         if status != 200:
             error_type = AsyncHttpAuthenticationError if status == 401 else AsyncHttpApiError
             raise error_type(
@@ -303,10 +306,13 @@ class AmiVoiceAsyncClient:
     ) -> AsyncJobSnapshot:
         """呼び出し元をブロックして終端状態を待つ、中断はジョブのキャンセルではない
 
+        受信済みの応答は期限到達後も解析し、終端状態ならタイムアウトより優先する
+        非終端状態なら最新のスナップショットを持つタイムアウト例外を送出する
+
         Args:
             session_id (str): 保存したジョブID
-            poll_interval (float): 正のポーリング間隔、秒
-            timeout (float | None): 全体の待機上限、秒、Noneのみ無制限
+            poll_interval (float): 正のポーリング間隔、秒、最大3600秒（1時間）
+            timeout (float | None): 全体の待機上限、秒、最大604800秒（7日）、Noneのみ無制限
             raise_on_error (bool): ジョブ又は認識失敗を例外にするか
             max_retries (int): GET連続失敗時の追加試行上限、0で再試行なし
             retry_backoff (float): GET再試行の初回待機秒数、倍増して最大30秒
@@ -319,13 +325,14 @@ class AmiVoiceAsyncClient:
             AsyncJobSnapshot: 終端状態と認識結果
 
         Raises:
+            ConfigurationError: 待機設定が不正又は指定可能な上限を超える場合
             AsyncJobTimeoutError: 待機上限を超えた場合、IDから再開できる
             AsyncJobError: raise_on_error=Trueでジョブ又は認識が失敗した場合
             AsyncHttpApiError: HTTPエラー又は不正応答、設定に関係なく送出
         """
         session_id = _job_id(session_id)
-        interval = _seconds(poll_interval, "poll_interval")
-        duration = None if timeout is None else _seconds(timeout, "timeout")
+        interval = _seconds(poll_interval, "poll_interval", maximum=_MAX_POLL_INTERVAL_SECONDS)
+        duration = None if timeout is None else _seconds(timeout, "timeout", maximum=_MAX_WAIT_SECONDS)
         if not isinstance(raise_on_error, bool):
             raise ConfigurationError("raise_on_error must be a boolean")
         if isinstance(max_retries, bool) or not isinstance(max_retries, int) or max_retries < 0:
@@ -343,11 +350,11 @@ class AmiVoiceAsyncClient:
                 snapshot = self._fetch_with_retries(session_id, url, params, deadline, max_retries, backoff)
             except TimeoutError:
                 raise AsyncJobTimeoutError(session_id, snapshot) from None
-            if deadline is not None and self._clock() >= deadline:
-                raise AsyncJobTimeoutError(session_id, snapshot)
             if snapshot.is_terminal:
                 if snapshot.is_error and raise_on_error:
                     raise AsyncJobError("Async HTTP job or recognition failed", snapshot)
                 return snapshot
+            if deadline is not None and self._clock() >= deadline:
+                raise AsyncJobTimeoutError(session_id, snapshot)
             remaining = interval if deadline is None else min(interval, max(0, deadline - self._clock()))
             self._sleep(remaining)
