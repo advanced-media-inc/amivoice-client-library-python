@@ -113,7 +113,7 @@ result = client.transcribe(
 | `no_input_timeout` | WebSocket の発話開始待ち時間。ミリ秒 |
 | `logging_opt_out` | 音声ログを保存しないか |
 | `content_id` | 非同期 HTTP のユーザー定義 ID。冪等性キーではない |
-| `compatible_with_sync` | 非同期 HTTP の同期互換の結果形式 |
+| `compatible_with_sync` | 非同期 HTTP（v2）で同期 HTTP インタフェース互換の認識結果形式を返させる設定 |
 | `speaker_diarization` | 非同期 HTTP の話者ダイアライゼーション有効化 |
 | `diarization_min_speaker` | 非同期 HTTP の最小話者数。`1` 以上 `20` 以下の整数 |
 | `diarization_max_speaker` | 非同期 HTTP の最大話者数。`1` 以上 `20` 以下の整数 |
