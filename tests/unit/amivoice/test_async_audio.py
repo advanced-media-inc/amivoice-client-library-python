@@ -216,10 +216,11 @@ def test_multipart_invalid_options_invalid_raise_defensively(field: str, value: 
         MultipartUpload(audio, RecognitionParams(grammar_file_names="-a-general"), options=options)
 
 
-def test_multipart_reversed_counts_invalid_raise_defensively(caplog: pytest.LogCaptureFixture) -> None:
-    """multipart単体でも有効な話者機能の逆転人数を警告せず拒否する"""
+@pytest.mark.parametrize("enabled", [True, False, None])
+def test_multipart_reversed_counts_invalid_raise_defensively(enabled: bool | None, caplog: pytest.LogCaptureFixture) -> None:
+    """multipart単体でも話者機能の有効無効にかかわらず逆転人数を拒否する"""
     # Given: 型・範囲は正しいが大小関係が不正
-    options = _AsyncRecognitionOptions(speaker_diarization=True, diarization_min_speaker=15, diarization_max_speaker=10)
+    options = _AsyncRecognitionOptions(speaker_diarization=enabled, diarization_min_speaker=15, diarization_max_speaker=10)
     # When / Then: 純粋検証関数とmultipartの防御的検証が一致する
     with pytest.raises(ConfigurationError, match=r"diarization_min_speaker.*<=.*diarization_max_speaker"):
         validate_async_options(options)

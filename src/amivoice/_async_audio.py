@@ -62,8 +62,7 @@ def validate_async_options(options: _AsyncRecognitionOptions) -> None:
         if value is not None and (isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 20):
             raise ConfigurationError(f"{name} must be an integer in 1..20 or None")
     if (
-        options.speaker_diarization is True
-        and options.diarization_min_speaker is not None
+        options.diarization_min_speaker is not None
         and options.diarization_max_speaker is not None
         and options.diarization_min_speaker > options.diarization_max_speaker
     ):
