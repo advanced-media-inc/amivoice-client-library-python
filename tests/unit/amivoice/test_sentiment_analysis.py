@@ -6,7 +6,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from amivoice import SentimentAnalysisApiError, SentimentAnalysisClient, SentimentParameterDefinition
+from amivoice._async_models import parse_job
 from amivoice.exceptions import ConfigurationError, ConnectionFailedError
+
+from .test_async_sentiment_models import job_with_sentiment
 
 
 def _response() -> dict[str, object]:
@@ -100,6 +103,23 @@ def test_list_parameters_network_error_invalid_raise_ConnectionFailedError() -> 
         client.list_parameters()
     assert "dummy" not in str(caught.value)
     assert caught.value.__suppress_context__
+
+
+def test_list_parameters_result_mapping_valid_return_display_metadata() -> None:
+    """定義名を区間指標のキーと結び付け、解析時には自動取得しない"""
+    # Given: 定義APIの合成応答と未知の整数指標を含む区間
+    transport = MagicMock()
+    transport.request.return_value = (200, json.dumps(_response()).encode())
+    client = SentimentAnalysisClient(api_key="dummy", transport=transport)
+    data = job_with_sentiment({"segments": [{"starttime": 0, "endtime": 10, "value": 1}]})
+    # When: まず結果を解析し、必要なときだけ定義を取得する
+    segment = parse_job(json.dumps(data).encode(), "job1").recognition.sentiment_analysis.segments[0]
+    transport.request.assert_not_called()
+    definitions = {item.name: item for item in client.list_parameters(language="ja")}
+    # Then: 結果の整数値と表示名・範囲を別の責務として参照できる
+    assert segment.parameters["value"] == 1
+    assert definitions["value"].display_name == "表示名"
+    assert definitions["value"].minimum <= segment.parameters["value"] <= definitions["value"].maximum
 
 
 @pytest.mark.parametrize("base_url", ["http://example.test", "https://dummy@example.test", "https://example.test?u=dummy"])

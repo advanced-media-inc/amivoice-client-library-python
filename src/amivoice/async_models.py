@@ -1,13 +1,20 @@
 """非同期HTTP v2の受付、状態、認識結果の公開モデル"""
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from .exceptions import ConfigurationError
 from .models import RecognitionResult
 
-__all__ = ["AsyncJobSnapshot", "AsyncJobStatus", "AsyncJobSubmission", "AsyncRecognitionResult"]
+__all__ = [
+    "AsyncJobSnapshot",
+    "AsyncJobStatus",
+    "AsyncJobSubmission",
+    "AsyncRecognitionResult",
+    "SentimentAnalysisResult",
+    "SentimentSegment",
+]
 
 # 既知状態を補完しつつ、サービスが今後追加する状態も文字列として保持する
 AsyncJobStatus = Literal["queued", "started", "processing", "completed", "error"] | str
@@ -50,10 +57,228 @@ class AsyncJobSubmission:
 
 
 @dataclass(frozen=True)
+class SentimentSegment:
+    """発話区間ごとの感情分析結果
+
+    区間の開始・終了時刻は音声先頭からの相対ミリ秒で表す
+    感情指標はparameters辞書やenergy、stressなどのプロパティから参照できる
+    応答に含まれない指標のプロパティはNoneを返す
+    """
+
+    starttime: int | float
+    endtime: int | float
+    parameters: dict[str, int]
+    raw: str
+    data: dict[str, object]
+
+    @property
+    def energy(self) -> int | None:
+        """エネルギーを取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("energy")
+
+    @property
+    def stress(self) -> int | None:
+        """ストレスを取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("stress")
+
+    @property
+    def emo_cog(self) -> int | None:
+        """感情バランス論理を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("emo_cog")
+
+    @property
+    def concentration(self) -> int | None:
+        """集中を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("concentration")
+
+    @property
+    def anticipation(self) -> int | None:
+        """期待を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("anticipation")
+
+    @property
+    def excitement(self) -> int | None:
+        """興奮を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("excitement")
+
+    @property
+    def hesitation(self) -> int | None:
+        """躊躇を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("hesitation")
+
+    @property
+    def uncertainty(self) -> int | None:
+        """不確実を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("uncertainty")
+
+    @property
+    def intensive_thinking(self) -> int | None:
+        """思考を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("intensive_thinking")
+
+    @property
+    def imagination_activity(self) -> int | None:
+        """想像力を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("imagination_activity")
+
+    @property
+    def embarrassment(self) -> int | None:
+        """困惑を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("embarrassment")
+
+    @property
+    def passionate(self) -> int | None:
+        """情熱を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("passionate")
+
+    @property
+    def brain_power(self) -> int | None:
+        """脳活動を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("brain_power")
+
+    @property
+    def confidence(self) -> int | None:
+        """自信を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("confidence")
+
+    @property
+    def aggression(self) -> int | None:
+        """攻撃性憤りを取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("aggression")
+
+    @property
+    def atmosphere(self) -> int | None:
+        """雰囲気会話傾向を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("atmosphere")
+
+    @property
+    def upset(self) -> int | None:
+        """動揺を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("upset")
+
+    @property
+    def content(self) -> int | None:
+        """喜びを取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("content")
+
+    @property
+    def dissatisfaction(self) -> int | None:
+        """不満を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("dissatisfaction")
+
+    @property
+    def extreme_emotion(self) -> int | None:
+        """極端な起伏を取得する
+
+        Returns:
+            int | None: 現在の指標値、省略時はNone
+        """
+        return self.parameters.get("extreme_emotion")
+
+
+@dataclass(frozen=True)
+class SentimentAnalysisResult:
+    """完了ジョブの感情区間と感情分析内エラー"""
+
+    raw: str
+    data: dict[str, object]
+    segments: tuple[SentimentSegment, ...] = ()
+    code: int | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+    @property
+    def is_error(self) -> bool:
+        """認識本体とは独立して感情分析内のエラーを判定する
+
+        Returns:
+            bool: codeが存在するかエラー文字列が非空の場合はTrue
+        """
+        return self.code is not None or bool(self.error_code) or bool(self.error_message)
+
+
+@dataclass(frozen=True)
 class AsyncRecognitionResult(RecognitionResult):
     """全体結果と発話区間、resultsは区間内の発話結果を順に並べる"""
 
     segments: tuple[RecognitionResult, ...] = ()
+    sentiment_analysis: SentimentAnalysisResult | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)
