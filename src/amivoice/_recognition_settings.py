@@ -305,13 +305,13 @@ def resolve_recognition_overrides(base: RecognitionParams, supplied: dict[str, o
 
 def merge_recognition_settings(
     base: RecognitionSettings,
-    override: RecognitionSettings | None | UseClientDefault,
+    override: RecognitionSettings | UseClientDefault,
 ) -> RecognitionSettings:
     """設定差分を適用し、型付き指定とraw指定の切り替えを解決する
 
     Args:
         base (RecognitionSettings): クライアント設定
-        override (RecognitionSettings | None | UseClientDefault): 差分、Noneは全設定を解除
+        override (RecognitionSettings | UseClientDefault): 差分、未指定の項目は継承
 
     Returns:
         RecognitionSettings: 呼び出し専用設定
@@ -321,10 +321,8 @@ def merge_recognition_settings(
     """
     if override is USE_CLIENT_DEFAULT:
         return base
-    if override is None:
-        return RecognitionSettings()
     if not isinstance(override, RecognitionSettings):
-        raise ConfigurationError("settings must be RecognitionSettings, None or USE_CLIENT_DEFAULT")
+        raise ConfigurationError("settings must be RecognitionSettings or USE_CLIENT_DEFAULT")
     values = {field.name: getattr(base, field.name) for field in fields(base)}
     changes = {
         field.name: getattr(override, field.name)

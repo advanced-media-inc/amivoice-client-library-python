@@ -58,9 +58,10 @@ Python の`async`/`await`構文ではなく通常の同期（ブロッキング�
 
 ## クライアント既定値の継承（USE_CLIENT_DEFAULT）
 
-コンストラクタの`settings=None`は空の認識設定を表します。
-認識メソッド（`transcribe()`、`stream()`、`submit()`）では、`settings`を省略するか`USE_CLIENT_DEFAULT`（型は`UseClientDefault`）を指定すると、クライアントの設定を継承します。空の`RecognitionSettings()`もすべての項目を継承します。
-呼び出し時の`settings=None`は全認識設定を解除します。接続エンジンも解除されるため、そのまま送信すると必須設定の不足で`ConfigurationError`になります。
+コンストラクタ（`AmiVoiceClient`、`AmiVoiceAsyncClient`）では、`settings`を省略するか`settings=None`を指定すると空の認識設定を表します。
+モジュール関数`transcribe()`の`settings`は`RecognitionSettings`型の必須キーワード引数です。省略すると`TypeError`になり、`None`や`USE_CLIENT_DEFAULT`などの`RecognitionSettings`以外の値を指定するとクライアント生成や通信の前に`ConfigurationError`を送出します。空の`RecognitionSettings()`は型として有効ですが、必須の`grammar_file_names`が不足するため`ConfigurationError`になります。
+クライアントインスタンスの認識メソッド（`client.transcribe()`、`client.stream()`、`client.submit()`）では、`settings`を省略するか`USE_CLIENT_DEFAULT`（型は`UseClientDefault`）を指定すると、クライアントの設定を継承します。空の`RecognitionSettings()`もすべての項目を継承します。
+インスタンスメソッドの呼び出し時に`settings=None`は指定できず、通信する前に`ConfigurationError`を送出します。クライアントの設定とは別の設定で認識する場合は、新しいクライアントを作成するか、`RecognitionSettings(...)`で必要な項目を明示して上書きしてください。
 
 `RecognitionSettings`の各項目は、省略または`USE_CLIENT_DEFAULT`で継承し、`None`で解除します。`False`や`0`は解除ではなく明示値です。
 プロキシ、通信タイムアウト、接続 URL、`raise_on_error`、完了待機の引数は、引き続き独立した引数です。

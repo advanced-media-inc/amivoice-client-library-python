@@ -55,7 +55,7 @@ class AmiVoiceClient:
         """クライアントを初期化する、サーバの既定値は送信しない
 
         Args:
-            settings (RecognitionSettings | None): 認識設定、未指定は継承、Noneは全認識設定を解除
+            settings (RecognitionSettings | None): 認識設定、省略またはNoneは空の認識設定
             api_key (str | None): 認証情報、省略時はAMIVOICE_API_KEY
             proxy_server_name (str | None): HTTPプロキシ
             connect_timeout (int): 接続待機のミリ秒数、0は無制限
@@ -79,7 +79,9 @@ class AmiVoiceClient:
         ):
             raise ConfigurationError("API key must contain printable ASCII characters without whitespace")
         self._api_key = resolved_key
-        self._settings = merge_recognition_settings(RecognitionSettings(), settings)
+        self._settings = merge_recognition_settings(
+            RecognitionSettings(), settings if settings is not None else RecognitionSettings()
+        )
         self._params = RecognitionParams(
             proxy_server_name=proxy_server_name, connect_timeout=connect_timeout, receive_timeout=receive_timeout
         )
@@ -109,7 +111,7 @@ class AmiVoiceClient:
         self,
         audio: AudioSource,
         *,
-        settings: RecognitionSettings | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        settings: RecognitionSettings | UseClientDefault = USE_CLIENT_DEFAULT,
         proxy_server_name: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
         connect_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
         receive_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
@@ -119,7 +121,7 @@ class AmiVoiceClient:
         """音声をmultipartで送信し、本文のcodeとmessageで成否を判断する
 
         Args:
-            settings (RecognitionSettings | None | UseClientDefault): 認識設定、未指定は継承、Noneは全認識設定を解除
+            settings (RecognitionSettings | UseClientDefault): 認識設定、未指定は継承、Noneは指定不可
             audio (AudioSource): bytes、ファイルパス、バイナリストリーム
             proxy_server_name (str | None | UseClientDefault): HTTPプロキシ、未指定時は既定値を継承
             connect_timeout (int | UseClientDefault): 接続待機のミリ秒数、0は無制限、未指定時は既定値を継承
@@ -174,7 +176,7 @@ class AmiVoiceClient:
     def stream(
         self,
         *,
-        settings: RecognitionSettings | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        settings: RecognitionSettings | UseClientDefault = USE_CLIENT_DEFAULT,
         proxy_server_name: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
         connect_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
         receive_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
@@ -183,7 +185,7 @@ class AmiVoiceClient:
         """WebSocketの接続と認識セッションを管理するコンテキストを返す
 
         Args:
-            settings (RecognitionSettings | None | UseClientDefault): 認識設定、未指定は継承、Noneは全認識設定を解除
+            settings (RecognitionSettings | UseClientDefault): 認識設定、未指定は継承、Noneは指定不可
             proxy_server_name (str | None | UseClientDefault): HTTPプロキシ、未指定時は既定値を継承
             connect_timeout (int | UseClientDefault): 接続待機のミリ秒数、0は無制限、未指定時は既定値を継承
             receive_timeout (int | UseClientDefault): 受信待機のミリ秒数、0は無制限、未指定時は既定値を継承
@@ -191,6 +193,9 @@ class AmiVoiceClient:
 
         Returns:
             StreamConnectionManager: withで接続を開始する管理オブジェクト
+
+        Raises:
+            ConfigurationError: 認識設定や接続先が不正な場合
         """
         configured = merge_recognition_settings(self._settings, settings)
         _validate_sync_options(configured)
@@ -207,7 +212,7 @@ class AmiVoiceClient:
 def transcribe(  # noqa: PLR0913
     audio: AudioSource,
     *,
-    settings: RecognitionSettings | None = None,
+    settings: RecognitionSettings,
     api_key: str | None = None,
     proxy_server_name: str | None = None,
     connect_timeout: int = 0,
@@ -219,7 +224,7 @@ def transcribe(  # noqa: PLR0913
     """クライアントを一時生成して同期HTTP認識する
 
     Args:
-        settings (RecognitionSettings | None): 認識設定、未指定は継承、Noneは全認識設定を解除
+        settings (RecognitionSettings): 必須の認識設定、Noneは指定不可
         audio (AudioSource): 入力音声
         api_key (str | None): 認証情報、省略時はAMIVOICE_API_KEY
         proxy_server_name (str | None): HTTPプロキシ
@@ -231,7 +236,12 @@ def transcribe(  # noqa: PLR0913
 
     Returns:
         RecognitionResult: 認識結果
+
+    Raises:
+        ConfigurationError: 認識設定の型や必須設定が不正な場合
     """
+    if not isinstance(settings, RecognitionSettings):
+        raise ConfigurationError("settings must be RecognitionSettings")
     client = AmiVoiceClient(
         api_key,
         settings=settings,

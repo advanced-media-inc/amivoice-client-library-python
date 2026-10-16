@@ -121,17 +121,18 @@ result = client.transcribe(
 
 ### クライアント設定の継承と解除（USE_CLIENT_DEFAULT）
 
-コンストラクタで `settings` を省略するか `None` を指定すると、空の認識設定になります。
-呼び出しメソッドの `settings` は、次のように扱います。
+コンストラクタ（`AmiVoiceClient`、`AmiVoiceAsyncClient`）では、`settings` を省略するか `None` を指定すると、空の認識設定になります。
+モジュール関数 `transcribe()` の `settings` は `RecognitionSettings` 型の必須キーワード引数です。省略すると `TypeError` になり、`None` や `USE_CLIENT_DEFAULT` などの `RecognitionSettings` 以外の値を指定すると、クライアント生成や通信の前に `ConfigurationError` を送出します。空の `RecognitionSettings()` は型として受け付けますが、必須の `grammar_file_names` が不足するため `ConfigurationError` になります。
+クライアントインスタンスの呼び出しメソッド（`client.transcribe()`、`client.stream()`、`client.submit()`）の `settings` は、次のように扱います。
 
 | 指定 | 動作 |
 | --- | --- |
 | 省略または `USE_CLIENT_DEFAULT` | クライアントの認識設定を継承 |
 | 空の `RecognitionSettings()` | すべての項目を継承 |
 | 項目を指定した `RecognitionSettings(...)` | 指定した項目だけ上書き |
-| `None` | 全認識設定を解除 |
+| `None` | 指定不可（通信前に `ConfigurationError` を送出） |
 
-`settings=None` は接続エンジンも解除します。そのまま認識を送信すると、必須設定の不足で `ConfigurationError` になります。
+インスタンスメソッドの呼び出し時に `settings=None` は指定できず、呼び出し直後に通信せず `ConfigurationError` を送出します。クライアントの設定を引き継がずに別の設定で認識したい場合は、新しいクライアントを作成するか、`RecognitionSettings(...)` で必要な項目を明示して上書きしてください。
 `RecognitionSettings` の各項目では、省略または公開 sentinel の `USE_CLIENT_DEFAULT`（型は `UseClientDefault`）が継承、`None` が解除です。`False` や `0` は明示値として扱います。
 同期 HTTP・WebSocket の `logging_opt_out` は真偽値が必要で、項目単位の `None` による解除はできません。ログ保存なしを無効にする場合は `False` を指定してください。非同期 HTTP での扱いは[非同期 HTTP のログ保存なしの設定](./usage-async-http.md#ログ保存なしの設定logging_opt_out)を参照してください。
 

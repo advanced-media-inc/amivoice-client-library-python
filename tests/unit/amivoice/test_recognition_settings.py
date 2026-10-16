@@ -2,6 +2,8 @@
 
 import inspect
 from dataclasses import FrozenInstanceError, fields
+from typing import get_type_hints
+from unittest.mock import Mock
 
 import pytest
 
@@ -47,17 +49,92 @@ def test_settings_empty_override_valid_return_client_defaults(override: object) 
     assert resolved == base
 
 
-def test_settings_none_override_valid_return_cleared_settings() -> None:
-    """オブジェクト自体のNoneは全認識設定を解除する"""
+def test_settings_none_override_invalid_raise_ConfigurationError() -> None:
+    """設定オブジェクト自体のNoneを拒否する"""
     # Given: 既定の認識設定
     base = RecognitionSettings(grammar_file_names="-a-general", logging_opt_out=True)
-    # When: 全体を解除する
-    cleared = merge_recognition_settings(base, None)
-    # Then: 既定設定と通信設定は別に扱う
-    assert cleared == RecognitionSettings()
-    params = settings_to_params(cleared, RecognitionParams(connect_timeout=10))
-    assert params.grammar_file_names is None
-    assert params.connect_timeout == 10
+    # When / Then: 全体の解除ではなく型のエラーにする
+    with pytest.raises(ConfigurationError, match=r"^settings must be RecognitionSettings or USE_CLIENT_DEFAULT$"):
+        merge_recognition_settings(base, None)
+
+
+@pytest.mark.parametrize("method_name", ["transcribe", "stream", "submit"])
+def test_recognition_none_settings_invalid_raise_ConfigurationError(method_name: str) -> None:
+    """各認識メソッドは通信を開始せずNoneを拒否する"""
+    # Given: 必須設定とログ保存拒否を保持したクライアント
+    transport = Mock()
+    settings = RecognitionSettings(grammar_file_names="-a-general", logging_opt_out=True)
+    client = (
+        AmiVoiceAsyncClient("key", settings=settings, transport=transport)
+        if method_name == "submit"
+        else AmiVoiceClient("key", settings=settings, hrp_transport=transport, wrp_transport=transport)
+    )
+    method = getattr(client, method_name)
+    audio = () if method_name == "stream" else (b"audio",)
+    # When / Then: 呼び出し直後に設定エラーとなり送信も接続も行わない
+    with pytest.raises(ConfigurationError, match=r"^settings must be RecognitionSettings or USE_CLIENT_DEFAULT$"):
+        method(*audio, settings=None)
+    assert transport.mock_calls == []
+    assert client._settings == settings
+
+
+@pytest.mark.parametrize("client_type", [AmiVoiceClient, AmiVoiceAsyncClient])
+@pytest.mark.parametrize("kwargs", [{}, {"settings": None}])
+def test_client_empty_settings_valid_return_empty_defaults(client_type: type, kwargs: dict[str, object]) -> None:
+    """コンストラクタの省略とNoneは空の認識設定として受け付ける"""
+    # Given: 未指定又はNoneの認識設定
+    # When: クライアントを生成する
+    client = client_type("key", **kwargs)
+    # Then: 空設定として初期化できる
+    assert client._settings == RecognitionSettings()
+
+
+@pytest.mark.parametrize("settings", [None, USE_CLIENT_DEFAULT, "bad", 0, False, {}])
+def test_transcribe_invalid_settings_invalid_raise_ConfigurationError(settings: object) -> None:
+    """モジュール関数は認識設定オブジェクト以外を通信前に拒否する"""
+    # Given: 不正な認識設定と送信を監視するtransport
+    transport = Mock()
+    # When / Then: 設定の型エラーとなり通信しない
+    with pytest.raises(ConfigurationError, match=r"^settings must be RecognitionSettings$"):
+        transcribe(b"audio", settings=settings, api_key="key", _transport=transport)
+    assert transport.mock_calls == []
+
+
+def test_transcribe_empty_settings_invalid_raise_missing_grammar_ConfigurationError() -> None:
+    """空の設定オブジェクトは従来どおり必須項目不足で拒否する"""
+    # Given: 空設定と送信を監視するtransport
+    transport = Mock()
+    # When / Then: 設定の型は受け付け必須項目を検証する
+    with pytest.raises(ConfigurationError, match="grammar_file_names is required"):
+        transcribe(b"audio", settings=RecognitionSettings(), api_key="key", _transport=transport)
+    assert transport.mock_calls == []
+
+
+def test_transcribe_settings_annotation_valid_return_required_non_nullable_type() -> None:
+    """モジュール関数の認識設定は必須でNoneを含めない"""
+    # Given: モジュール関数の型ヒントとシグネチャ
+    annotation = get_type_hints(transcribe)["settings"]
+    parameter = inspect.signature(transcribe).parameters["settings"]
+    # When / Then: 設定オブジェクトの明示指定を要求する
+    assert annotation is RecognitionSettings
+    assert parameter.default is inspect.Parameter.empty
+
+
+def test_transcribe_missing_settings_invalid_raise_TypeError() -> None:
+    """モジュール関数の設定を省略した場合は必須引数エラーになる"""
+    # Given: 設定引数のない呼び出し
+    # When / Then: 関数本体の実行前に引数不足を拒否する
+    with pytest.raises(TypeError, match="settings"):
+        transcribe(b"audio", api_key="key")
+
+
+@pytest.mark.parametrize("target", [AmiVoiceClient.transcribe, AmiVoiceClient.stream, AmiVoiceAsyncClient.submit])
+def test_recognition_settings_annotation_valid_return_non_nullable_type(target: object) -> None:
+    """呼び出し時の型ヒントにNoneを含めない"""
+    # Given: 各認識メソッドの型ヒント
+    annotation = get_type_hints(target)["settings"]
+    # When / Then: 受け付ける設定型とsentinel型だけを公開する
+    assert annotation == RecognitionSettings | type(USE_CLIENT_DEFAULT)
 
 
 @pytest.mark.parametrize(
