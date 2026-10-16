@@ -1,6 +1,8 @@
 """非同期HTTP公開APIから本物のローカル通信を検証する"""
 
+import http.client
 import time
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -57,6 +59,44 @@ def test_wait_stalled_socket_edge_raise_before_server_response() -> None:
             client.wait("job1", timeout=0.1)
         assert time.monotonic() - start < 1.5
         assert caught.value.session_id == "job1" and caught.value.snapshot is None
+
+
+@pytest.mark.parametrize("ending", ["complete", "interrupted", "truncated"])
+def test_connection_body_deadline_edge_return_or_raise_timeout(ending: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """読み切った本文は返すが、期限で中断された受信はタイムアウトする"""
+    # Given: 本文の読み取り中に期限へ到達する接続
+    connection = MagicMock(spec=http.client.HTTPConnection)
+    connection._create_connection = MagicMock()
+    connection.sock = MagicMock()
+    response = connection.getresponse.return_value
+    response.status = 200
+    response.length = 0 if ending == "complete" else 1
+    clock = [0.0]
+    chunks = iter([b'{"session_id":', b'"job1","status":"processing"}', b""])
+
+    def read(size: int) -> bytes:
+        chunk = next(chunks)
+        if not chunk:
+            clock[0] = 1.0
+            if ending == "interrupted":
+                raise OSError("interrupted")
+        return chunk
+
+    response.read.side_effect = read
+    monkeypatch.setattr("amivoice._async_http_transport.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr(AsyncHttpConnection, "_connection", lambda *args: (connection, "/v2/recognitions/job1", {}))
+    # When / Then: 受信完了後の時刻だけでは本文を捨てず、中断は例外にする
+    transport = AsyncHttpConnection()
+    if ending == "complete":
+        status, body = transport.request(
+            "GET", "https://example.test/v2/recognitions/job1", {}, None, RecognitionParams(), deadline=1
+        )
+        assert status == 200
+        assert body == b'{"session_id":"job1","status":"processing"}'
+    else:
+        with pytest.raises(TimeoutError):
+            transport.request("GET", "https://example.test/v2/recognitions/job1", {}, None, RecognitionParams(), deadline=1)
+    connection.close.assert_called_once()
 
 
 def test_connection_https_proxy_valid_return_tunnel_only_auth(monkeypatch: pytest.MonkeyPatch) -> None:

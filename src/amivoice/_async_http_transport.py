@@ -168,8 +168,10 @@ class AsyncHttpConnection:
             chunks = []
             while chunk := response.read(65536):
                 chunks.append(chunk)
-            if deadline is not None and time.monotonic() >= deadline:
-                raise TimeoutError("Async HTTP wait deadline expired")
+            # read(size)はContent-Lengthに満たないEOFでも例外を送出しない
+            if response.length is not None and response.length > 0:
+                raise http.client.IncompleteRead(b"".join(chunks), response.length)
+            # 読み切った本文を事後の期限チェックで捨てず、呼び出し元へ渡す
             return response.status, b"".join(chunks)
         except (OSError, http.client.HTTPException):
             if deadline is not None and time.monotonic() >= deadline:

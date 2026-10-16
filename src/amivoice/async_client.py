@@ -191,8 +191,7 @@ class AmiVoiceAsyncClient:
             if method == "POST":
                 message += "; submission may have been accepted, automatic retry is disabled"
             raise ConnectionFailedError(message) from None
-        if deadline is not None and self._clock() >= deadline:
-            raise TimeoutError("Job deadline expired")
+        # 受信済みの応答は期限に関係なく検証し、waitで最新状態を判断する
         if status != 200:
             error_type = AsyncHttpAuthenticationError if status == 401 else AsyncHttpApiError
             raise error_type(
@@ -289,6 +288,9 @@ class AmiVoiceAsyncClient:
     ) -> AsyncJobSnapshot:
         """呼び出し元をブロックして終端状態を待つ、中断はジョブのキャンセルではない
 
+        受信済みの応答は期限到達後も解析し、終端状態ならタイムアウトより優先する
+        非終端状態なら最新のスナップショットを持つタイムアウト例外を送出する
+
         Args:
             session_id (str): 保存したジョブID
             poll_interval (float): 正のポーリング間隔、秒
@@ -329,11 +331,11 @@ class AmiVoiceAsyncClient:
                 snapshot = self._fetch_with_retries(session_id, url, params, deadline, max_retries, backoff)
             except TimeoutError:
                 raise AsyncJobTimeoutError(session_id, snapshot) from None
-            if deadline is not None and self._clock() >= deadline:
-                raise AsyncJobTimeoutError(session_id, snapshot)
             if snapshot.is_terminal:
                 if snapshot.is_error and raise_on_error:
                     raise AsyncJobError("Async HTTP job or recognition failed", snapshot)
                 return snapshot
+            if deadline is not None and self._clock() >= deadline:
+                raise AsyncJobTimeoutError(session_id, snapshot)
             remaining = interval if deadline is None else min(interval, max(0, deadline - self._clock()))
             self._sleep(remaining)
