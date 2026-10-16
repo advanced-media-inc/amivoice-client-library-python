@@ -29,6 +29,8 @@ from .exceptions import (
 from .settings import USE_CLIENT_DEFAULT, RecognitionSettings, UseClientDefault
 
 _DEFAULT_URL = "https://acp-api-async.amivoice.com/v2/recognitions"
+_MAX_WAIT_SECONDS = 7 * 24 * 60 * 60
+_MAX_POLL_INTERVAL_SECONDS = 60 * 60
 
 
 def _endpoint(url: str) -> str:
@@ -56,13 +58,15 @@ def _job_id(value: str) -> str:
     return value
 
 
-def _seconds(value: float, name: str) -> float:
+def _seconds(value: float, name: str, *, maximum: float | None = None) -> float:
     try:
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
             raise ValueError("Invalid seconds")
-        return float(value)
     except (ValueError, OverflowError):
         raise ConfigurationError(name + " must be a finite positive number of seconds") from None
+    if maximum is not None and value > maximum:
+        raise ConfigurationError(f"{name} must not exceed {maximum} seconds")
+    return float(value)
 
 
 def _communication(params: RecognitionParams) -> None:
@@ -293,8 +297,8 @@ class AmiVoiceAsyncClient:
 
         Args:
             session_id (str): 保存したジョブID
-            poll_interval (float): 正のポーリング間隔、秒
-            timeout (float | None): 全体の待機上限、秒、Noneのみ無制限
+            poll_interval (float): 正のポーリング間隔、秒、最大3600秒（1時間）
+            timeout (float | None): 全体の待機上限、秒、最大604800秒（7日）、Noneのみ無制限
             raise_on_error (bool): ジョブ又は認識失敗を例外にするか
             max_retries (int): GET連続失敗時の追加試行上限、0で再試行なし
             retry_backoff (float): GET再試行の初回待機秒数、倍増して最大30秒
@@ -307,13 +311,14 @@ class AmiVoiceAsyncClient:
             AsyncJobSnapshot: 終端状態と認識結果
 
         Raises:
+            ConfigurationError: 待機設定が不正又は指定可能な上限を超える場合
             AsyncJobTimeoutError: 待機上限を超えた場合、IDから再開できる
             AsyncJobError: raise_on_error=Trueでジョブ又は認識が失敗した場合
             AsyncHttpApiError: HTTPエラー又は不正応答、設定に関係なく送出
         """
         session_id = _job_id(session_id)
-        interval = _seconds(poll_interval, "poll_interval")
-        duration = None if timeout is None else _seconds(timeout, "timeout")
+        interval = _seconds(poll_interval, "poll_interval", maximum=_MAX_POLL_INTERVAL_SECONDS)
+        duration = None if timeout is None else _seconds(timeout, "timeout", maximum=_MAX_WAIT_SECONDS)
         if not isinstance(raise_on_error, bool):
             raise ConfigurationError("raise_on_error must be a boolean")
         if isinstance(max_retries, bool) or not isinstance(max_retries, int) or max_retries < 0:

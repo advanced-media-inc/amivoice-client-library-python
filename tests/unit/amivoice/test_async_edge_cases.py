@@ -1,6 +1,7 @@
 """非同期HTTPの設定、失敗、待機境界を追加で検証する"""
 
 import inspect
+import math
 
 import pytest
 
@@ -51,6 +52,60 @@ def test_wait_huge_number_invalid_raise_ConfigurationError() -> None:
     # When / Then: OverflowErrorを漏らさない
     with pytest.raises(ConfigurationError):
         client.wait("job1", timeout=10**1000)
+
+
+@pytest.mark.parametrize("parameter, maximum", [("timeout", 604_800), ("poll_interval", 3_600)])
+@pytest.mark.parametrize("value_kind", ["next_float", "next_integer", "huge_float", "huge_integer"])
+def test_wait_over_maximum_invalid_raise_ConfigurationError(
+    parameter: str, maximum: int, value_kind: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """上限超過を時計参照・通信・待機の前に拒否する"""
+    # Given: 上限を超える有限値又はfloatへ変換できない整数
+    values = {
+        "next_float": math.nextafter(float(maximum), math.inf),
+        "next_integer": maximum + 1,
+        "huge_float": 1e300,
+        "huge_integer": 10**1000,
+    }
+    transport = RecordingTransport([])
+    client = AmiVoiceAsyncClient(api_key="dummy", transport=transport)
+
+    def unexpected_wait(*args: object) -> None:
+        raise AssertionError("Invalid settings must be rejected before waiting")
+
+    monkeypatch.setattr(client, "_clock", unexpected_wait)
+    monkeypatch.setattr(client, "_sleep", unexpected_wait)
+    # When / Then: 生のOverflowErrorではなく設定例外を返す
+    with pytest.raises(ConfigurationError, match=parameter):
+        client.wait("job1", **{parameter: values[value_kind]})
+    assert not transport.calls
+
+
+@pytest.mark.parametrize("timeout", [604_800, 604_800.0, None])
+@pytest.mark.parametrize("poll_interval", [3_600, 3_600.0])
+def test_wait_maximum_settings_edge_return_completed(
+    timeout: float | None, poll_interval: float, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """上限ちょうどの整数・小数と無期限待機を許可する"""
+    # Given: 処理中から完了するジョブと実時間を使わない時計
+    transport = RecordingTransport([queued(), completed()])
+    client = AmiVoiceAsyncClient(api_key="dummy", transport=transport)
+    clock = [0.0]
+    sleeps = []
+    monkeypatch.setattr(client, "_clock", lambda: clock[0])
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        clock[0] += seconds
+
+    monkeypatch.setattr(client, "_sleep", sleep)
+    # When: 最大間隔でポーリングする
+    snapshot = client.wait("job1", timeout=timeout, poll_interval=poll_interval)
+    # Then: 上限値を切り詰めずに使い、Noneだけ期限なしとする
+    assert snapshot.status == "completed"
+    assert sleeps == [poll_interval]
+    assert len(transport.calls) == 2
+    assert all(call[-1] == timeout for call in transport.calls)
 
 
 @pytest.mark.parametrize("session_id", ["..", "job/other", "job\\other"])

@@ -164,9 +164,9 @@ except AsyncJobError as error:
     # error.snapshotで状態を調査できる。詳細本文を無条件にログへ出さない。
 ```
 
-`poll_interval` は正の有限数で、単位は秒です。既定値は 10 秒です。
-`timeout` も正の有限数で秒単位ですが、`None` を指定すると無制限になります。
-`0`、負値、`bool`、無限大、`NaN` などの不正値は `ConfigurationError` になります。
+`poll_interval` は正の有限数（秒）で、最大 3600 秒（1 時間）、既定値は 10 秒です。
+`timeout` は正の有限数（秒）で最大 604800 秒（7 日）、`None`（既定値）を指定すると無制限になります。
+上限ちょうどの値は指定できます。上限超過や `0`、負値、`bool`、無限大、`NaN` などの不正な値は、通信や待機を始める前に `ConfigurationError` を送出します。
 
 待機期限に達し、取得済みの応答から終端状態を確認できなかった場合は、`AsyncJobTimeoutError` を送出します。サーバーのジョブはキャンセルしません。
 例外の `session_id` と、最後の状態を保持する `snapshot` から取得を再開できます。
