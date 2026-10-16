@@ -96,7 +96,7 @@ class AmiVoiceAsyncClient:
         """認識設定と非同期HTTPの接続先を保持する
 
         Args:
-            settings (RecognitionSettings | None): 認識設定、未指定は継承、Noneは全認識設定を解除
+            settings (RecognitionSettings | None): 認識設定、省略またはNoneは空の認識設定
             api_key (str | None): Bearer認証情報、省略時はAMIVOICE_API_KEY
             proxy_server_name (str | None): HTTPプロキシ
             connect_timeout (int): 接続待機のミリ秒、0は無制限
@@ -105,7 +105,9 @@ class AmiVoiceAsyncClient:
             transport (AsyncHttpTransport | None): テスト用の通信処理
         """
         self._api_key = validate_service_api_key(api_key if api_key is not None else os.environ.get("AMIVOICE_API_KEY"))
-        self._settings = merge_recognition_settings(RecognitionSettings(), settings)
+        self._settings = merge_recognition_settings(
+            RecognitionSettings(), settings if settings is not None else RecognitionSettings()
+        )
         self._params = RecognitionParams(
             proxy_server_name=proxy_server_name, connect_timeout=connect_timeout, receive_timeout=receive_timeout
         )
@@ -140,7 +142,7 @@ class AmiVoiceAsyncClient:
         self,
         audio: AudioSource,
         *,
-        settings: RecognitionSettings | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        settings: RecognitionSettings | UseClientDefault = USE_CLIENT_DEFAULT,
         proxy_server_name: str | None | UseClientDefault = USE_CLIENT_DEFAULT,
         connect_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
         receive_timeout: int | UseClientDefault = USE_CLIENT_DEFAULT,
@@ -152,7 +154,7 @@ class AmiVoiceAsyncClient:
         通信失敗時に受理済みか分からないため、音声を自動再送しない
 
         Args:
-            settings (RecognitionSettings | None | UseClientDefault): 認識設定、未指定は継承、Noneは全認識設定を解除
+            settings (RecognitionSettings | UseClientDefault): 認識設定、未指定は継承、Noneは指定不可
             audio (AudioSource): bytes、Path、ファイルパス、バイナリストリーム
             proxy_server_name (str | None | UseClientDefault): HTTPプロキシ
             connect_timeout (int | UseClientDefault): 接続待機のミリ秒
