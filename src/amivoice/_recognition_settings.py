@@ -4,10 +4,11 @@ from collections.abc import Sequence
 from dataclasses import fields
 from urllib.parse import urlsplit
 
-from ._params import UNSET, RecognitionParams, _UnsetType, merge_params
+from ._params import RecognitionParams, merge_params
 from ._segmenter import SegmenterProperties
 from .dictionary import ProfileWord, build_profile_words
 from .exceptions import ConfigurationError
+from .settings import USE_CLIENT_DEFAULT, RecognitionSettings, UseClientDefault
 
 
 def _validate_custom_url_logging_opt_out(url: str, nolog_url: str) -> None:
@@ -47,20 +48,20 @@ def _validate_logging_opt_out(logging_opt_out: object) -> bool:
     return logging_opt_out
 
 
-def _resolve_logging_opt_out(override: bool | _UnsetType, configured: bool) -> bool:
+def _resolve_logging_opt_out(override: bool | UseClientDefault, configured: bool) -> bool:
     """呼び出し時の ``logging_opt_out`` override とコンストラクタ設定から最終値を解決する
 
     Args:
-        override (bool | _UnsetType): 呼び出し時の override``UNSET`` は未指定を表す
+        override (bool | UseClientDefault): 呼び出し時の override``USE_CLIENT_DEFAULT`` は未指定を表す
         configured (bool): コンストラクタで設定された値
 
     Returns:
         bool: 解決した ``logging_opt_out``
 
     Raises:
-        ConfigurationError: override が bool でも ``UNSET`` でもない場合
+        ConfigurationError: override が bool でも ``USE_CLIENT_DEFAULT`` でもない場合
     """
-    if isinstance(override, _UnsetType):
+    if isinstance(override, UseClientDefault):
         return configured
     return _validate_logging_opt_out(override)
 
@@ -71,18 +72,18 @@ def _validate_endpoint_url_type(url: object, parameter_name: str) -> None:
     URL を明示する利用者は接続先を選んでいるため、``None`` を既定 URL へ置き換えずに拒否する
 
     Args:
-        url (object): 検証する URL``UNSET`` は未指定を表す
+        url (object): 検証する URL``USE_CLIENT_DEFAULT`` は未指定を表す
         parameter_name (str): エラーメッセージに表示する引数名
 
     Raises:
-        ConfigurationError: URL が ``UNSET`` でも文字列でもない場合
+        ConfigurationError: URL が ``USE_CLIENT_DEFAULT`` でも文字列でもない場合
     """
-    if not isinstance(url, (str, _UnsetType)):
+    if not isinstance(url, (str, UseClientDefault)):
         raise ConfigurationError(f"Invalid {parameter_name}: must be a string")
 
 
 def _resolve_endpoint_url(
-    override: str | _UnsetType,
+    override: str | UseClientDefault,
     configured_url: str,
     configured_url_is_default: bool,
     nolog_url: str,
@@ -94,7 +95,7 @@ def _resolve_endpoint_url(
     ``logging_opt_out`` が有効な場合はログ保存なしのパスであることを検証する
 
     Args:
-        override (str | _UnsetType): 呼び出し時の URL override``UNSET`` は未指定を表す
+        override (str | UseClientDefault): 呼び出し時の URL override``USE_CLIENT_DEFAULT`` は未指定を表す
         configured_url (str): コンストラクタで設定された URL
         configured_url_is_default (bool): コンストラクタで URL を省略したかどうか
             明示的に既定 URL と同じ値を指定した場合との区別に使用する
@@ -105,13 +106,13 @@ def _resolve_endpoint_url(
         str: 解決されたエンドポイント URL
 
     Raises:
-        ConfigurationError: override が文字列でも ``UNSET`` でもない場合、または
+        ConfigurationError: override が文字列でも ``USE_CLIENT_DEFAULT`` でもない場合、または
             ``logging_opt_out`` が有効でカスタム URL がログ保存なしのパスでない場合
     """
     _validate_endpoint_url_type(override, "api_url")
-    if isinstance(override, _UnsetType) and configured_url_is_default:
+    if isinstance(override, UseClientDefault) and configured_url_is_default:
         return nolog_url if logging_opt_out else configured_url
-    url = configured_url if isinstance(override, _UnsetType) else override
+    url = configured_url if isinstance(override, UseClientDefault) else override
     if logging_opt_out:
         _validate_custom_url_logging_opt_out(url, nolog_url)
     return url
@@ -136,17 +137,17 @@ def _resolve_profile_words(profile_words: str | Sequence[ProfileWord] | None) ->
 
 
 def _resolve_profile_words_override(
-    profile_words: str | Sequence[ProfileWord] | None | _UnsetType,
-) -> str | None | _UnsetType:
+    profile_words: str | Sequence[ProfileWord] | None | UseClientDefault,
+) -> str | None | UseClientDefault:
     """呼び出し時 profile_words override を解決し、未指定 sentinel を保持する
 
     Args:
-        profile_words (str | Sequence[ProfileWord] | None | _UnsetType): 呼び出し時の profile_words override
+        profile_words (str | Sequence[ProfileWord] | None | UseClientDefault): 呼び出し時の profile_words override
 
     Returns:
-        str | None | _UnsetType: 解決した profileWords 文字列、``None``、または未指定 sentinel
+        str | None | UseClientDefault: 解決した profileWords 文字列、``None``、または未指定 sentinel
     """
-    if isinstance(profile_words, _UnsetType):
+    if isinstance(profile_words, UseClientDefault):
         return profile_words
     return _resolve_profile_words(profile_words)
 
@@ -215,9 +216,9 @@ def _resolve_audio_filter_properties(
 
 
 def _resolve_audio_filter_properties_override(
-    selected_channel: int | tuple[int, int] | None | _UnsetType,
-    audio_filter_properties: str | None | _UnsetType,
-) -> str | None | _UnsetType:
+    selected_channel: int | tuple[int, int] | None | UseClientDefault,
+    audio_filter_properties: str | None | UseClientDefault,
+) -> str | None | UseClientDefault:
     """呼び出し時の音声フィルタプロパティoverrideを解決する
 
     Args:
@@ -230,9 +231,9 @@ def _resolve_audio_filter_properties_override(
     Raises:
         ConfigurationError: 型付き指定とraw文字列を同時指定した場合
     """
-    if not isinstance(selected_channel, _UnsetType) and not isinstance(audio_filter_properties, _UnsetType):
+    if not isinstance(selected_channel, UseClientDefault) and not isinstance(audio_filter_properties, UseClientDefault):
         raise ConfigurationError("selected_channel and audio_filter_properties cannot be specified together")
-    if isinstance(selected_channel, _UnsetType):
+    if isinstance(selected_channel, UseClientDefault):
         return audio_filter_properties
     return _build_selected_channel_properties(selected_channel) if selected_channel is not None else None
 
@@ -259,9 +260,9 @@ def _resolve_segmenter_properties(
 
 
 def _resolve_segmenter_override(
-    segmenter: SegmenterProperties | None | _UnsetType,
-    segmenter_properties: str | None | _UnsetType,
-) -> str | None | _UnsetType:
+    segmenter: SegmenterProperties | None | UseClientDefault,
+    segmenter_properties: str | None | UseClientDefault,
+) -> str | None | UseClientDefault:
     """呼び出し時の型付き segmenter override と生文字列を解決する
 
     Args:
@@ -274,9 +275,9 @@ def _resolve_segmenter_override(
     Raises:
         ConfigurationError: 両方の設定が指定された場合
     """
-    if not isinstance(segmenter, _UnsetType) and not isinstance(segmenter_properties, _UnsetType):
+    if not isinstance(segmenter, UseClientDefault) and not isinstance(segmenter_properties, UseClientDefault):
         raise ConfigurationError("segmenter and segmenter_properties cannot be specified together")
-    if isinstance(segmenter, _UnsetType):
+    if isinstance(segmenter, UseClientDefault):
         return segmenter_properties
     return segmenter.to_parameter() if segmenter is not None else None
 
@@ -291,12 +292,69 @@ def resolve_recognition_overrides(base: RecognitionParams, supplied: dict[str, o
     Returns:
         RecognitionParams: 呼び出し専用の設定
     """
-    changes = {field.name: supplied.get(field.name, UNSET) for field in fields(base)}
-    changes["profile_words"] = _resolve_profile_words_override(supplied.get("profile_words", UNSET))
+    changes = {field.name: supplied.get(field.name, USE_CLIENT_DEFAULT) for field in fields(base)}
+    changes["profile_words"] = _resolve_profile_words_override(supplied.get("profile_words", USE_CLIENT_DEFAULT))
     changes["segmenter_properties"] = _resolve_segmenter_override(
-        supplied.get("segmenter", UNSET), supplied.get("segmenter_properties", UNSET)
+        supplied.get("segmenter", USE_CLIENT_DEFAULT), supplied.get("segmenter_properties", USE_CLIENT_DEFAULT)
     )
     changes["audio_filter_properties"] = _resolve_audio_filter_properties_override(
-        supplied.get("selected_channel", UNSET), supplied.get("audio_filter_properties", UNSET)
+        supplied.get("selected_channel", USE_CLIENT_DEFAULT), supplied.get("audio_filter_properties", USE_CLIENT_DEFAULT)
     )
     return merge_params(base, **changes)
+
+
+def merge_recognition_settings(
+    base: RecognitionSettings,
+    override: RecognitionSettings | UseClientDefault,
+) -> RecognitionSettings:
+    """設定差分を適用し、型付き指定とraw指定の切り替えを解決する
+
+    Args:
+        base (RecognitionSettings): クライアント設定
+        override (RecognitionSettings | UseClientDefault): 差分、未指定の項目は継承
+
+    Returns:
+        RecognitionSettings: 呼び出し専用設定
+
+    Raises:
+        ConfigurationError: 設定オブジェクトが不正な場合
+    """
+    if override is USE_CLIENT_DEFAULT:
+        return base
+    if not isinstance(override, RecognitionSettings):
+        raise ConfigurationError("settings must be RecognitionSettings or USE_CLIENT_DEFAULT")
+    values = {field.name: getattr(base, field.name) for field in fields(base)}
+    changes = {
+        field.name: getattr(override, field.name)
+        for field in fields(override)
+        if getattr(override, field.name) is not USE_CLIENT_DEFAULT
+    }
+    for typed, raw in (
+        ("segmenter", "segmenter_properties"),
+        ("selected_channel", "audio_filter_properties"),
+        ("billing_key", "extension"),
+    ):
+        if typed in changes and raw not in changes:
+            values[raw] = USE_CLIENT_DEFAULT
+        if raw in changes and typed not in changes:
+            values[typed] = USE_CLIENT_DEFAULT
+    values.update(changes)
+    return RecognitionSettings(**values)
+
+
+def settings_to_params(settings: RecognitionSettings, communication: RecognitionParams) -> RecognitionParams:
+    """認識設定を通信設定と組み合わせて内部のwire設定へ変換する
+
+    Args:
+        settings (RecognitionSettings): 公開認識設定
+        communication (RecognitionParams): 通信設定
+
+    Returns:
+        RecognitionParams: 検証済み設定
+    """
+    values = {
+        field.name: getattr(settings, field.name)
+        for field in fields(settings)
+        if getattr(settings, field.name) is not USE_CLIENT_DEFAULT
+    }
+    return resolve_recognition_overrides(communication, values)

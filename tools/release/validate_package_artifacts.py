@@ -16,7 +16,14 @@ from packaging.utils import (
 from packaging.version import InvalidVersion, Version
 
 _REQUIRED_PUBLIC_FILES = frozenset(
-    {"amivoice/__init__.py", "amivoice/client.py", "amivoice/sentiment_analysis.py", "amivoice/py.typed"}
+    {
+        "amivoice/__init__.py",
+        "amivoice/client.py",
+        "amivoice/async_client.py",
+        "amivoice/async_models.py",
+        "amivoice/sentiment_analysis.py",
+        "amivoice/py.typed",
+    }
 )
 
 

@@ -41,7 +41,15 @@ def test_validate_package_artifacts_obsolete_sdist_invalid_raise_PackageArtifact
 
 
 @pytest.mark.parametrize(
-    "missing", ["amivoice/__init__.py", "amivoice/client.py", "amivoice/sentiment_analysis.py", "amivoice/py.typed"]
+    "missing",
+    [
+        "amivoice/__init__.py",
+        "amivoice/client.py",
+        "amivoice/async_client.py",
+        "amivoice/async_models.py",
+        "amivoice/sentiment_analysis.py",
+        "amivoice/py.typed",
+    ],
 )
 def test_validate_package_artifacts_missing_public_module_invalid_raise_PackageArtifactError(
     tmp_path: Path, missing: str

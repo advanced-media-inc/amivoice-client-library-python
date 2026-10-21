@@ -101,6 +101,15 @@ def validate_recognition_request(params: RecognitionParams) -> None:
 
 def _request_values(params: RecognitionParams, interface: str) -> list[tuple[str, str]]:
     validate_recognition_request(params)
+    if interface == "async_http":
+        unsupported = ("complete_timeout", "wildcard_model_penalty", "result_updated_interval", "no_input_timeout")
+        if any(getattr(params, field) is not None for field in unsupported):
+            raise ConfigurationError("Recognition parameter is not supported by async HTTP")
+        for property_value in (params.segmenter_properties or "").split():
+            if property_value.partition("=")[0] in ("useDiarizer", "diarizerAlpha", "diarizerTransitionBias"):
+                raise ConfigurationError("Segmenter diarization is not supported by async HTTP")
+        # v2のaudioFilterPropertiesを含み、HTTP共通項目だけを再利用する
+        interface = "http"
     values = []
     for field, (key, scope) in REQUEST_PARAMETERS.items():
         if field == "api_key" or scope not in ("both", interface):

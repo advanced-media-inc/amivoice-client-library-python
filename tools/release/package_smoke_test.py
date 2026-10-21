@@ -6,7 +6,7 @@ from importlib import metadata
 from pathlib import Path
 
 import amivoice
-from amivoice import AmiVoiceClient
+from amivoice import AmiVoiceClient, RecognitionSettings
 
 
 class PackageSmokeTestError(RuntimeError):
@@ -32,10 +32,19 @@ def run_package_smoke_test(distribution_name: str, expected_version: str) -> Non
 
     public_exports = (
         "AmiVoiceClient",
+        "AmiVoiceAsyncClient",
+        "AsyncJobSnapshot",
+        "AsyncJobSubmission",
+        "AsyncRecognitionResult",
+        "AsyncHttpApiError",
+        "AsyncJobError",
+        "AsyncJobTimeoutError",
         "transcribe",
         "Codec",
         "Engine",
         "RecognitionResult",
+        "RecognitionSettings",
+        "UseClientDefault",
         "StreamSession",
         "ProfileWord",
         "SegmenterProperties",
@@ -62,10 +71,16 @@ def run_package_smoke_test(distribution_name: str, expected_version: str) -> Non
         raise PackageSmokeTestError("Installed package does not contain amivoice/py.typed")
 
     client = AmiVoiceClient(
-        api_key="package-smoke-test", grammar_file_names=amivoice.Engine.A_GENERAL, codec=amivoice.Codec.HEADER_16K
+        settings=RecognitionSettings(grammar_file_names=amivoice.Engine.A_GENERAL, codec=amivoice.Codec.HEADER_16K),
+        api_key="package-smoke-test",
     )
     if not callable(client.transcribe) or not callable(client.stream):
         raise PackageSmokeTestError("AmiVoiceClient public methods are not callable")
+    async_client = amivoice.AmiVoiceAsyncClient(
+        settings=RecognitionSettings(grammar_file_names=amivoice.Engine.A_GENERAL), api_key="package-smoke-test"
+    )
+    if any(not callable(getattr(async_client, name, None)) for name in ("submit", "get_job", "wait")):
+        raise PackageSmokeTestError("AmiVoiceAsyncClient public methods are not callable")
 
 
 def _parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:

@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
-from amivoice import AmiVoiceClient, AmiVoiceError, Codec, Engine, StreamEvent
+from amivoice import AmiVoiceClient, AmiVoiceError, Codec, Engine, RecognitionSettings, StreamEvent
 
 
 class RecognitionTester:
@@ -69,8 +69,6 @@ class RecognitionTester:
             "grammar_file_names": arguments.engine,
             "codec": arguments.codec,
             "logging_opt_out": arguments.logging_opt_out,
-            "connect_timeout": arguments.connect_timeout,
-            "receive_timeout": arguments.receive_timeout,
         }
         for name in (
             "profile_id",
@@ -92,9 +90,13 @@ class RecognitionTester:
             value = getattr(arguments, name, None)
             if value is not None:
                 settings[name] = value
+        connection = {
+            "connect_timeout": arguments.connect_timeout,
+            "receive_timeout": arguments.receive_timeout,
+        }
         if arguments.url is not None:
-            settings["http_api_url" if self.interface == "http" else "ws_api_url"] = arguments.url
-        return AmiVoiceClient(**settings)
+            connection["http_api_url" if self.interface == "http" else "ws_api_url"] = arguments.url
+        return AmiVoiceClient(settings=RecognitionSettings(**settings), **connection)
 
     @staticmethod
     def _print_event(event: StreamEvent, *, show_events: bool) -> None:

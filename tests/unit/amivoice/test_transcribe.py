@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from amivoice import Codec, Engine, transcribe
+from amivoice import Codec, Engine, RecognitionSettings, transcribe
 from amivoice.exceptions import ConfigurationError
 
 
@@ -17,10 +17,9 @@ def test_transcribe_official_parameters_valid_return_result() -> None:
     result = transcribe(
         b"audio",
         api_key="dummy",
-        grammar_file_names=Engine.A_GENERAL,
-        codec=Codec.LSB16K,
-        selected_channel=1,
-        logging_opt_out=True,
+        settings=RecognitionSettings(
+            grammar_file_names=Engine.A_GENERAL, codec=Codec.LSB16K, selected_channel=1, logging_opt_out=True
+        ),
         _transport=transport,
     )
     # Then: 認識結果と公式multipartパートを確認する
@@ -35,7 +34,9 @@ def test_transcribe_removed_argument_invalid_raise_TypeError(name: str) -> None:
     # Given: 非公式設定
     # When / Then: Pythonの引数検証で拒否する
     with pytest.raises(TypeError):
-        transcribe(b"audio", api_key="dummy", **{name: "value"})
+        transcribe(
+            b"audio", api_key="dummy", settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL), **{name: "value"}
+        )
 
 
 def test_transcribe_engine_missing_invalid_raise_ConfigurationError() -> None:
@@ -44,5 +45,5 @@ def test_transcribe_engine_missing_invalid_raise_ConfigurationError() -> None:
     transport = MagicMock()
     # When / Then: 設定不足で通信しない
     with pytest.raises(ConfigurationError, match="grammar_file_names"):
-        transcribe(b"audio", api_key="dummy", _transport=transport)
+        transcribe(b"audio", api_key="dummy", settings=RecognitionSettings(), _transport=transport)
     transport.request.assert_not_called()

@@ -25,6 +25,8 @@ def create_valid_artifacts(dist_dir: Path) -> None:
             "amivoice/py.typed",
             "amivoice/__init__.py",
             "amivoice/client.py",
+            "amivoice/async_client.py",
+            "amivoice/async_models.py",
             "amivoice/sentiment_analysis.py",
             "amivoice_api_client-1.0.0.dist-info/METADATA",
             "amivoice_api_client-1.0.0.dist-info/RECORD",
@@ -42,6 +44,8 @@ def create_valid_artifacts(dist_dir: Path) -> None:
             f"{archive_prefix}/src/amivoice/py.typed",
             f"{archive_prefix}/src/amivoice/__init__.py",
             f"{archive_prefix}/src/amivoice/client.py",
+            f"{archive_prefix}/src/amivoice/async_client.py",
+            f"{archive_prefix}/src/amivoice/async_models.py",
             f"{archive_prefix}/src/amivoice/sentiment_analysis.py",
             f"{archive_prefix}/src/amivoice_api_client.egg-info/PKG-INFO",
         ):

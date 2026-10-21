@@ -5,18 +5,21 @@ import json
 import re
 from pathlib import Path
 from textwrap import indent
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 import pytest
 
+from amivoice._async_audio import MultipartUpload
+from amivoice._async_http_transport import AsyncHttpConnection
 from amivoice._http_api import HttpApiConnection
+from amivoice._params import RecognitionParams
 
 from .amivoice.test_amivoice_client import HttpFake, WebSocketFake
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DOCUMENTATION_EXAMPLES = [
     pytest.param(code, id=f"{path.stem}-{index}")
-    for path in (REPOSITORY_ROOT / "README.md", REPOSITORY_ROOT / "docs/usage.md")
+    for path in (REPOSITORY_ROOT / "README.md", *sorted((REPOSITORY_ROOT / "docs").glob("usage*.md")))
     for index, code in enumerate(re.findall(r"```python\n(.*?)\n```", path.read_text(encoding="utf-8"), re.DOTALL), start=1)
 ]
 
@@ -72,7 +75,33 @@ def test_documentation_python_example_public_api_valid_return_without_network(
             raise AssertionError("Documentation requested an unexpected API path")
         return 200, json.dumps(result).encode("utf-8")
 
+    def async_response(  # noqa: PLR0913
+        connection: AsyncHttpConnection,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        body: MultipartUpload | None,
+        params: RecognitionParams,
+        *,
+        deadline: float | None = None,
+    ) -> tuple[int, bytes]:
+        if method == "POST":
+            # 分割音声を最後まで消費し、例のファイル所有権も検証する
+            assert body is not None
+            for _ in body.chunks():
+                pass
+            return 200, b'{"sessionid":"job1","text":"..."}'
+        session_id = unquote(urlsplit(url).path.rsplit("/", 1)[1])
+        data = {
+            "session_id": session_id,
+            "status": "completed",
+            **recognition,
+            "segments": [{"text": "recognized", "results": [{"text": "recognized", "tokens": []}]}],
+        }
+        return 200, json.dumps(data).encode("utf-8")
+
     monkeypatch.setattr(HttpApiConnection, "request", api_response)
+    monkeypatch.setattr(AsyncHttpConnection, "request", async_response)
     # When: Python例を個別の名前空間で最後まで実行する
     runner = doctest.DocTestRunner(checker=_IgnoreDocumentationOutput())
     example = doctest.DocTest(

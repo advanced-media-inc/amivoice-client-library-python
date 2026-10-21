@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from amivoice import AmiVoiceClient, Codec, Engine, ProfileWord, SegmenterProperties, transcribe
+from amivoice import AmiVoiceClient, Codec, Engine, ProfileWord, RecognitionSettings, SegmenterProperties, transcribe
 from amivoice._params import RecognitionParams
 from amivoice.exceptions import AuthenticationError, ConfigurationError, RecognitionError
 
@@ -71,7 +71,11 @@ class WebSocketFake:
 
 
 def _client(**kwargs: object) -> AmiVoiceClient:
-    return AmiVoiceClient(api_key="dummy", grammar_file_names=Engine.A_GENERAL, codec=Codec.HEADER_16K, **kwargs)
+    recognition = {"grammar_file_names": Engine.A_GENERAL, "codec": Codec.HEADER_16K}
+    for name in tuple(kwargs):
+        if name in RecognitionSettings.__dataclass_fields__:
+            recognition[name] = kwargs.pop(name)
+    return AmiVoiceClient(api_key="dummy", settings=RecognitionSettings(**recognition), **kwargs)
 
 
 @pytest.mark.parametrize("target", [AmiVoiceClient, AmiVoiceClient.transcribe, AmiVoiceClient.stream, transcribe])
@@ -121,7 +125,10 @@ def test_client_http_overrides_valid_return_independent_settings() -> None:
     client = _client(hrp_transport=fake, billing_key="base", recognition_timeout=100)
     # When: 今回だけ別の時間を設定して次に既定で呼ぶ
     client.transcribe(
-        b"a", recognition_timeout=0, billing_key="override", segmenter=SegmenterProperties(pre_time=200), selected_channel=(0, 2)
+        b"a",
+        settings=RecognitionSettings(
+            recognition_timeout=0, billing_key="override", segmenter=SegmenterProperties(pre_time=200), selected_channel=(0, 2)
+        ),
     )
     client.transcribe(b"b")
     # Then: 0も有効な上書き値であり独立している
@@ -218,7 +225,9 @@ def test_client_http_parallel_calls_valid_return_independent_results() -> None:
     client = _client(hrp_transport=fake)
     # When: 並列で呼ぶ
     with ThreadPoolExecutor(max_workers=4) as executor:
-        results = list(executor.map(lambda n: client.transcribe(b"a", recognition_timeout=n), range(8)))
+        results = list(
+            executor.map(lambda n: client.transcribe(b"a", settings=RecognitionSettings(recognition_timeout=n)), range(8))
+        )
     # Then: 各呼び出しに独立した設定がある
     assert len(results) == 8
     assert {call[3].recognition_timeout for call in fake.calls} == set(range(8))
@@ -309,8 +318,9 @@ def test_client_profile_words_sequence_valid_return_official_format() -> None:
     fake = HttpFake()
     client = _client(hrp_transport=fake)
     # When: 単語を渡す
-    client.transcribe(b"a", profile_words=[ProfileWord("AMI", spoken="あみ")])
-    # Then: 公式のスペース区切り形式になる
+    client.transcribe(
+        b"a", settings=RecognitionSettings(profile_words=[ProfileWord("AMI", spoken="あみ")])
+    )  # Then: 公式のスペース区切り形式になる
     assert fake.calls[0][3].profile_words == "AMI あみ"
 
 
