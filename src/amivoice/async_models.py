@@ -254,23 +254,28 @@ class SentimentSegment:
 
 @dataclass(frozen=True)
 class SentimentAnalysisResult:
-    """完了ジョブの感情区間と感情分析内エラー"""
+    """完了ジョブの感情区間と感情分析内エラー
+
+    解析できない感情結果は元の値をdataに保持し、parse_errorで理由を示す
+    サーバーのエラー情報とクライアントでの解析失敗は区別する
+    """
 
     raw: str
-    data: dict[str, object]
+    data: object
     segments: tuple[SentimentSegment, ...] = ()
     code: int | None = None
     error_code: str | None = None
     error_message: str | None = None
+    parse_error: str | None = field(default=None, kw_only=True)
 
     @property
     def is_error(self) -> bool:
         """認識本体とは独立して感情分析内のエラーを判定する
 
         Returns:
-            bool: codeが存在するかエラー文字列が非空の場合はTrue
+            bool: codeが存在するかエラー文字列が非空、又は解析失敗時はTrue
         """
-        return self.code is not None or bool(self.error_code) or bool(self.error_message)
+        return self.code is not None or bool(self.error_code) or bool(self.error_message) or self.parse_error is not None
 
 
 @dataclass(frozen=True)

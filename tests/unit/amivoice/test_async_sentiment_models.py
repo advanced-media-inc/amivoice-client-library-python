@@ -38,6 +38,8 @@ ERRORS = [
     {"code": 400, "error_code": "BAD_REQUEST", "error_message": "file format is invalid"},
     {"code": 500, "error_code": "INTERNAL_SERVER_ERROR", "error_message": "internal server error has occurred"},
     {"error_code": "INTERNAL_SERVER_ERROR", "error_message": "before processing sentiment-analyzer"},
+    {"code": "", "error_code": "INTERNAL_SERVER_ERROR", "error_message": "before processing sentiment-analyzer"},
+    {"code": None, "error_code": "INTERNAL_SERVER_ERROR", "error_message": "before processing sentiment-analyzer"},
 ]
 
 
@@ -126,10 +128,13 @@ def test_wait_sentiment_only_valid_return_recognition_without_raising(envelope: 
     assert snapshot.recognition.text == "認識"
     assert not snapshot.is_error and not snapshot.recognition.is_error
     assert result.is_error == ("segments" not in sentiment)
-    assert result.code == sentiment.get("code") and result.segments == ()
+    expected_code = sentiment.get("code") if isinstance(sentiment.get("code"), int) else None
+    assert result.code == expected_code and result.segments == ()
+    assert result.parse_error is None
+    assert result.data == sentiment and json.loads(result.raw) == sentiment
 
 
-@pytest.mark.parametrize("sentiment", [{"segments": [sentiment_segment()]}, *ERRORS])
+@pytest.mark.parametrize("sentiment", [{"segments": [sentiment_segment()]}, *ERRORS, {}])
 @pytest.mark.parametrize("raise_on_error", [False, True])
 def test_wait_recognition_error_valid_return_or_raise_with_sentiment(sentiment: dict[str, object], raise_on_error: bool) -> None:
     """認識が失敗したcompletedでも感情結果を保持し既存例外契約を維持する"""
@@ -187,55 +192,91 @@ def test_parse_job_missing_sentiment_valid_return_none_and_positional_compatibil
         {"segments": None},
         {"segments": {}},
         {"segments": [1]},
+        {"segments": [{"starttime": 0, "endtime": 100, "energy": None}]},
         {"code": True},
         {"code": "400"},
         {"code": None},
+        {"code": ""},
         {"error_code": None},
         {"error_code": 400},
         {"error_message": []},
     ],
 )
-def test_parse_job_sentiment_shape_invalid_raise_AsyncHttpApiError(sentiment: object) -> None:
-    """不正な構造やエラー項目の型を正常空へ変換しない"""
-    # Given: 型破損した感情項目
-    raw = json.dumps(job_with_sentiment(sentiment)).encode()
-    # When / Then: 元応答を持つ既存APIエラーへ変換する
+@pytest.mark.parametrize("envelope", ["flat", "compatible", "compatible-both", "outer", "inner"])
+def test_wait_sentiment_shape_invalid_return_recognition_and_parse_error(sentiment: object, envelope: str) -> None:
+    """不正な感情構造は元の値と解析エラーを保持して認識結果を返す"""
+    # Given: 型破損した感情項目を含む正常認識
+    data = job_with_sentiment(sentiment, envelope)
+    before = deepcopy(data)
+    client = AmiVoiceAsyncClient(api_key="dummy", transport=RecordingTransport([data]))
+    # When: raise_on_error=Trueでも感情の解析失敗を分離する
+    snapshot = client.wait("job1", raise_on_error=True)
+    result = snapshot.recognition.sentiment_analysis
+    # Then: 欠落や正常空と区別し、元データを改変しない
+    assert snapshot.recognition.text == "認識"
+    assert not snapshot.is_error and not snapshot.recognition.is_error
+    assert result.is_error and result.parse_error
+    assert result.segments == ()
+    assert result.code is None and result.error_code is None and result.error_message is None
+    assert result.data == sentiment and json.loads(result.raw) == sentiment
+    assert snapshot.data == before and data == before
+    assert json.loads(snapshot.raw) == before
+
+
+@pytest.mark.parametrize("key", ["starttime", "endtime"])
+@pytest.mark.parametrize("value", [None, True, "100", [], 10**1000])
+def test_parse_job_sentiment_time_invalid_return_recognition_and_parse_error(key: str, value: object) -> None:
+    """不正な区間時刻や数値オーバーフローを感情部分の解析失敗に限定する"""
+    # Given: 不正な時刻
+    sentiment = {"segments": [{**sentiment_segment(), key: value}]}
+    # When: 完了応答を解析する
+    snapshot = parse_job(json.dumps(job_with_sentiment(sentiment)).encode(), "job1")
+    # Then: 不正時刻を補完せず、認識を保持する
+    result = snapshot.recognition.sentiment_analysis
+    assert snapshot.recognition.text == "認識" and not snapshot.is_error
+    assert result.is_error and result.parse_error and result.segments == ()
+    assert result.data == sentiment
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_parse_job_sentiment_non_json_number_invalid_raise_AsyncHttpApiError(value: float) -> None:
+    """感情部分でもJSON自体に不正な非有限リテラルがあれば応答を拒否する"""
+    # Given: JSON仕様外の数値を含む本文
+    segment = {**sentiment_segment(), "starttime": value}
+    raw = json.dumps(job_with_sentiment({"segments": [segment]})).encode()
+    # When / Then: 応答全体のJSON検証は緩めない
     with pytest.raises(AsyncHttpApiError) as caught:
         parse_job(raw, "job1")
     assert caught.value.raw_body == raw
 
 
 @pytest.mark.parametrize("key", ["starttime", "endtime"])
-@pytest.mark.parametrize("value", [None, True, "100", [], float("nan"), float("inf"), 10**1000])
-def test_parse_job_sentiment_time_invalid_raise_AsyncHttpApiError(key: str, value: object) -> None:
-    """区間時刻はboolを除く有限の数値だけ許可する"""
-    # Given: 不正な時刻
-    segment = {**sentiment_segment(), key: value}
-    # When / Then: 型破損をAPIエラーへ変換する
-    with pytest.raises(AsyncHttpApiError):
-        parse_job(json.dumps(job_with_sentiment({"segments": [segment]})).encode(), "job1")
-
-
-@pytest.mark.parametrize("key", ["starttime", "endtime"])
-def test_parse_job_sentiment_missing_time_invalid_raise_AsyncHttpApiError(key: str) -> None:
-    """必須時刻の欠落を0で補完しない"""
+def test_parse_job_sentiment_missing_time_invalid_return_parse_error(key: str) -> None:
+    """必須時刻の欠落を0で補完せず感情部分だけ解析エラーにする"""
     # Given: 時刻の片側が欠けた区間
     segment = sentiment_segment()
     del segment[key]
-    # When / Then: 不正応答として拒否する
-    with pytest.raises(AsyncHttpApiError):
-        parse_job(json.dumps(job_with_sentiment({"segments": [segment]})).encode(), "job1")
+    # When: 完了応答を解析する
+    snapshot = parse_job(json.dumps(job_with_sentiment({"segments": [segment]})).encode(), "job1")
+    # Then: 認識結果は利用できる
+    assert snapshot.recognition.text == "認識" and not snapshot.is_error
+    assert snapshot.recognition.sentiment_analysis.is_error
+    assert snapshot.recognition.sentiment_analysis.parse_error
 
 
 @pytest.mark.parametrize("key", PARAMETERS)
 @pytest.mark.parametrize("value", [True, 1.0, "1", None, []])
-def test_parse_job_sentiment_known_parameter_invalid_raise_AsyncHttpApiError(key: str, value: object) -> None:
-    """既知の指標は整数限定でnullやfloatも拒否する"""
+def test_parse_job_sentiment_known_parameter_invalid_return_parse_error(key: str, value: object) -> None:
+    """既知の指標の非整数値を正常値として扱わず認識結果を保持する"""
     # Given: 値だけを破損させた区間
-    segment = {**sentiment_segment(), key: value}
-    # When / Then: 各指標の型を検証する
-    with pytest.raises(AsyncHttpApiError):
-        parse_job(json.dumps(job_with_sentiment({"segments": [segment]})).encode(), "job1")
+    sentiment = {"segments": [{**sentiment_segment(), key: value}]}
+    # When: 完了応答を解析する
+    snapshot = parse_job(json.dumps(job_with_sentiment(sentiment)).encode(), "job1")
+    # Then: 感情部分だけエラーとして元データを保持する
+    result = snapshot.recognition.sentiment_analysis
+    assert snapshot.recognition.text == "認識" and not snapshot.is_error
+    assert result.is_error and result.parse_error and result.segments == ()
+    assert result.data == sentiment and json.loads(result.raw) == sentiment
 
 
 def test_parse_job_sentiment_sparse_out_of_range_valid_return_without_clamp() -> None:
@@ -263,6 +304,54 @@ def test_get_job_sentiment_diarization_valid_return_separate_results() -> None:
     assert snapshot.recognition.results[0].tokens[0].label == "speaker0"
     assert not hasattr(snapshot.recognition.sentiment_analysis.segments[0], "label")
     assert "label" not in snapshot.recognition.sentiment_analysis.segments[0].data
+
+
+@pytest.mark.parametrize("code", ["", None])
+def test_parse_job_sentiment_empty_code_valid_return_normalized_code(code: str | None) -> None:
+    """空文字とnullの感情コードを正規化し元データでは区別を保持する"""
+    # Given: 正常空配列と空のコード
+    sentiment = {"code": code, "segments": []}
+    # When: 完了応答を解析する
+    result = parse_job(json.dumps(job_with_sentiment(sentiment)).encode(), "job1").recognition.sentiment_analysis
+    # Then: 型付きコードはNoneだが元の値は失わない
+    assert result.code is None and result.parse_error is None and not result.is_error
+    assert result.data == sentiment and json.loads(result.raw) == sentiment
+
+
+def test_parse_job_sentiment_zero_code_valid_keep_existing_error_contract() -> None:
+    """整数コード0の成否判定は指摘1の修正で変更しない"""
+    # Given / When: 整数コード0と空配列を解析する
+    result = parse_job(json.dumps(job_with_sentiment({"code": 0, "segments": []})).encode(), "job1")
+    # Then: 整数コードがある場合の従来判定を維持する
+    assert result.recognition.sentiment_analysis.code == 0
+    assert result.recognition.sentiment_analysis.is_error
+    assert result.recognition.sentiment_analysis.parse_error is None
+    assert not result.is_error
+
+
+def test_parse_job_sentiment_partial_invalid_discard_typed_segments_only() -> None:
+    """途中まで正常な感情区間も解析成功とはせず元データに保持する"""
+    # Given: 正常区間の後に型破損した区間がある
+    sentiment = {"segments": [sentiment_segment(), {**sentiment_segment(), "energy": None}]}
+    # When: 完了応答を解析する
+    snapshot = parse_job(json.dumps(job_with_sentiment(sentiment)).encode(), "job1")
+    # Then: 部分結果を成功と誤認させず全区間の元データを保持する
+    result = snapshot.recognition.sentiment_analysis
+    assert snapshot.recognition.text == "認識" and not snapshot.is_error
+    assert result.is_error and result.parse_error and result.segments == ()
+    assert result.data == sentiment and json.loads(result.raw) == sentiment
+
+
+def test_parse_job_recognition_invalid_with_sentiment_parse_error_raise_AsyncHttpApiError() -> None:
+    """感情のフォールバックで認識本体の型破損まで許容しない"""
+    # Given: 認識テキストと感情結果の両方が不正
+    data = job_with_sentiment({})
+    data["text"] = None
+    raw = json.dumps(data).encode()
+    # When / Then: 認識本体の検証は従来どおりAPIエラーにする
+    with pytest.raises(AsyncHttpApiError) as caught:
+        parse_job(raw, "job1")
+    assert caught.value.raw_body == raw
 
 
 def test_parse_job_sentiment_double_envelope_invalid_raise_AsyncHttpApiError() -> None:

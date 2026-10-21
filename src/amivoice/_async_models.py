@@ -108,11 +108,16 @@ def _sentiment_segment(data: object) -> SentimentSegment:
     return SentimentSegment(data["starttime"], data["endtime"], parameters, json.dumps(data, ensure_ascii=False), data)
 
 
-def _sentiment(data: object) -> SentimentAnalysisResult:
+def _parse_sentiment(data: object) -> SentimentAnalysisResult:
     if not isinstance(data, dict) or not any(key in data for key in ("segments", "code", "error_code", "error_message")):
         raise ValueError("Sentiment result requires segments or error fields")
-    if "code" in data and (isinstance(data["code"], bool) or not isinstance(data["code"], int)):
+    code = data.get("code")
+    if code == "":
+        code = None
+    if code is not None and (isinstance(code, bool) or not isinstance(code, int)):
         raise ValueError("Sentiment code must be an integer")
+    if code is None and not any(key in data for key in ("segments", "error_code", "error_message")):
+        raise ValueError("Sentiment result requires segments or error fields")
     for key in ("error_code", "error_message"):
         if key in data and not isinstance(data[key], str):
             raise ValueError("Sentiment error fields must be strings")
@@ -125,10 +130,18 @@ def _sentiment(data: object) -> SentimentAnalysisResult:
         raw=json.dumps(data, ensure_ascii=False),
         data=data,
         segments=segments,
-        code=data.get("code"),
+        code=code,
         error_code=data.get("error_code"),
         error_message=data.get("error_message"),
     )
+
+
+def _sentiment(data: object) -> SentimentAnalysisResult:
+    # 付随する感情部分の型破損で正常な認識結果の取得を妨げない
+    try:
+        return _parse_sentiment(data)
+    except (ValueError, TypeError, OverflowError, RecursionError) as error:
+        return SentimentAnalysisResult(raw=json.dumps(data, ensure_ascii=False), data=data, parse_error=str(error))
 
 
 def _recognition(data: dict[str, object], session_id: str) -> AsyncRecognitionResult:

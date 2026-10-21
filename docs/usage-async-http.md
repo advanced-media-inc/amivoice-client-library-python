@@ -254,35 +254,46 @@ job_clear = client.submit(
 
 ### 結果モデルの構造とエラー分離
 
-完了（`status="completed"`）したジョブの応答に `sentiment_analysis` が含まれる場合、`snapshot.recognition.sentiment_analysis` に `SentimentAnalysisResult` が設定されます。
-`sentiment_analysis` は `completed` 時の任意項目であり、未指定時や `sentiment_analysis=False` のほか、応答に含まれない場合は `None` です。
+完了（`status="completed"`）したジョブの応答に `sentiment_analysis` キーが含まれる場合、`snapshot.recognition.sentiment_analysis` に `SentimentAnalysisResult` が設定されます。
+`sentiment_analysis` は `completed` 時の任意項目であり、未指定時や `sentiment_analysis=False` のほか、応答にキー自体が含まれない場合は `None` です。
+応答に `sentiment_analysis` キーが存在すれば、値が `null` や `{}` などの不正構造でも `None` にはならず、`parse_error` 付きの `SentimentAnalysisResult` が返ります。
 通常形式と `compatible_with_sync=True`（同期 HTTP インタフェース互換形式）のどちらでも同様に取得できます。
 
 | モデル / プロパティ | 型 | 内容 |
 | --- | --- | --- |
 | `AsyncRecognitionResult.sentiment_analysis` | `SentimentAnalysisResult \| None` | 完了時の感情分析結果。応答にキーがない場合は `None` |
-| `SentimentAnalysisResult.segments` | `tuple[SentimentSegment, ...]` | 時間順の発話区間ごとの感情分析結果。区間がない正常結果や、区間を伴わない感情エラー時は空タプル `()` |
-| `SentimentAnalysisResult.code` | `int \| None` | 感情分析内のエラーコード（`400`、`500` など）。正常時や応答で `code` が省略されたエラーでは `None` |
-| `SentimentAnalysisResult.error_code` | `str \| None` | 感情分析内のエラー識別子（`"BAD_REQUEST"`、`"INTERNAL_SERVER_ERROR"` など） |
-| `SentimentAnalysisResult.error_message` | `str \| None` | 感情分析内のエラーメッセージ |
-| `SentimentAnalysisResult.is_error` | `bool` | `code is not None`、または `error_code` / `error_message` が非空のとき `True` |
-| `SentimentAnalysisResult.raw` / `data` | `str` / `dict[str, object]` | 感情分析の結果部分の JSON 文字列と辞書 |
+| `SentimentAnalysisResult.segments` | `tuple[SentimentSegment, ...]` | 時間順の発話区間ごとの感情分析結果。区間がない正常結果、区間を伴わない感情エラー、および感情部分の解析失敗時は空タプル `()` |
+| `SentimentAnalysisResult.code` | `int \| None` | 感情分析内のエラーコード（`400`、`500` など、`0` を含む整数値）。正常時、応答で `code` が省略されたエラー、応答の `code` が空文字 `""` または `null` の場合、および解析失敗時は `None` に正規化する（元の `raw` / `data` は改変しない） |
+| `SentimentAnalysisResult.error_code` | `str \| None` | 感情分析内のエラー識別子（`"BAD_REQUEST"`、`"INTERNAL_SERVER_ERROR"` など）。解析失敗時はサーバーエラーを捏造せず `None` |
+| `SentimentAnalysisResult.error_message` | `str \| None` | 感情分析内のエラーメッセージ。解析失敗時は `None` |
+| `SentimentAnalysisResult.parse_error` | `str \| None` | 感情分析部分の構造・型解析の失敗理由（キーワード専用フィールド）。解析成功時は `None`、解析失敗時は非 `None` の説明文字列 |
+| `SentimentAnalysisResult.is_error` | `bool` | `code is not None`、`error_code` / `error_message` が非空、または `parse_error is not None` のとき `True` |
+| `SentimentAnalysisResult.raw` / `data` | `str` / `object` | 感情分析の結果部分の元値の JSON 文字列と元の任意 JSON 値（通常は辞書、不正構造時は `None` や配列などもそのまま保持） |
 | `SentimentSegment.starttime` / `endtime` | `int \| float` | 音声先頭 `0` からの相対ミリ秒 |
 | `SentimentSegment.parameters` | `dict[str, int]` | 区間内の全整数指標を格納する辞書（`0` や負数、将来の未知整数キーを含む） |
 | `SentimentSegment.<既知 20 指標名>` | `int \| None` | 各指標の値を返すプロパティ（応答に含まれない場合は `None`） |
 | `SentimentSegment.raw` / `data` | `str` / `dict[str, object]` | 区間部分の JSON 文字列と辞書（未知の非数値メタデータも `data` から参照可能） |
 
-`SentimentAnalysisResult` は、区間が 0 件の正常結果（`segments=()` かつ `is_error=False`）と、感情分析内部のエラー（`is_error=True`）を区別します。
-公式エラー一覧には `code` が返らず `error_code` と `error_message` のみが返るケースがあるため、`code` が `None` でも `is_error` でエラーを判定できます。
+`SentimentAnalysisResult` は、次の 4 つの状態を区別できます。
 
-感情分析のエラー（`sentiment.is_error=True`）は、音声認識本体の成否（`snapshot.recognition.is_error` および `snapshot.is_error`）や `wait(raise_on_error=True)` の例外送出には影響しません。
-音声認識が成功していれば、`wait()` は `AsyncJobError` を送出せずにジョブの状態と結果（`AsyncJobSnapshot`）を返すため、認識テキストを受け取ったうえで `sentiment.is_error` を確認できます。
-反対に、音声認識本体が失敗した `completed` 応答に `sentiment_analysis`（正常区間や感情エラー）が同梱されていた場合も、結果は `snapshot.recognition.sentiment_analysis` に保持されます。
+- 応答のキー欠落: `snapshot.recognition.sentiment_analysis` が `None`
+- 区間が 0 件の正常結果: `segments=()`、`is_error=False`、`parse_error=None`
+- サーバーが返した感情分析エラー: `is_error=True`、`parse_error=None`（`code` が省略され `error_code` と `error_message` のみが返る公式エラーも判定可能）
+- 感情分析部分の構造・型破損（解析失敗）: `is_error=True`、`parse_error` が非 `None`、`segments=()`、`code=None`、`error_code=None`、`error_message=None`
+
+なお、応答の `code` が空文字 `""` や `null` の場合は `code=None` に正規化されるため、正常な区間配列を誤ってエラー扱いしません。
+
+感情分析部分の不正な構造（`{}`、`null`、配列など）や、区間時刻（`starttime` / `endtime`）・既知指標の型破損があっても、音声認識全体の `AsyncHttpApiError` には波及しません。
+代わりに `SentimentAnalysisResult(raw=元値の JSON, data=元値, parse_error=解析失敗理由)` として保持されるため、正常な音声認識結果は `get_job()` や `wait(raise_on_error=True)` でそのまま取得できます。
+
+感情分析のエラーや解析失敗（`sentiment.is_error=True`）は、音声認識本体の成否（`snapshot.recognition.is_error` および `snapshot.is_error`）や `wait(raise_on_error=True)` の例外送出には影響しません。
+音声認識が成功していれば、`wait()` は `AsyncJobError` を送出せずにジョブの状態と結果（`AsyncJobSnapshot`）を返すため、認識テキストを受け取ったうえで `sentiment.is_error` や `sentiment.parse_error` を確認できます。
+反対に、音声認識本体が失敗した `completed` 応答に `sentiment_analysis`（正常区間・感情エラー・解析失敗）が同梱されていた場合も、結果は `snapshot.recognition.sentiment_analysis` に保持されます。
 このとき `snapshot.is_error` は `True` となり、`wait(raise_on_error=True)` は従来どおり `AsyncJobError` を送出します。
 `wait(raise_on_error=False)` や `get_job()`、または `AsyncJobError.snapshot` を使えば、認識エラーと感情分析結果の両方を参照できます。
 
 `snapshot.raw` は状態取得 API の応答全体の原文を保持し、`SentimentAnalysisResult.raw` と `SentimentSegment.raw` はそれぞれの部分結果の JSON 文字列を保持します。
-`raw`、`data`、`error_message` には機密情報が含まれ得るため、無条件にログへ出力しないでください。
+`raw`、`data`、`error_message`、`parse_error` には機密情報が含まれ得るため、無条件にログへ出力しないでください。
 
 ### 感情パラメータ（既知 20 指標）と定義一覧 API の連携
 
@@ -295,7 +306,7 @@ job_clear = client.submit(
 | `emo_cog` | 感情バランス論理 | `1` | `500` | `brain_power` | 脳活動 | `0` | `100` |
 | `concentration` | 集中 | `0` | `100` | `confidence` | 自信 | `0` | `30` |
 | `anticipation` | 期待 | `0` | `100` | `aggression` | 攻撃性憤り | `0` | `30` |
-| `excitement` | 興奮 | `0` | `30` | `atmosphere` | 雰囲気会話傾向 | `-100` | `100` |
+| `excitement` | 興奮 | `0` | `30` | `atmosphere` | `雰囲気会話傾向` | `-100` | `100` |
 | `hesitation` | 躊躇 | `0` | `30` | `upset` | 動揺 | `0` | `30` |
 | `uncertainty` | 不確実 | `0` | `30` | `content` | 喜び | `0` | `30` |
 | `intensive_thinking` | 思考 | `0` | `100` | `dissatisfaction` | 不満 | `0` | `30` |
@@ -334,7 +345,10 @@ if snapshot.recognition is not None:
     if sentiment is None:
         print("取得応答に感情分析結果は含まれていません")
     elif sentiment.is_error:
-        print(f"感情分析エラー: code={sentiment.code}, error_code={sentiment.error_code}")
+        print(
+            f"感情分析エラー: code={sentiment.code}, "
+            f"error_code={sentiment.error_code}, parse_error={sentiment.parse_error}"
+        )
     elif not sentiment.segments:
         print("感情分析区間は 0 件です（短音声・低音量など）")
     else:
@@ -386,7 +400,7 @@ job_clear = client.submit("audio.wav", settings=RecognitionSettings(sentiment_an
 
 ジョブと音声認識本体の成否（感情分析内のエラーは含まない）は、`snapshot.is_error` で判定できます。将来の応答変更などで空の結果が返った場合も、型が正しい空の `text` や空配列を含む正常な完了結果であれば `AsyncRecognitionResult` として返されます。この場合、認識処理のエラー有無は `code` や `message` に基づく `is_error` で判定し、認識本文が空である点は利用側で確認します。また、失敗を示す `code` や `message` が存在する場合は、`segments` や `results` といった詳細配列が省かれていても認識失敗として扱われます。
 
-なお、ライブラリはあらゆる未知の形式を無条件に許容するわけではありません。ジョブ ID の不一致や、`completed` 時に必須となる `text`、`code`、`message` の欠落・型不正は `AsyncHttpApiError` になります。配列ではない詳細フィールド、平坦形式と入れ子形式が混在する曖昧なエンベロープ、空文字や制御文字を含む不正な `status` も同じ例外を送出します。
+なお、ライブラリはあらゆる未知の形式を無条件に許容するわけではありません。応答自体の JSON が不正な場合（`NaN` や `Infinity` などを含む場合）、ジョブ ID の不一致、`completed` 時に必須となる認識本体の `text`、`code`、`message` の欠落・型不正は `AsyncHttpApiError` になります。配列ではない音声認識の詳細フィールド（`segments` や `results`）、平坦形式と入れ子形式が混在する曖昧なエンベロープ、空文字や制御文字を含む不正な `status` も同じ例外を送出します。一方、`sentiment_analysis` 部分の構造・型不正は認識全体の `AsyncHttpApiError` にはせず、`SentimentAnalysisResult.parse_error` として分離します。
 
 認識結果と生データの参照構造は以下の表のとおりです。
 
@@ -517,7 +531,7 @@ uv run examples/async_http_tester.py wait <session_id> --poll-interval 10.0 --ti
 
 応答に `sentiment_analysis` が含まれない場合は、感情分析に関する追加行は表示せず、終了コードは `0` です。
 
-感情分析エラー（`sentiment.is_error=True`）の場合は、標準エラー出力に `Sentiment analysis failed: code=<code>, error_code=<error_code>` を表示し、終了コード `1` を返します。
+感情分析エラーまたは感情分析部分の解析失敗（`sentiment.is_error=True`）の場合は、標準エラー出力に `Sentiment analysis failed: code=<code>, error_code=<error_code>` を表示し、終了コード `1` を返します。
 機密保護のため、生の `error_message` は表示しません。
 ジョブ失敗や音声認識本体のエラーがある場合も終了コード `1` が優先されます。
 

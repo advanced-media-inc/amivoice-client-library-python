@@ -171,7 +171,7 @@ def test_async_example_sentiment_flag_valid_return_wire(
 
 
 @pytest.mark.parametrize("operation", ["status", "wait"])
-@pytest.mark.parametrize("state", ["missing", "empty", "normal", "error", "recognition_error", "both_errors"])
+@pytest.mark.parametrize("state", ["missing", "empty", "normal", "error", "parse_error", "recognition_error", "both_errors"])
 def test_async_example_sentiment_result_valid_return_output_and_exit(
     operation: str, state: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -185,6 +185,8 @@ def test_async_example_sentiment_result_valid_return_output_and_exit(
         data["sentiment_analysis"] = {"segments": [{"starttime": 10, "endtime": 20, "energy": 0, "atmosphere": -10}]}
     elif state in ("error", "both_errors"):
         data["sentiment_analysis"] = {"error_code": "INTERNAL_SERVER_ERROR", "error_message": "sensitive-error-detail"}
+    elif state == "parse_error":
+        data["sentiment_analysis"] = {"segments": [{"starttime": 0, "endtime": 100, "energy": None, "extra": "sensitive"}]}
     if state in ("recognition_error", "both_errors"):
         data.update(code="o", message="rejected", text="", segments=[])
     data["extra"] = "sensitive-response"
@@ -196,7 +198,7 @@ def test_async_example_sentiment_result_valid_return_output_and_exit(
     exit_code = async_http_tester.main([operation, "job1"])
     output = capsys.readouterr()
     # Then: エラーのみ1、感情欠落を未指定と断定せず生データも出さない
-    assert exit_code == (1 if state in ("error", "recognition_error", "both_errors") else 0)
+    assert exit_code == (1 if state in ("error", "parse_error", "recognition_error", "both_errors") else 0)
     assert "sensitive" not in output.out + output.err
     if state == "missing":
         assert "Sentiment" not in output.out + output.err
@@ -207,3 +209,6 @@ def test_async_example_sentiment_result_valid_return_output_and_exit(
         assert "10ms - 20ms" in output.out and "energy=0" in output.out and "atmosphere=-10" in output.out
     elif state == "error":
         assert "Sentiment analysis failed" in output.err and "INTERNAL_SERVER_ERROR" in output.err
+    elif state == "parse_error":
+        assert "認識" in output.out and "Sentiment analysis failed" in output.err
+        assert "Async HTTP failed" not in output.err
