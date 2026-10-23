@@ -36,6 +36,8 @@ def run_package_smoke_test(distribution_name: str, expected_version: str) -> Non
         "AsyncJobSnapshot",
         "AsyncJobSubmission",
         "AsyncRecognitionResult",
+        "SentimentAnalysisResult",
+        "SentimentSegment",
         "AsyncHttpApiError",
         "AsyncJobError",
         "AsyncJobTimeoutError",
@@ -79,6 +81,7 @@ def run_package_smoke_test(distribution_name: str, expected_version: str) -> Non
     async_client = amivoice.AmiVoiceAsyncClient(
         settings=RecognitionSettings(
             grammar_file_names=amivoice.Engine.A_GENERAL,
+            sentiment_analysis=True,
             speaker_diarization=True,
             diarization_min_speaker=1,
             diarization_max_speaker=1,

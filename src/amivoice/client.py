@@ -32,6 +32,8 @@ _MAX_AUDIO_BYTES = 16_777_215
 
 
 def _validate_sync_options(settings: RecognitionSettings) -> None:
+    if settings.sentiment_analysis is not USE_CLIENT_DEFAULT and settings.sentiment_analysis is not None:
+        raise ConfigurationError("sentiment_analysis is exclusive to async HTTP (AmiVoiceAsyncClient)")
     if any(getattr(settings, name) not in (USE_CLIENT_DEFAULT, None) for name in ("content_id", "compatible_with_sync")):
         raise ConfigurationError("content_id and compatible_with_sync require async HTTP")
     for name in ("speaker_diarization", "diarization_min_speaker", "diarization_max_speaker"):

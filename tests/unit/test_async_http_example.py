@@ -144,3 +144,71 @@ def test_async_example_timeout_edge_return_exit_three(monkeypatch: pytest.Monkey
     result = async_http_tester.main(["wait", "job1", "--timeout", "1"])
     # Then: キャンセルせず同じ終了コードを返す
     assert result == 3
+
+
+@pytest.mark.parametrize("flag", ["--sentiment-analysis", "--no-sentiment-analysis", None])
+def test_async_example_sentiment_flag_valid_return_wire(
+    flag: str | None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """感情設定の肯定・否定・省略をdに反映する"""
+    # Given: フェイクtransportと音声
+    monkeypatch.setenv("AMIVOICE_API_KEY", "dummy")
+    transport = RecordingTransport([{"sessionid": "job1"}])
+    monkeypatch.setattr(
+        async_http_tester, "AmiVoiceAsyncClient", lambda **kwargs: AmiVoiceAsyncClient(**kwargs, transport=transport)
+    )
+    path = tmp_path / "audio.wav"
+    path.write_bytes(b"audio")
+    arguments = ["submit", str(path)] + ([flag] if flag is not None else [])
+    # When: 登録する
+    assert async_http_tester.main(arguments) == 0
+    # Then: 大小文字と非送信を区別する
+    body = transport.calls[0][3]
+    if flag is None:
+        assert b"sentimentAnalysis" not in body
+    else:
+        assert f"sentimentAnalysis={flag == '--sentiment-analysis'}".encode() in body
+
+
+@pytest.mark.parametrize("operation", ["status", "wait"])
+@pytest.mark.parametrize("state", ["missing", "empty", "normal", "error", "parse_error", "recognition_error", "both_errors"])
+def test_async_example_sentiment_result_valid_return_output_and_exit(
+    operation: str, state: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """欠落・正常空・正常区間・感情エラーを認識エラーと区別して表示する"""
+    # Given: 状態ごとの感情結果と秘密の生データ
+    monkeypatch.setenv("AMIVOICE_API_KEY", "dummy")
+    data = completed()
+    if state == "empty":
+        data["sentiment_analysis"] = {"segments": []}
+    elif state in ("normal", "recognition_error"):
+        data["sentiment_analysis"] = {"segments": [{"starttime": 10, "endtime": 20, "energy": 0, "atmosphere": -10}]}
+    elif state in ("error", "both_errors"):
+        data["sentiment_analysis"] = {"error_code": "INTERNAL_SERVER_ERROR", "error_message": "sensitive-error-detail"}
+    elif state == "parse_error":
+        data["sentiment_analysis"] = {"segments": [{"starttime": 0, "endtime": 100, "energy": None, "extra": "sensitive"}]}
+    if state in ("recognition_error", "both_errors"):
+        data.update(code="o", message="rejected", text="", segments=[])
+    data["extra"] = "sensitive-response"
+    transport = RecordingTransport([data])
+    monkeypatch.setattr(
+        async_http_tester, "AmiVoiceAsyncClient", lambda **kwargs: AmiVoiceAsyncClient(**kwargs, transport=transport)
+    )
+    # When: 公開CLIから状態取得または待機する
+    exit_code = async_http_tester.main([operation, "job1"])
+    output = capsys.readouterr()
+    # Then: エラーのみ1、感情欠落を未指定と断定せず生データも出さない
+    assert exit_code == (1 if state in ("error", "parse_error", "recognition_error", "both_errors") else 0)
+    assert "sensitive" not in output.out + output.err
+    if state == "missing":
+        assert "Sentiment" not in output.out + output.err
+    elif state == "empty":
+        assert "Sentiment analysis: 0 segments" in output.out
+    elif state == "normal":
+        assert "Sentiment analysis: 1 segments" in output.out
+        assert "10ms - 20ms" in output.out and "energy=0" in output.out and "atmosphere=-10" in output.out
+    elif state == "error":
+        assert "Sentiment analysis failed" in output.err and "INTERNAL_SERVER_ERROR" in output.err
+    elif state == "parse_error":
+        assert "認識" in output.out and "Sentiment analysis failed" in output.err
+        assert "Async HTTP failed" not in output.err

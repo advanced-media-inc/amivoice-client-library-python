@@ -113,7 +113,8 @@ result = client.transcribe(
 | `no_input_timeout` | WebSocket の発話開始待ち時間。ミリ秒 |
 | `logging_opt_out` | 音声ログを保存しないか |
 | `content_id` | 非同期 HTTP のユーザー定義 ID。冪等性キーではない |
-| `compatible_with_sync` | 非同期 HTTP の同期互換の結果形式 |
+| `compatible_with_sync` | 非同期 HTTP（v2）で同期 HTTP インタフェース互換の認識結果形式を返させる設定 |
+| `sentiment_analysis` | 非同期 HTTP の感情分析の有効化 |
 | `speaker_diarization` | 非同期 HTTP の話者ダイアライゼーション有効化 |
 | `diarization_min_speaker` | 非同期 HTTP の最小話者数。`1` 以上 `20` 以下の整数 |
 | `diarization_max_speaker` | 非同期 HTTP の最大話者数。`1` 以上 `20` 以下の整数 |
@@ -247,7 +248,7 @@ WebSocket の開始・終了応答の待機上限と `session.end(timeout=...)` 
 
 - HTTP 専用（`selected_channel`、`audio_filter_properties`）: [マルチチャネル音声のチャネル選択](./usage-sync-http.md#マルチチャネル音声のチャネル選択)および[WebSocket の専用設定と非対応設定](./usage-websocket.md#websocket-専用の設定と非対応設定)を参照してください。
 - WebSocket 専用（`result_updated_interval`、`no_input_timeout`）: [WebSocket の専用設定と非対応設定](./usage-websocket.md#websocket-専用の設定と非対応設定)を参照してください。
-- 非同期 HTTP 専用（`content_id`、`compatible_with_sync`）と非対応項目: [非同期 HTTP 音声認識（v2）ガイド](./usage-async-http.md)を参照してください。
+- 非同期 HTTP 専用項目: `content_id`、`compatible_with_sync`、`sentiment_analysis`、`speaker_diarization`、`diarization_min_speaker`、`diarization_max_speaker`。これらの設定と非対応項目は[非同期 HTTP 音声認識（v2）ガイド](./usage-async-http.md)を参照してください。
 
 ### セッション単語登録
 
@@ -506,7 +507,7 @@ for parameter in parameters:
 ```
 
 この API は定義の取得専用で、音声の感情を分析したり、音声認識ジョブを作成したりするものではありません。
-非同期 HTTP クライアント（`AmiVoiceAsyncClient`）では、感情分析のジョブ設定はまだ提供していません。
+非同期 HTTP クライアント（`AmiVoiceAsyncClient`）で音声の感情分析を有効化する方法や結果の参照構造は、[非同期 HTTP の感情分析の設定と結果の参照](./usage-async-http.md#感情分析の設定と結果の参照)を参照してください。
 話者ダイアライゼーションは方式によって指定方法が異なります。同期 HTTP・WebSocket では[同期 HTTP の話者ダイアライゼーションの設定](./usage-sync-http.md#話者ダイアライゼーションの設定)および[WebSocket の話者ダイアライゼーションの設定](./usage-websocket.md#話者ダイアライゼーションの設定)を参照してください。非同期 HTTP では `RecognitionSettings(speaker_diarization=True, ...)` で指定します。詳細は[非同期 HTTP の話者ダイアライゼーションの設定](./usage-async-http.md#話者ダイアライゼーションの設定)を参照してください。
 
 ## 使用例 CLI の共通仕様

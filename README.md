@@ -46,8 +46,9 @@ print(result.text)
 `RecognitionSettings.grammar_file_names`は HTTP と WebSocket の両方で必須です。HTTP ではヘッダ付き音声であれば`codec`を省略できます。
 WebSocket では`codec`も必ず指定してください。
 
-長時間の音声やバッチ処理には、非同期 HTTP 音声認識 API（v2）を利用できる`AmiVoiceAsyncClient`も用意されています。
-Python の`async`/`await`構文ではなく通常の同期（ブロッキング）メソッドを提供し、ジョブの登録（`submit`）、状態取得（`get_job`）、完了待機（`wait`）を行えます。
+長時間の音声やバッチ処理には、非同期 HTTP 音声認識 API（v2）を利用できる `AmiVoiceAsyncClient` も用意されています。
+Python の `async` / `await` 構文ではなく通常の同期（ブロッキング）メソッドを提供し、ジョブの登録（`submit`）、状態取得（`get_job`）、完了待機（`wait`）を行えます。
+非同期 HTTP（v2）では、話者ダイアライゼーションや感情分析（`RecognitionSettings.sentiment_analysis`）の指定および結果取得にも対応しています。
 
 詳細な利用方法は以下のガイドを参照してください。
 

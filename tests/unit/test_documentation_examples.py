@@ -5,12 +5,15 @@ import json
 import re
 from pathlib import Path
 from textwrap import indent
+from unittest.mock import Mock
 from urllib.parse import unquote, urlsplit
 
 import pytest
 
+from amivoice import AmiVoiceAsyncClient, AsyncJobSubmission, SentimentAnalysisClient, SentimentParameterDefinition
 from amivoice._async_audio import MultipartUpload
 from amivoice._async_http_transport import AsyncHttpConnection
+from amivoice._async_models import parse_job
 from amivoice._http_api import HttpApiConnection
 from amivoice._params import RecognitionParams
 
@@ -141,3 +144,51 @@ def test_documentation_python_example_public_api_valid_return_without_network(
         output = "".join(checker.outputs)
         assert "[speaker0] recognized (0ms - 100ms)" in output
         assert "[ラベルなし] unlabeled (時刻なし)" in output
+
+
+@pytest.mark.parametrize("state", ["missing", "empty", "normal", "error"])
+def test_documentation_sentiment_branch_valid_return_without_network(state: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """感情結果の全分岐と定義一覧連携を文書に書かれたコードで実行する"""
+    # Given: 文書から取り出した感情分析例と状態ごとの合成応答
+    path = REPOSITORY_ROOT / "docs/usage-async-http.md"
+    examples = re.findall(r"```python\n(.*?)\n```", path.read_text(encoding="utf-8"), re.DOTALL)
+    code = next(example for example in examples if "SentimentAnalysisClient" in example)
+    data = {"session_id": "job1", "status": "completed", "code": "", "message": "", "text": "recognized", "segments": []}
+    if state == "empty":
+        data["sentiment_analysis"] = {"segments": []}
+    elif state == "error":
+        data["sentiment_analysis"] = {"error_code": "INTERNAL_SERVER_ERROR"}
+    elif state == "normal":
+        data["sentiment_analysis"] = {"segments": [{"starttime": 0, "endtime": 100, "energy": 0, "atmosphere": -5, "future": 7}]}
+    snapshot = parse_job(json.dumps(data).encode(), "job1")
+    submit = Mock(return_value=AsyncJobSubmission("job1", "{}", {}))
+    definitions = Mock(return_value=(SentimentParameterDefinition("energy", "エネルギー", 0, 100),))
+    monkeypatch.setenv("AMIVOICE_API_KEY", "documentation-dummy")
+    monkeypatch.setattr(AmiVoiceAsyncClient, "submit", submit)
+    monkeypatch.setattr(AmiVoiceAsyncClient, "wait", Mock(return_value=snapshot))
+    monkeypatch.setattr(SentimentAnalysisClient, "list_parameters", definitions)
+    # When: 文書のコードをそのまま実行し出力を記録する
+    checker = _IgnoreDocumentationOutput()
+    runner = doctest.DocTestRunner(checker=checker)
+    example = doctest.DocTest(
+        [doctest.Example("if True:\n" + indent(code, "    "), "")],
+        {"__name__": "documentation_example"},
+        "sentiment",
+        str(path),
+        0,
+        None,
+    )
+    result = runner.run(example, clear_globs=False)
+    # Then: 欠落・正常空・エラーでは定義通信をせず、正常区間だけ明示取得する
+    assert result.failed == 0
+    output = "".join(checker.outputs)
+    if state == "normal":
+        definitions.assert_called_once_with(language="ja")
+        assert "エネルギー (energy): 0" in output and "future: 7" in output and "atmosphere=-5" in output
+    else:
+        definitions.assert_not_called()
+        expected = {"missing": "含まれていません", "empty": "0 件", "error": "INTERNAL_SERVER_ERROR"}[state]
+        assert expected in output
+    assert submit.call_count == 3
+    assert submit.call_args_list[1].kwargs["settings"].sentiment_analysis is False
+    assert submit.call_args_list[2].kwargs["settings"].sentiment_analysis is None

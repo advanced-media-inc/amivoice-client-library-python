@@ -235,17 +235,172 @@ job_clear = client.submit(
 
 認識可能な話者数は最大 20 人です。話者ダイアライゼーション有効時は、1 リクエストあたり最大 3 時間までの音声が対象となり、通常より処理時間が増加します。
 
-ライブラリ側では送信前の音声長の解析や 3 時間超の音声の自動分割をせず、サーバー側の判定に委ねます。受付時（POST）に拒否された場合は `AsyncHttpApiError` を送出します。受付後のジョブ失敗や認識失敗では、`get_job()` はエラースナップショットを返します。`wait()` は `raise_on_error=True`（既定）で `AsyncJobError`、`False` でエラースナップショットを返します。待機が `AsyncJobTimeoutError` となった場合も、同じジョブ ID で後から `get_job()` や `wait()` を再開できます。
+ライブラリ側では送信前の音声長の解析や 3 時間超の音声の自動分割をせず、サーバー側の判定に委ねます。受付時（POST）に拒否された場合は `AsyncHttpApiError` を送出します。受付後のジョブ失敗や認識失敗では、`get_job()` はエラー状態のジョブ情報（`AsyncJobSnapshot`）を返します。`wait()` は `raise_on_error=True`（既定）で `AsyncJobError`、`False` でエラー状態のジョブ情報を返します。待機が `AsyncJobTimeoutError` となった場合も、同じジョブ ID で後から `get_job()` や `wait()` を再開できます。
 
 ノイズ、エコー、同時発話が含まれる音声では、複数の話者が単一のラベルになる場合があります。ノイズやエコー、同時発話を避けて録音し、`diarization_min_speaker` と `diarization_max_speaker` で話者数の範囲を指定すると推定精度を改善できる可能性があります。ただし、本ライブラリは推定精度を保証しません。
+
+## 感情分析の設定と結果の参照
+
+非同期 HTTP 音声認識（v2）の感情分析は、`RecognitionSettings.sentiment_analysis` で設定し、マルチパートフィールド `d` 内の `sentimentAnalysis` パラメータとして送信します。
+仕様の詳細は公式マニュアルの[感情分析](https://docs.amivoice.com/amivoice-api/manual/sentiment-analysis)、[リクエストパラメータ一覧](https://docs.amivoice.com/amivoice-api/manual/request-parameters)、[非同期 HTTP 音声認識インターフェース（v2）](https://docs.amivoice.com/amivoice-api/manual/async-http-interface#async-v2)、[認識結果フォーマット](https://docs.amivoice.com/amivoice-api/manual/result-format)、[レスポンスコードとメッセージ](https://docs.amivoice.com/amivoice-api/manual/response-code-and-message)を参照してください。
+
+| 項目 | 型 | 既定値 | `d` パラメータ | 内容 |
+| --- | --- | --- | --- | --- |
+| `sentiment_analysis` | `bool \| None \| UseClientDefault` | `USE_CLIENT_DEFAULT` | `sentimentAnalysis` | 感情分析の有効化。`True` は `"True"`、`False` は `"False"`（先頭大文字）を送信。`None` はクライアント既定値を解除して送信しない。省略または `USE_CLIENT_DEFAULT` はクライアント設定を継承し、未指定時は送信しない（サーバー既定値は `False`） |
+
+`sentiment_analysis` は非同期 HTTP（`AmiVoiceAsyncClient`、v2 専用）のみの機能です。
+同期 HTTP（`AmiVoiceClient.transcribe()`）や WebSocket（`AmiVoiceClient.stream()`）、`AmiVoiceClient` のコンストラクタでは、明示的な `False` を含めて `ConfigurationError` で拒否します。`None` と `USE_CLIENT_DEFAULT` は許容します。
+また、`sentiment_analysis` に `bool`・`None`・`UseClientDefault` 以外の値を渡した場合や、`/v1/recognitions` などの v1 エンドポイントを指定した場合も、通信前に `ConfigurationError` を送出します。
+
+### 結果モデルの構造とエラー分離
+
+完了（`status="completed"`）したジョブの応答に `sentiment_analysis` キーが含まれる場合、`snapshot.recognition.sentiment_analysis` に `SentimentAnalysisResult` が設定されます。
+`sentiment_analysis` は `completed` 時の任意項目であり、未指定時や `sentiment_analysis=False` のほか、応答にキー自体が含まれない場合は `None` です。
+応答に `sentiment_analysis` キーが存在すれば、値が `null` や `{}` などの不正構造でも `None` にはならず、`parse_error` 付きの `SentimentAnalysisResult` が返ります。
+通常形式と `compatible_with_sync=True`（同期 HTTP インタフェース互換形式）のどちらでも同様に取得できます。
+
+| モデル / プロパティ | 型 | 内容 |
+| --- | --- | --- |
+| `AsyncRecognitionResult.sentiment_analysis` | `SentimentAnalysisResult \| None` | 完了時の感情分析結果。応答にキーがない場合は `None` |
+| `SentimentAnalysisResult.segments` | `tuple[SentimentSegment, ...]` | 時間順の発話区間ごとの感情分析結果。区間がない正常結果、区間を伴わない感情エラー、および感情部分の解析失敗時は空タプル `()` |
+| `SentimentAnalysisResult.code` | `int \| None` | 感情分析内のエラーコード（`400`、`500` など、`0` を含む整数値）。正常時、応答で `code` が省略されたエラー、応答の `code` が空文字 `""` または `null` の場合、および解析失敗時は `None` に正規化する（元の `raw` / `data` は改変しない） |
+| `SentimentAnalysisResult.error_code` | `str \| None` | 感情分析内のエラー識別子（`"BAD_REQUEST"`、`"INTERNAL_SERVER_ERROR"` など）。解析失敗時はサーバーエラーを捏造せず `None` |
+| `SentimentAnalysisResult.error_message` | `str \| None` | 感情分析内のエラーメッセージ。解析失敗時は `None` |
+| `SentimentAnalysisResult.parse_error` | `str \| None` | 感情分析部分の構造・型解析の失敗理由（キーワード専用フィールド）。解析成功時は `None`、解析失敗時は非 `None` の説明文字列 |
+| `SentimentAnalysisResult.is_error` | `bool` | `code is not None`、`error_code` / `error_message` が非空、または `parse_error is not None` のとき `True` |
+| `SentimentAnalysisResult.raw` / `data` | `str` / `object` | 感情分析の結果部分の元値の JSON 文字列と元の任意 JSON 値（通常は辞書、不正構造時は `None` や配列などもそのまま保持） |
+| `SentimentSegment.starttime` / `endtime` | `int \| float` | 音声先頭 `0` からの相対ミリ秒 |
+| `SentimentSegment.parameters` | `dict[str, int]` | 区間内の全整数指標を格納する辞書（`0` や負数、将来の未知整数キーを含む） |
+| `SentimentSegment.<既知 20 指標名>` | `int \| None` | 各指標の値を返すプロパティ（応答に含まれない場合は `None`） |
+| `SentimentSegment.raw` / `data` | `str` / `dict[str, object]` | 区間部分の JSON 文字列と辞書（未知の非数値メタデータも `data` から参照可能） |
+
+`SentimentAnalysisResult` は、次の 4 つの状態を区別できます。
+
+- 応答のキー欠落: `snapshot.recognition.sentiment_analysis` が `None`
+- 区間が 0 件の正常結果: `segments=()`、`is_error=False`、`parse_error=None`
+- サーバーが返した感情分析エラー: `is_error=True`、`parse_error=None`（`code` が省略され `error_code` と `error_message` のみが返る公式エラーも判定可能）
+- 感情分析部分の構造・型破損（解析失敗）: `is_error=True`、`parse_error` が非 `None`、`segments=()`、`code=None`、`error_code=None`、`error_message=None`
+
+なお、応答の `code` が空文字 `""` や `null` の場合は `code=None` に正規化されるため、正常な区間配列を誤ってエラー扱いしません。
+
+感情分析部分の不正な構造（`{}`、`null`、配列など）や、区間時刻（`starttime` / `endtime`）・既知指標の型破損があっても、音声認識全体の `AsyncHttpApiError` には波及しません。
+代わりに `SentimentAnalysisResult(raw=元値の JSON, data=元値, parse_error=解析失敗理由)` として保持されるため、正常な音声認識結果は `get_job()` や `wait(raise_on_error=True)` でそのまま取得できます。
+
+感情分析のエラーや解析失敗（`sentiment.is_error=True`）は、音声認識本体の成否（`snapshot.recognition.is_error` および `snapshot.is_error`）や `wait(raise_on_error=True)` の例外送出には影響しません。
+音声認識が成功していれば、`wait()` は `AsyncJobError` を送出せずにジョブの状態と結果（`AsyncJobSnapshot`）を返すため、認識テキストを受け取ったうえで `sentiment.is_error` や `sentiment.parse_error` を確認できます。
+反対に、音声認識本体が失敗した `completed` 応答に `sentiment_analysis`（正常区間・感情エラー・解析失敗）が同梱されていた場合も、結果は `snapshot.recognition.sentiment_analysis` に保持されます。
+このとき `snapshot.is_error` は `True` となり、`wait(raise_on_error=True)` は従来どおり `AsyncJobError` を送出します。
+`wait(raise_on_error=False)` や `get_job()`、または `AsyncJobError.snapshot` を使えば、認識エラーと感情分析結果の両方を参照できます。
+
+`snapshot.raw` は状態取得 API の応答全体の原文を保持し、`SentimentAnalysisResult.raw` と `SentimentSegment.raw` はそれぞれの部分結果の JSON 文字列を保持します。
+`raw`、`data`、`error_message`、`parse_error` には機密情報が含まれ得るため、無条件にログへ出力しないでください。
+
+### 感情パラメータ（既知 20 指標）と定義一覧 API の連携
+
+各区間（`SentimentSegment`）の全整数指標は `parameters` 辞書から参照でき、以下の既知 20 指標は JSON キーと同名のプロパティ（`int | None`）からも参照できます。
+
+| JSON キー（プロパティ名） | 日本語表示名 | 最小値 | 最大値 | JSON キー（プロパティ名） | 日本語表示名 | 最小値 | 最大値 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `energy` | エネルギー | `0` | `100` | `embarrassment` | 困惑 | `0` | `30` |
+| `stress` | ストレス | `0` | `100` | `passionate` | 情熱 | `0` | `30` |
+| `emo_cog` | 感情バランス論理 | `1` | `500` | `brain_power` | 脳活動 | `0` | `100` |
+| `concentration` | 集中 | `0` | `100` | `confidence` | 自信 | `0` | `30` |
+| `anticipation` | 期待 | `0` | `100` | `aggression` | 攻撃性憤り | `0` | `30` |
+| `excitement` | 興奮 | `0` | `30` | `atmosphere` | `雰囲気会話傾向` | `-100` | `100` |
+| `hesitation` | 躊躇 | `0` | `30` | `upset` | 動揺 | `0` | `30` |
+| `uncertainty` | 不確実 | `0` | `30` | `content` | 喜び | `0` | `30` |
+| `intensive_thinking` | 思考 | `0` | `100` | `dissatisfaction` | 不満 | `0` | `30` |
+| `imagination_activity` | 想像力 | `0` | `30` | `extreme_emotion` | 極端な起伏 | `0` | `30` |
+
+各プロパティはサーバーから返された整数値（`0` や `atmosphere` の負数を含む）をそのまま返し、未返却時は `None` になります。
+`parameters` 辞書を書き換えると各プロパティの値にも反映されるため、参照時は注意してください。
+将来サービス側で追加された未知の整数キーも `parameters` に含まれ、未知の非数値項目は `data` から参照できます。
+
+日本語の表示名（`display_name`）や値の範囲（`minimum`、`maximum`）をプログラムから取得する場合は、`SentimentAnalysisClient.list_parameters(language="ja")` を呼び出します。
+このメソッドは、[感情パラメータの定義一覧を取得する API](https://docs.amivoice.com/amivoice-api/manual/sentiment-analysis#get-result-parameters)（[リファレンス](https://docs.amivoice.com/amivoice-api/reference/sentiment-analysis-parameters)）に対応しています。
+`list_parameters(language="ja")` の `"ja"` はパラメータ表示名の言語指定であり、入力音声の対応言語を示すものではありません。
+
+```python
+from amivoice import (
+    AmiVoiceAsyncClient,
+    Engine,
+    RecognitionSettings,
+    SentimentAnalysisClient,
+)
+
+client = AmiVoiceAsyncClient(
+    settings=RecognitionSettings(
+        grammar_file_names=Engine.A_GENERAL,
+        sentiment_analysis=True,
+    ),
+)
+
+submission = client.submit("audio.wav")
+snapshot = client.wait(submission.session_id)
+
+if snapshot.recognition is not None:
+    print(f"認識テキスト: {snapshot.recognition.text}")
+
+    sentiment = snapshot.recognition.sentiment_analysis
+    if sentiment is None:
+        print("取得応答に感情分析結果は含まれていません")
+    elif sentiment.is_error:
+        print(
+            f"感情分析エラー: code={sentiment.code}, "
+            f"error_code={sentiment.error_code}, parse_error={sentiment.parse_error}"
+        )
+    elif not sentiment.segments:
+        print("感情分析区間は 0 件です（短音声・低音量など）")
+    else:
+        definitions = {
+            item.name: item
+            for item in SentimentAnalysisClient().list_parameters(language="ja")
+        }
+        for segment in sentiment.segments:
+            print(f"[{segment.starttime}ms - {segment.endtime}ms]")
+            # 既知 20 指標はプロパティ（int | None）で直接参照可能
+            print(
+                f"  主要指標: energy={segment.energy}, stress={segment.stress}, "
+                f"emo_cog={segment.emo_cog}, atmosphere={segment.atmosphere}"
+            )
+            # 全指標の一覧や定義一覧 API の表示名・範囲との組み合わせには parameters を使用
+            for key, value in segment.parameters.items():
+                meta = definitions.get(key)
+                if meta is not None:
+                    print(
+                        f"  {meta.display_name} ({key}): {value} "
+                        f"(範囲: {meta.minimum:g}..{meta.maximum:g})"
+                    )
+                else:
+                    print(f"  {key}: {value}")
+
+# 呼び出し単位で False を指定して無効化、または None でクライアント設定を解除
+job_false = client.submit("audio.wav", settings=RecognitionSettings(sentiment_analysis=False))
+job_clear = client.submit("audio.wav", settings=RecognitionSettings(sentiment_analysis=None))
+```
+
+話者ダイアライゼーション（`speaker_diarization=True`）や同期 HTTP インタフェース互換形式（`compatible_with_sync=True`）とも併用できます。
+なお、話者ラベルは音声認識結果の単語（`Token.label`）に付与され、感情分析区間（`SentimentSegment`）には含まれません。
+
+### 感情分析の利用上の注意点
+
+#### 待機タイムアウトの設定
+
+[非同期 HTTP（v2）](https://docs.amivoice.com/amivoice-api/manual/async-http-interface#async-v2)では音声認識と感情分析が並列に処理されます。
+`wait()` の `timeout` は音声長やサーバー負荷に応じて余裕を持たせて設定してください。
+
+#### 短音声・低音量での空区間と無音エラー
+
+感情分析に十分な音声長や音量がない場合は、`segments=()`（`is_error=False`）の正常な空結果として返ることがあります。
+一方、音声認識自体で発話を検出できない無音音声などは、ジョブ登録時や認識結果側でエラーになる場合があり、区間 0 件の正常結果とは区別されます。
 
 ## ジョブの状態と結果の構造
 
 非同期ジョブの状態を表す `AsyncJobSnapshot.status` には、既知の 5 状態があります。処理待ちは `queued`、処理開始は `started`、処理中は `processing`、処理完了は `completed`、ジョブ失敗は `error` です。終端状態に達したかを表す `is_terminal` は、`completed` または `error` のときのみ `True` を返します。
 
-ジョブ完了後の認識自体の成否を含む全体の成否は、`snapshot.is_error` で判定できます。将来の応答変更などで空の結果が返った場合も、型が正しい空の `text` や空配列を含む正常な完了結果であれば `AsyncRecognitionResult` として返されます。この場合、認識処理のエラー有無は `code` や `message` に基づく `is_error` で判定し、認識本文が空である点は利用側で確認します。また、失敗を示す `code` や `message` が存在する場合は、`segments` や `results` といった詳細配列が省かれていても認識失敗として扱われます。
+ジョブと音声認識本体の成否（感情分析内のエラーは含まない）は、`snapshot.is_error` で判定できます。将来の応答変更などで空の結果が返った場合も、型が正しい空の `text` や空配列を含む正常な完了結果であれば `AsyncRecognitionResult` として返されます。この場合、認識処理のエラー有無は `code` や `message` に基づく `is_error` で判定し、認識本文が空である点は利用側で確認します。また、失敗を示す `code` や `message` が存在する場合は、`segments` や `results` といった詳細配列が省かれていても認識失敗として扱われます。
 
-なお、ライブラリはあらゆる未知の形式を無条件に許容するわけではありません。ジョブ ID の不一致や、`completed` 時に必須となる `text`、`code`、`message` の欠落・型不正は `AsyncHttpApiError` になります。配列ではない詳細フィールド、平坦形式と入れ子形式が混在する曖昧なエンベロープ、空文字や制御文字を含む不正な `status` も同じ例外を送出します。
+なお、ライブラリはあらゆる未知の形式を無条件に許容するわけではありません。応答自体の JSON が不正な場合（`NaN` や `Infinity` などを含む場合）、ジョブ ID の不一致、`completed` 時に必須となる認識本体の `text`、`code`、`message` の欠落・型不正は `AsyncHttpApiError` になります。配列ではない音声認識の詳細フィールド（`segments` や `results`）、平坦形式と入れ子形式が混在する曖昧なエンベロープ、空文字や制御文字を含む不正な `status` も同じ例外を送出します。一方、`sentiment_analysis` 部分の構造・型不正は認識全体の `AsyncHttpApiError` にはせず、`SentimentAnalysisResult.parse_error` として分離します。
 
 認識結果と生データの参照構造は以下の表のとおりです。
 
@@ -254,11 +409,14 @@ job_clear = client.submit(
 | `snapshot.recognition` | 完了時の `AsyncRecognitionResult`、処理中やジョブ失敗では `None` |
 | `snapshot.recognition.results` | `tuple[UtteranceResult, ...]`、通常形式では区間内の結果を順番に並べる |
 | `snapshot.recognition.segments` | `tuple[RecognitionResult, ...]`、区間ごとの詳細結果 |
+| `snapshot.recognition.sentiment_analysis` | `SentimentAnalysisResult \| None`、完了応答に `sentiment_analysis` がある場合の感情分析結果（欠落時は `None`） |
 | `snapshot.recognition.raw` / `data` | 認識結果部分の正規化した JSON 文字列と辞書 |
 | `snapshot.raw` / `data` | 状態取得 API 全体の元の応答文字列と辞書 |
 
-`compatible_with_sync=True` では、`results` にサーバーの集約結果を保持します。
-この形式で区間詳細が返らない場合、`segments` は空のタプルです。
+`compatible_with_sync=True` は、非同期 HTTP（v2）のリクエストで同期 HTTP インタフェースと互換性のある認識結果形式を要求する設定です（同期 HTTP API を呼び出す指定ではありません）。
+通常の非同期形式では API 応答の `segments` に区間ごとの詳細が入り、`snapshot.recognition.results` には各区間の発話結果が順番に並びます。
+一方、`compatible_with_sync=True` の互換形式では API 応答のトップレベル `results` に同期 HTTP 互換の集約結果が入り、それが `snapshot.recognition.results` に格納されます。
+区間詳細が応答に含まれない場合、`snapshot.recognition.segments` は空のタプルです。
 `snapshot.raw` と `data` には機密情報が含まれ得るため、無条件にログへ出力しないでください。
 
 ## 待機制御（wait）とエラーハンドリング
@@ -301,7 +459,7 @@ except AsyncJobError as error:
 なお、待機期限の経過後に新しい GET を開始したり、待機期限自体を延長したりすることはありません。
 
 ジョブや認識の失敗は、既定の `raise_on_error=True` で `AsyncJobError` になります。
-`False` では、失敗した終端状態をスナップショットとして返します。
+`False` では、失敗した終端状態のジョブ情報をそのまま返します。
 通信失敗の `ConnectionFailedError`、HTTP エラーや不正応答の `AsyncHttpApiError` は、この設定にかかわらず送出します。
 
 ### 原因コードと再試行の目安
@@ -335,8 +493,10 @@ HTTP 200 の不正応答や HTTP 401、404 など、その他の失敗は再試�
 HTTP エラーや不正応答、受付拒否が起きた場合は `AsyncHttpApiError` を送出します。例外の `status_code`、`body`、`raw_body` に加え、JSON オブジェクトの応答であれば `data`（辞書または `None`）、サーバーが返したエラー情報は `code` と `api_message`（文字列または `None`）から取得できます。ライブラリ側で本文を解析するため、利用側での独自の JSON 再解析は不要です。`message` や `str(error)` は機密情報を含まない安全な一般説明を返します。生レスポンスである `body` や `raw_body`、`data` には機密情報が含まれ得るため、無条件にログへ出力しないでください。
 また、認証エラー時は公開例外 `AsyncHttpAuthenticationError` を送出します。この例外は `AsyncHttpApiError` と `AuthenticationError` の両方を継承しており、HTTP 401 応答だけでなく、受付時（HTTP 200）の `code="-"` でも発生します。そのため、既存の `AuthenticationError` ハンドラと非同期固有の `AsyncHttpApiError` ハンドラのどちらでも捕捉できます。
 
-このクライアントでは、感情分析の設定はまだ提供していません。
-非同期 HTTP の話者ダイアライゼーションは `RecognitionSettings` の `speaker_diarization`、`diarization_min_speaker`、`diarization_max_speaker` で指定します。`SegmenterProperties` の話者設定は同期 HTTP・WebSocket 専用の別方式であり、明示的な `False` も含めて非同期 HTTP では拒否します。
+非同期 HTTP の感情分析は `RecognitionSettings.sentiment_analysis` で指定します。
+話者ダイアライゼーションは `RecognitionSettings` の `speaker_diarization`、`diarization_min_speaker`、`diarization_max_speaker` で指定します。
+これら 4 項目は非同期 HTTP 専用であり、同期 HTTP・WebSocket では明示的な `False` も含めて `ConfigurationError` で拒否します。
+反対に、`SegmenterProperties` の話者設定は同期 HTTP・WebSocket 専用の別方式であり、明示的な `False` も含めて非同期 HTTP では拒否します。
 `SegmenterProperties` の発話検出と言語識別は利用できます。
 同期 HTTP 用のルール設定、WebSocket 用の途中結果間隔と発話開始待ち設定も対応していません。
 
@@ -348,6 +508,9 @@ HTTP エラーや不正応答、受付拒否が起きた場合は `AsyncHttpApiE
 # 非同期HTTP・ジョブの登録（アップロードと受付後にジョブIDを表示）
 uv run examples/async_http_tester.py submit audio/test.wav --engine=-a-general
 
+# 非同期HTTP・感情分析を有効化してジョブを登録
+uv run examples/async_http_tester.py submit audio/test.wav --engine=-a-general --sentiment-analysis
+
 # 非同期HTTP・状態と認識結果の取得
 uv run examples/async_http_tester.py status <session_id>
 
@@ -356,8 +519,24 @@ uv run examples/async_http_tester.py wait <session_id> --poll-interval 10.0 --ti
 ```
 
 非同期 HTTP CLI（`examples/async_http_tester.py`）では、共通引数（`--url`、`--proxy-server-name`、`--connect-timeout`、`--receive-timeout`）をサブコマンド（`submit`、`status`、`wait`）の前に指定します。
-`submit` サブコマンドでは、[共通の認識オプション](./usage.md#共通の-cli-オプション)を指定できます。加えて `--selected-channel`、`--content-id`、`--compatible-with-sync` / `--no-compatible-with-sync`、`--logging-opt-out` / `--no-logging-opt-out` も指定可能です。話者ダイアライゼーション用には `--speaker-diarization` / `--no-speaker-diarization`（`BooleanOptionalAction`、省略時は `None`）を指定できます。話者数の範囲には `--diarization-min-speaker` と `--diarization-max-speaker`（ともに整数、省略時は `None`）を指定します。`--codec` は省略でき、ヘッダなし音声では明示してください。
-`status` と `wait` の標準出力形式と終了コードは変わらず、CLI 独自の話者別の集約表示は行いません。単語ごとの話者ラベル（`token.label`）を参照する場合は、[話者ダイアライゼーションの設定](#話者ダイアライゼーションの設定)の Python コード例を参照してください。
+`submit` サブコマンドでは、[共通の認識オプション](./usage.md#共通の-cli-オプション)を指定できます。加えて `--selected-channel`、`--content-id`、`--compatible-with-sync` / `--no-compatible-with-sync`、`--logging-opt-out` / `--no-logging-opt-out` も指定可能です。感情分析用には `--sentiment-analysis`（有効化）または `--no-sentiment-analysis`（無効化）を指定でき、省略時はパラメータを送信しません。話者ダイアライゼーションは `--speaker-diarization` で有効化、`--no-speaker-diarization` で無効化でき、省略時は送信しません。話者数の範囲には `--diarization-min-speaker` と `--diarization-max-speaker`（ともに整数、省略時は送信しない）を指定します。`--codec` は省略でき、ヘッダなし音声では明示してください。
+
+### status と wait における感情分析と認識結果の表示
+
+`status` と `wait` では、ジョブ状態と認識テキストに加えて、完了応答の感情分析結果を以下のように表示します。
+
+正常区間または正常空配列の場合は、標準出力に `Sentiment analysis: <N> segments` を表示します。
+区間がある場合は各区間の `[<starttime>ms - <endtime>ms] key=value, ...` を続けて表示します。
+正常空配列（`0 segments`）も正常結果として要約表示し、終了コードは `0` です。
+
+応答に `sentiment_analysis` が含まれない場合は、感情分析に関する追加行は表示せず、終了コードは `0` です。
+
+感情分析エラーまたは感情分析部分の解析失敗（`sentiment.is_error=True`）の場合は、標準エラー出力に `Sentiment analysis failed: code=<code>, error_code=<error_code>` を表示し、終了コード `1` を返します。
+機密保護のため、生の `error_message` は表示しません。
+ジョブ失敗や音声認識本体のエラーがある場合も終了コード `1` が優先されます。
+
+話者ダイアライゼーションについては、CLI 独自の話者別の集約表示は行いません。
+単語ごとの話者ラベル（`token.label`）を参照する場合は、[話者ダイアライゼーションの設定](#話者ダイアライゼーションの設定)の Python コード例を参照してください。
 
 ```bash
 uv run examples/async_http_tester.py --connect-timeout 10000 --receive-timeout 30000 submit audio/test.wav
@@ -376,7 +555,7 @@ uv run examples/async_http_tester.py wait --help
 
 | 終了コード | 内容 |
 | --- | --- |
-| `0` | 操作成功。`status` では処理中の状態を取得した場合も成功 |
-| `1` | 認識・通信・ジョブ・設定・ファイルなどのエラー |
+| `0` | 操作成功。`status` では処理中の状態を取得した場合も成功。完了時に感情分析が正常（`0 segments` を含む）または欠落の場合も `0` |
+| `1` | 認識・感情分析・通信・ジョブ・設定・ファイルなどのエラー |
 | `2` | argparse が検出した引数構文・型のエラー |
 | `3` | `wait()` の待機タイムアウト。サーバーのジョブは継続し、同じ ID で再開できる |

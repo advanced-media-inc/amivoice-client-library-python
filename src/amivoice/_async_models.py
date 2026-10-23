@@ -1,8 +1,9 @@
 """公式の平坦・resultsオブジェクト・同期互換応答を明示的に解析する"""
 
 import json
+import math
 
-from .async_models import AsyncJobSnapshot, AsyncJobSubmission, AsyncRecognitionResult
+from .async_models import AsyncJobSnapshot, AsyncJobSubmission, AsyncRecognitionResult, SentimentAnalysisResult, SentimentSegment
 from .exceptions import AsyncHttpApiError, AsyncHttpAuthenticationError, RecognitionError
 from .models import parse_result
 
@@ -62,6 +63,87 @@ def parse_submission(body: bytes) -> AsyncJobSubmission:
         raise error from None
 
 
+_SENTIMENT_PARAMETERS = frozenset(
+    {
+        "energy",
+        "stress",
+        "emo_cog",
+        "concentration",
+        "anticipation",
+        "excitement",
+        "hesitation",
+        "uncertainty",
+        "intensive_thinking",
+        "imagination_activity",
+        "embarrassment",
+        "passionate",
+        "brain_power",
+        "confidence",
+        "aggression",
+        "atmosphere",
+        "upset",
+        "content",
+        "dissatisfaction",
+        "extreme_emotion",
+    }
+)
+
+
+def _sentiment_segment(data: object) -> SentimentSegment:
+    if not isinstance(data, dict):
+        raise ValueError("Sentiment segment must be an object")
+    for key in ("starttime", "endtime"):
+        value = data.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValueError("Sentiment times must be finite numbers")
+    parameters = {}
+    for key, value in data.items():
+        if key in ("starttime", "endtime"):
+            continue
+        integer = isinstance(value, int) and not isinstance(value, bool)
+        if key in _SENTIMENT_PARAMETERS and not integer:
+            raise ValueError("Known sentiment parameters must be integers")
+        if integer:
+            parameters[key] = value
+    return SentimentSegment(data["starttime"], data["endtime"], parameters, json.dumps(data, ensure_ascii=False), data)
+
+
+def _parse_sentiment(data: object) -> SentimentAnalysisResult:
+    if not isinstance(data, dict) or not any(key in data for key in ("segments", "code", "error_code", "error_message")):
+        raise ValueError("Sentiment result requires segments or error fields")
+    code = data.get("code")
+    if code == "":
+        code = None
+    if code is not None and (isinstance(code, bool) or not isinstance(code, int)):
+        raise ValueError("Sentiment code must be an integer")
+    if code is None and not any(key in data for key in ("segments", "error_code", "error_message")):
+        raise ValueError("Sentiment result requires segments or error fields")
+    for key in ("error_code", "error_message"):
+        if key in data and not isinstance(data[key], str):
+            raise ValueError("Sentiment error fields must be strings")
+    segments = ()
+    if "segments" in data:
+        if not isinstance(data["segments"], list):
+            raise ValueError("Sentiment segments must be an array")
+        segments = tuple(_sentiment_segment(segment) for segment in data["segments"])
+    return SentimentAnalysisResult(
+        raw=json.dumps(data, ensure_ascii=False),
+        data=data,
+        segments=segments,
+        code=code,
+        error_code=data.get("error_code"),
+        error_message=data.get("error_message"),
+    )
+
+
+def _sentiment(data: object) -> SentimentAnalysisResult:
+    # 付随する感情部分の型破損で正常な認識結果の取得を妨げない
+    try:
+        return _parse_sentiment(data)
+    except (ValueError, TypeError, OverflowError, RecursionError) as error:
+        return SentimentAnalysisResult(raw=json.dumps(data, ensure_ascii=False), data=data, parse_error=str(error))
+
+
 def _recognition(data: dict[str, object], session_id: str) -> AsyncRecognitionResult:
     # マニュアルの旧オブジェクト形式と現在の平坦形式を区別する
     payload = data.get("results") if isinstance(data.get("results"), dict) else data
@@ -70,6 +152,10 @@ def _recognition(data: dict[str, object], session_id: str) -> AsyncRecognitionRe
     for key in ("text", "code", "message"):
         if not isinstance(payload.get(key), str):
             raise ValueError("Completed result requires text, code and message")
+    if payload is not data and "sentiment_analysis" in data and "sentiment_analysis" in payload:
+        raise ValueError("Ambiguous sentiment envelope")
+    sentiment_source = data if "sentiment_analysis" in data else payload
+    sentiment = _sentiment(sentiment_source["sentiment_analysis"]) if "sentiment_analysis" in sentiment_source else None
     raw = json.dumps(payload, ensure_ascii=False)
     segments = []
     if "segments" in payload:
@@ -93,7 +179,13 @@ def _recognition(data: dict[str, object], session_id: str) -> AsyncRecognitionRe
     is_error = normalized.is_error or any(segment.is_error for segment in segments)
     utterances = normalized.results or tuple(utterance for segment in segments for utterance in segment.results)
     return AsyncRecognitionResult(
-        raw=raw, data=payload, is_error=is_error, session_id=session_id, results=utterances, segments=tuple(segments)
+        raw=raw,
+        data=payload,
+        is_error=is_error,
+        session_id=session_id,
+        results=utterances,
+        segments=tuple(segments),
+        sentiment_analysis=sentiment,
     )
 
 

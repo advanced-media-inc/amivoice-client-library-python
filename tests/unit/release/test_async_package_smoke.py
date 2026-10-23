@@ -15,6 +15,8 @@ from tools.release import package_smoke_test
         "AsyncJobSnapshot",
         "AsyncJobSubmission",
         "AsyncRecognitionResult",
+        "SentimentAnalysisResult",
+        "SentimentSegment",
         "AsyncHttpApiError",
         "AsyncJobError",
         "AsyncJobTimeoutError",
@@ -48,5 +50,6 @@ def test_smoke_diarization_settings_valid_return_constructed_client(monkeypatch:
     package_smoke_test.run_package_smoke_test("amivoice-api-client", "1.0.0")
     # Then: インストール後も新フィールドが動作する
     assert len(configured) == 1
+    assert configured[0].sentiment_analysis is True
     assert configured[0].speaker_diarization is True
     assert configured[0].diarization_min_speaker == configured[0].diarization_max_speaker == 1

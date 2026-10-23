@@ -233,7 +233,7 @@ def test_async_domain_unsupported_setting_invalid_raise_ConfigurationError(field
 
 
 def test_client_analysis_options_valid_return_absent_signature() -> None:
-    """話者設定はRecognitionSettingsだけで公開し感情分析は未対応とする"""
+    """話者・感情設定はRecognitionSettingsだけで公開する"""
     # Given: 公開APIの署名
     for method in (AmiVoiceAsyncClient, AmiVoiceAsyncClient.submit):
         # When: 専用の直接引数を調べる
@@ -243,7 +243,7 @@ def test_client_analysis_options_valid_return_absent_signature() -> None:
         assert "sentiment_analysis" not in parameters
     settings_parameters = inspect.signature(RecognitionSettings).parameters
     assert {"speaker_diarization", "diarization_min_speaker", "diarization_max_speaker"} <= settings_parameters.keys()
-    assert "sentiment_analysis" not in settings_parameters
+    assert "sentiment_analysis" in settings_parameters
 
 
 @pytest.mark.parametrize("segmenter", ["useDiarizer=0", "diarizerAlpha=1e-20", "diarizerTransitionBias=0"])

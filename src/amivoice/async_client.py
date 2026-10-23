@@ -127,6 +127,7 @@ class AmiVoiceAsyncClient:
             logging_opt_out=None if settings.logging_opt_out is USE_CLIENT_DEFAULT else settings.logging_opt_out,
             content_id=None if settings.content_id is USE_CLIENT_DEFAULT else settings.content_id,
             compatible_with_sync=None if settings.compatible_with_sync is USE_CLIENT_DEFAULT else settings.compatible_with_sync,
+            sentiment_analysis=None if settings.sentiment_analysis is USE_CLIENT_DEFAULT else settings.sentiment_analysis,
             speaker_diarization=None if settings.speaker_diarization is USE_CLIENT_DEFAULT else settings.speaker_diarization,
             diarization_min_speaker=None
             if settings.diarization_min_speaker is USE_CLIENT_DEFAULT
@@ -150,7 +151,7 @@ class AmiVoiceAsyncClient:
     ) -> AsyncJobSubmission:
         """音声を登録し、認識完了を待たず受付済みIDを返す
 
-        未指定の引数はコンストラクタの設定を継承し、認識設定の任意項目のNoneは送信を解除する
+        未指定の引数はコンストラクタの設定を継承し、任意設定のNoneは送信を解除する
         通信失敗時に受理済みか分からないため、音声を自動再送しない
 
         Args:

@@ -7,7 +7,14 @@ from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager, StreamSession
 from .api_key import ApiKeyIssuanceClient
 from .async_client import AmiVoiceAsyncClient
-from .async_models import AsyncJobSnapshot, AsyncJobStatus, AsyncJobSubmission, AsyncRecognitionResult
+from .async_models import (
+    AsyncJobSnapshot,
+    AsyncJobStatus,
+    AsyncJobSubmission,
+    AsyncRecognitionResult,
+    SentimentAnalysisResult,
+    SentimentSegment,
+)
 from .client import AmiVoiceClient, transcribe
 from .constants import Codec, Engine
 from .dictionary import ProfileWord, UserDictionaryClient, build_profile_words
@@ -64,7 +71,9 @@ __all__ = [
     "SegmenterProperties",
     "SentimentAnalysisApiError",
     "SentimentAnalysisClient",
+    "SentimentAnalysisResult",
     "SentimentParameterDefinition",
+    "SentimentSegment",
     "StreamConnectionManager",
     "StreamEvent",
     "StreamEventType",

@@ -36,6 +36,7 @@ class AsyncHttpTester:
         submit.add_argument("--logging-opt-out", action=argparse.BooleanOptionalAction, default=None)
         submit.add_argument("--content-id")
         submit.add_argument("--compatible-with-sync", action=argparse.BooleanOptionalAction, default=None)
+        submit.add_argument("--sentiment-analysis", action=argparse.BooleanOptionalAction, default=None)
         submit.add_argument("--speaker-diarization", action=argparse.BooleanOptionalAction, default=None)
         submit.add_argument("--diarization-min-speaker", type=int, default=None)
         submit.add_argument("--diarization-max-speaker", type=int, default=None)
@@ -65,6 +66,15 @@ class AsyncHttpTester:
         if snapshot.is_error:
             print("Job or recognition failed; inspect the API result using get_job()", file=sys.stderr)
             return 1
+        sentiment = snapshot.recognition.sentiment_analysis if snapshot.recognition is not None else None
+        if sentiment is not None:
+            if sentiment.is_error:
+                print(f"Sentiment analysis failed: code={sentiment.code}, error_code={sentiment.error_code}", file=sys.stderr)
+                return 1
+            print(f"Sentiment analysis: {len(sentiment.segments)} segments")
+            for segment in sentiment.segments:
+                values = ", ".join(f"{key}={value}" for key, value in segment.parameters.items())
+                print(f"  [{segment.starttime}ms - {segment.endtime}ms] {values}")
         return 0
 
     @staticmethod
@@ -79,7 +89,7 @@ class AsyncHttpTester:
         return AmiVoiceAsyncClient(**options)
 
     def run(self, arguments: Sequence[str] | None = None) -> int:
-        """状態と認識テキストだけを表示し、生の応答を無条件にログへ出さない
+        """状態・認識テキスト・感情の要約を表示し、生の応答を無条件にログへ出さない
 
         Args:
             arguments (Sequence[str] | None): 引数、省略時はsys.argv
