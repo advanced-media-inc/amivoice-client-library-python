@@ -180,8 +180,9 @@ class AmiVoiceAsyncClient:
             options.diarization_min_speaker is not None or options.diarization_max_speaker is not None
         ):
             _logger.warning(
-                "Speaker diarization is disabled; diarization_min_speaker / diarization_max_speaker are ignored by the server. "
-                "Set speaker_diarization=True to enable it."
+                "Speaker diarization is disabled, but diarization_min_speaker / diarization_max_speaker "
+                "will still be sent and validated by the server. Set speaker_diarization=True to enable it, "
+                "or set diarization_min_speaker=None and diarization_max_speaker=None to clear the speaker-count parameters."
             )
         with AudioUpload(audio) as source:
             upload = MultipartUpload(source, params, options=options)
