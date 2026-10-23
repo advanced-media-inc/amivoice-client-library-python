@@ -179,7 +179,9 @@ def test_submit_diarization_disabled_valid_return_one_warning(
     assert len(records) == 1 and records[0].levelno == logging.WARNING
     message = records[0].getMessage()
     assert "diarization_min_speaker" in message and "diarization_max_speaker" in message
-    assert "speaker_diarization=True" in message and "ignored" in message
+    assert "will still be sent and validated by the server" in message and "ignored" not in message
+    assert "speaker_diarization=True" in message
+    assert "diarization_min_speaker=None" in message and "diarization_max_speaker=None" in message
     assert "secret-key" not in message and "secret-audio" not in message
     body = transport.calls[0][3]
     assert (b"speakerDiarization=False" in body) if enabled is False else (b"speakerDiarization=" not in body)
