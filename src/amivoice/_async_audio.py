@@ -7,6 +7,7 @@ import secrets
 import tempfile
 from collections.abc import Iterator
 from contextlib import ExitStack
+from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
@@ -27,24 +28,45 @@ def _binary_read(stream: BinaryIO, size: int) -> bytes:
     return bytes(data)
 
 
-def validate_async_options(logging_opt_out: bool | None, content_id: str | None, compatible_with_sync: bool | None) -> None:
-    """非同期固有設定の型と制御文字を検証する
+@dataclass(frozen=True, kw_only=True)
+class _AsyncRecognitionOptions:
+    """sentinelを解決した非同期HTTP専用設定、Noneは送信しない"""
+
+    logging_opt_out: bool | None = None
+    content_id: str | None = None
+    compatible_with_sync: bool | None = None
+    speaker_diarization: bool | None = None
+    diarization_min_speaker: int | None = None
+    diarization_max_speaker: int | None = None
+
+
+def validate_async_options(options: _AsyncRecognitionOptions) -> None:
+    """非同期固有設定の型・範囲・制御文字を警告なしで検証する
 
     Args:
-        logging_opt_out (bool | None): ログ保存なし、Noneは送信しない
-        content_id (str | None): アプリケーションのID
-        compatible_with_sync (bool | None): 同期互換形式、Noneは送信しない
+        options (_AsyncRecognitionOptions): 継承を解決済みの設定
 
     Raises:
-        ConfigurationError: 設定の型又は制御文字が不正な場合
+        ConfigurationError: 設定の型・範囲・大小関係又は制御文字が不正な場合
     """
-    for value in (logging_opt_out, compatible_with_sync):
+    for name in ("logging_opt_out", "compatible_with_sync", "speaker_diarization"):
+        value = getattr(options, name)
         if value is not None and not isinstance(value, bool):
-            raise ConfigurationError("Async HTTP boolean options must be bool or None")
-    if content_id is not None and (
-        not isinstance(content_id, str) or any(ord(char) < 32 or ord(char) == 127 for char in content_id)
+            raise ConfigurationError(f"{name} must be bool or None")
+    if options.content_id is not None and (
+        not isinstance(options.content_id, str) or any(ord(char) < 32 or ord(char) == 127 for char in options.content_id)
     ):
-        raise ConfigurationError("content_id must be a string without control characters")
+        raise ConfigurationError("content_id must be a string without control characters or None")
+    for name in ("diarization_min_speaker", "diarization_max_speaker"):
+        value = getattr(options, name)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 20):
+            raise ConfigurationError(f"{name} must be an integer in 1..20 or None")
+    if (
+        options.diarization_min_speaker is not None
+        and options.diarization_max_speaker is not None
+        and options.diarization_min_speaker > options.diarization_max_speaker
+    ):
+        raise ConfigurationError("diarization_min_speaker must be <= diarization_max_speaker")
 
 
 class AudioUpload:
@@ -209,27 +231,26 @@ class MultipartUpload:
         audio: AudioUpload,
         params: RecognitionParams,
         *,
-        logging_opt_out: bool | None = None,
-        content_id: str | None = None,
-        compatible_with_sync: bool | None = None,
+        options: _AsyncRecognitionOptions = _AsyncRecognitionOptions(),  # noqa: B008 -- frozenな不変設定を共有する
     ) -> None:
         """公式パラメータをURLエンコードし、小さいヘッダだけを保持する
 
         Args:
             audio (AudioUpload): サイズを確定した音声
             params (RecognitionParams): 共通の認識設定
-            logging_opt_out (bool | None): 非同期のログ保存設定
-            content_id (str | None): ユーザー定義ID
-            compatible_with_sync (bool | None): 同期互換形式
+            options (_AsyncRecognitionOptions): 解決済みの非同期HTTP専用設定
         """
-        validate_async_options(logging_opt_out, content_id, compatible_with_sync)
+        validate_async_options(options)
         self.audio = audio
         self.boundary = secrets.token_hex(24)
         values = _request_values(params, "async_http")
         for key, value in (
-            ("loggingOptOut", logging_opt_out),
-            ("contentId", content_id),
-            ("compatibleWithSync", compatible_with_sync),
+            ("loggingOptOut", options.logging_opt_out),
+            ("contentId", options.content_id),
+            ("compatibleWithSync", options.compatible_with_sync),
+            ("speakerDiarization", options.speaker_diarization),
+            ("diarizationMinSpeaker", options.diarization_min_speaker),
+            ("diarizationMaxSpeaker", options.diarization_max_speaker),
         ):
             if value is not None:
                 values.append((key, str(value)))

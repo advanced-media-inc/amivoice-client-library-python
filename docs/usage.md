@@ -114,6 +114,9 @@ result = client.transcribe(
 | `logging_opt_out` | 音声ログを保存しないか |
 | `content_id` | 非同期 HTTP のユーザー定義 ID。冪等性キーではない |
 | `compatible_with_sync` | 非同期 HTTP の同期互換の結果形式 |
+| `speaker_diarization` | 非同期 HTTP の話者ダイアライゼーション有効化 |
+| `diarization_min_speaker` | 非同期 HTTP の最小話者数。`1` 以上 `20` 以下の整数 |
+| `diarization_max_speaker` | 非同期 HTTP の最大話者数。`1` 以上 `20` 以下の整数 |
 
 `RecognitionSettings` は `frozen=True`、`kw_only=True` のデータクラスです。生成時はキーワード引数を使い、生成後に項目を変更できません。
 `profile_words` へ渡した単語一覧は、生成時にタプルへコピーします。元のリストを変更しても設定には反映されません。
@@ -272,7 +275,7 @@ print(result.text)
 
 ### セグメンター設定
 
-発話検出、話者ダイアライゼーション、言語識別は `SegmenterProperties` で指定できます。同期 HTTP と WebSocket の両方で利用できます。非同期 HTTP（v2）では発話検出と言語識別のみ利用でき、話者ダイアライゼーションの設定には対応していません。
+発話検出と言語識別は `SegmenterProperties` で指定できます。同期 HTTP、WebSocket、非同期 HTTP（v2）のすべてで利用できます。
 
 ```python
 from amivoice import AmiVoiceClient, Engine, RecognitionSettings, SegmenterProperties
@@ -281,8 +284,6 @@ client = AmiVoiceClient(
     settings=RecognitionSettings(
         grammar_file_names=Engine.A_GENERAL,
         segmenter=SegmenterProperties(
-            speaker_diarization=True,
-            diarizer_alpha="1e-20",
             languages=("ja", "en"),
         ),
     ),
@@ -292,6 +293,12 @@ print(result.text)
 ```
 
 型付きの `segmenter` と設定文字列の `segmenter_properties` は同時に指定できません。`languages` には `ja`、`en`、`zh`、`ko`、`th` を指定できます。言語識別の結果と音声認識の結果の言語が異なる場合もあるため、両方を確認してください。
+
+話者ダイアライゼーションの設定方法はインタフェースによって異なります。各方式の専用ガイドを参照してください。
+
+- 同期 HTTP: [同期 HTTP の話者ダイアライゼーションの設定](./usage-sync-http.md#話者ダイアライゼーションの設定)
+- WebSocket: [WebSocket の話者ダイアライゼーションの設定](./usage-websocket.md#話者ダイアライゼーションの設定)
+- 非同期 HTTP（v2）: [非同期 HTTP の話者ダイアライゼーションの設定](./usage-async-http.md#話者ダイアライゼーションの設定)
 
 ### 信頼度しきい値とフィラー
 
@@ -499,8 +506,8 @@ for parameter in parameters:
 ```
 
 この API は定義の取得専用で、音声の感情を分析したり、音声認識ジョブを作成したりするものではありません。
-非同期 HTTP クライアント（`AmiVoiceAsyncClient`）では、話者ダイアライゼーションと感情分析の設定はまだ提供していません。
-同期 HTTP・WebSocket の話者ダイアライゼーションは、[セグメンター設定](#セグメンター設定)で利用できます。
+非同期 HTTP クライアント（`AmiVoiceAsyncClient`）では、感情分析のジョブ設定はまだ提供していません。
+話者ダイアライゼーションは方式によって指定方法が異なります。同期 HTTP・WebSocket では[同期 HTTP の話者ダイアライゼーションの設定](./usage-sync-http.md#話者ダイアライゼーションの設定)および[WebSocket の話者ダイアライゼーションの設定](./usage-websocket.md#話者ダイアライゼーションの設定)を参照してください。非同期 HTTP では `RecognitionSettings(speaker_diarization=True, ...)` で指定します。詳細は[非同期 HTTP の話者ダイアライゼーションの設定](./usage-async-http.md#話者ダイアライゼーションの設定)を参照してください。
 
 ## 使用例 CLI の共通仕様
 

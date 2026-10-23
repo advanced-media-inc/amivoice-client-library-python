@@ -233,11 +233,39 @@ def test_async_domain_unsupported_setting_invalid_raise_ConfigurationError(field
 
 
 def test_client_analysis_options_valid_return_absent_signature() -> None:
-    """P2とP3の分析設定をP1で公開しない"""
+    """話者設定はRecognitionSettingsだけで公開し感情分析は未対応とする"""
     # Given: 公開APIの署名
     for method in (AmiVoiceAsyncClient, AmiVoiceAsyncClient.submit):
-        # When: 追加予定の引数を調べる
+        # When: 専用の直接引数を調べる
         parameters = inspect.signature(method).parameters
-        # Then: P1の範囲だけを提供する
+        # Then: 直接引数を増やさず型付き設定だけを提供する
         assert "speaker_diarization" not in parameters
         assert "sentiment_analysis" not in parameters
+    settings_parameters = inspect.signature(RecognitionSettings).parameters
+    assert {"speaker_diarization", "diarization_min_speaker", "diarization_max_speaker"} <= settings_parameters.keys()
+    assert "sentiment_analysis" not in settings_parameters
+
+
+@pytest.mark.parametrize("segmenter", ["useDiarizer=0", "diarizerAlpha=1e-20", "diarizerTransitionBias=0"])
+def test_client_segmenter_diarization_invalid_raise_alternative(segmenter: str) -> None:
+    """同期向けの話者設定は無効指定も非同期で拒否する"""
+    # Given: 別方式の話者設定
+    settings = RecognitionSettings(grammar_file_names="-a-general", segmenter_properties=segmenter)
+    # When / Then: 非同期の代替APIを案内する
+    with pytest.raises(ConfigurationError, match=r"RecognitionSettings\(speaker_diarization=True\)"):
+        AmiVoiceAsyncClient(api_key="dummy", settings=settings)
+
+
+def test_submit_segmenter_vad_lid_valid_return_parameters() -> None:
+    """非同期でVADとLIDは引き続き利用できる"""
+    # Given: 話者設定以外のセグメンター
+    transport = RecordingTransport([{"sessionid": "job1", "text": "..."}])
+    client = AmiVoiceAsyncClient(
+        api_key="dummy",
+        transport=transport,
+        settings=RecognitionSettings(grammar_file_names="-a-general", segmenter_properties="threshold=5000 useLid=1"),
+    )
+    # When: ジョブを登録する
+    client.submit(b"audio")
+    # Then: セグメンター設定を送信する
+    assert b"segmenterProperties=threshold%3D5000%20useLid%3D1" in transport.calls[0][3]

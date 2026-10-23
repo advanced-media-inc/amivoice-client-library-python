@@ -66,6 +66,12 @@ print("失敗区間数:", sum(result.is_error for result in results))
 
 `U` は `partial`、`S` と `E` は `utterance_started` と `utterance_ended` に対応します。発話境界の `utterance.time` はミリ秒です。`C` は認識処理の開始を表す `notification` で、`notification.event_id` は `"C"` です。
 
+## 話者ダイアライゼーションの設定
+
+WebSocket の話者ダイアライゼーションの設定方法は同期 HTTP と同じです。`SegmenterProperties` の `speaker_diarization`、`diarizer_alpha`、`diarizer_transition_bias` を使用します。設定手順とコード例は[同期 HTTP の話者ダイアライゼーションの設定](./usage-sync-http.md#話者ダイアライゼーションの設定)を参照してください。
+
+WebSocket の `stream()` では `codec` の指定が必須です。確定結果の `event.result` または `session.results()` の各区間から、単語ごとの `token.label` を参照できます。`RecognitionSettings` の `speaker_diarization`、`diarization_min_speaker`、`diarization_max_speaker` は非同期 HTTP（v2）専用であり、WebSocket では使用できません。
+
 ## WebSocket 専用の設定と非対応設定
 
 `result_updated_interval` と `no_input_timeout` は WebSocket 専用の設定です。共通のコンストラクタの `settings` に指定しても、HTTP の `transcribe()` ではサーバーへ送信しません。

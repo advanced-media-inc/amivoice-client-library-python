@@ -95,3 +95,23 @@ def test_parse_submission_authorization_invalid_raise_AuthenticationError() -> N
     # Then: 非同期エラーの詳細も失わない
     assert isinstance(caught.value, AsyncHttpApiError)
     assert caught.value.code == "-" and caught.value.status_code == 200
+
+
+@pytest.mark.parametrize("http_rejection", [False, True])
+def test_submit_diarization_rejected_valid_raise_existing_api_error(http_rejection: bool) -> None:
+    """話者設定有効時も一般の受付拒否経路を利用し固有コードを創作しない"""
+    # Given: 公式の受付拒否形式または一般のHTTP拒否の合成応答（実音声長の実証ではない）
+    response = {"code": "o", "message": "rejected", "text": "", "results": []}
+    body = json.dumps(response).encode()
+    transport = RecordingTransport([(400 if http_rejection else 200, body)])
+    client = AmiVoiceAsyncClient(
+        api_key="dummy",
+        transport=transport,
+        settings=RecognitionSettings(grammar_file_names="-a-general", speaker_diarization=True),
+    )
+    # When / Then: 既存の構造化APIエラーを返し自動再送しない
+    with pytest.raises(AsyncHttpApiError) as caught:
+        client.submit(b"synthetic-audio")
+    assert caught.value.raw_body == body and caught.value.code == "o"
+    assert len(transport.calls) == 1
+    assert b"speakerDiarization=True" in transport.calls[0][3]

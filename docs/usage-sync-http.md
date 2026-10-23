@@ -79,6 +79,31 @@ for utterance in result.results:
 
 `spoken`、`confidence`、`starttime`、`endtime`、`label`、`language` など、エンジンや設定によって省略されるフィールドは `None` になります。`raw` には受信した JSON 文字列、`data` にはその辞書、`text` には認識テキストが入ります。`is_error`、`session_id` も公開フィールドです。
 
+## 話者ダイアライゼーションの設定
+
+同期 HTTP の話者ダイアライゼーションは、`SegmenterProperties` の `speaker_diarization`、`diarizer_alpha`、`diarizer_transition_bias` で設定します。発話検出や言語識別とあわせて指定できます。単語ごとの話者ラベルは、認識結果の `token.label` から参照できます。
+
+```python
+from amivoice import AmiVoiceClient, Engine, RecognitionSettings, SegmenterProperties
+
+client = AmiVoiceClient(
+    settings=RecognitionSettings(
+        grammar_file_names=Engine.A_GENERAL,
+        segmenter=SegmenterProperties(
+            speaker_diarization=True,
+            diarizer_alpha="1e-20",
+            languages=("ja", "en"),
+        ),
+    ),
+)
+result = client.transcribe("audio.wav")
+print(result.text)
+```
+
+`diarizer_alpha` と `diarizer_transition_bias` は、`speaker_diarization=True` のときのみ指定できます。型付きの `segmenter` と設定文字列の `segmenter_properties` は同時に指定できません。発話検出と言語識別の共通仕様は[セグメンター設定](./usage.md#セグメンター設定)を参照してください。
+
+なお、`RecognitionSettings` の `speaker_diarization`、`diarization_min_speaker`、`diarization_max_speaker` は非同期 HTTP（v2）専用の設定です。同期 HTTP でこれらを指定すると `ConfigurationError` を送出します。非同期 HTTP の仕様は[非同期 HTTP の話者ダイアライゼーションの設定](./usage-async-http.md#話者ダイアライゼーションの設定)を参照してください。
+
 ## マルチチャネル音声のチャネル選択
 
 複数チャネルの音声を同期 HTTP で認識する場合は、`selected_channel` で認識対象を指定できます。チャネル番号は `0` から始まり、単一チャネルは整数で指定します。複数チャネルの混合平均は `(0, N)` のタプルで指定し、`N` は正の整数に限ります。

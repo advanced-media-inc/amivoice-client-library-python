@@ -61,6 +61,9 @@ class RecognitionSettings:
         logging_opt_out (bool | None | UseClientDefault): 音声ログを残さないか、Noneは非同期HTTPのみ送信解除
         content_id (str | None | UseClientDefault): 非同期HTTPのユーザー定義ID、冪等性キーではない
         compatible_with_sync (bool | None | UseClientDefault): 非同期HTTPの同期互換結果形式
+        speaker_diarization (bool | None | UseClientDefault): 非同期HTTPの話者ダイアライゼーション
+        diarization_min_speaker (int | None | UseClientDefault): 非同期HTTPの最小話者数、1..20
+        diarization_max_speaker (int | None | UseClientDefault): 非同期HTTPの最大話者数、1..20
     """
 
     grammar_file_names: str | None | UseClientDefault = USE_CLIENT_DEFAULT
@@ -88,6 +91,9 @@ class RecognitionSettings:
     logging_opt_out: bool | None | UseClientDefault = USE_CLIENT_DEFAULT
     content_id: str | None | UseClientDefault = USE_CLIENT_DEFAULT
     compatible_with_sync: bool | None | UseClientDefault = USE_CLIENT_DEFAULT
+    speaker_diarization: bool | None | UseClientDefault = USE_CLIENT_DEFAULT
+    diarization_min_speaker: int | None | UseClientDefault = USE_CLIENT_DEFAULT
+    diarization_max_speaker: int | None | UseClientDefault = USE_CLIENT_DEFAULT
 
     def __post_init__(self) -> None:
         """単語一覧をコピーして呼び出し元からの変更を防ぐ"""

@@ -2,7 +2,14 @@
 
 import pytest
 
-from amivoice import AmiVoiceAsyncClient, AsyncHttpApiError, AsyncJobTimeoutError, ConfigurationError, ConnectionFailedError
+from amivoice import (
+    AmiVoiceAsyncClient,
+    AsyncHttpApiError,
+    AsyncJobTimeoutError,
+    ConfigurationError,
+    ConnectionFailedError,
+    RecognitionSettings,
+)
 
 from .test_async_client import RecordingTransport, completed, queued
 
@@ -140,3 +147,19 @@ def test_get_job_transient_failure_invalid_raise_without_retry() -> None:
     with pytest.raises(AsyncHttpApiError):
         client.get_job("job1")
     assert len(transport.calls) == 1
+
+
+@pytest.mark.parametrize("resume_operation", ["wait", "get_job"])
+def test_wait_diarization_timeout_edge_return_resumed_job(resume_operation: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """話者設定有効時も待機打ち切り後に同じIDで再開できる"""
+    # Given: 締め切り後に完了する合成ジョブ
+    transport = RecordingTransport([queued(), completed()])
+    client = AmiVoiceAsyncClient(api_key="dummy", transport=transport, settings=RecognitionSettings(speaker_diarization=True))
+    fake_clock(client, monkeypatch)
+    # When: 待機上限で一度戻り、そのIDを再利用する
+    with pytest.raises(AsyncJobTimeoutError) as caught:
+        client.wait("job1", timeout=1, poll_interval=2)
+    snapshot = getattr(client, resume_operation)(caught.value.session_id)
+    # Then: 再POSTせず結果を観測する
+    assert snapshot.status == "completed" and caught.value.snapshot.status == "queued"
+    assert [call[0] for call in transport.calls] == ["GET", "GET"]
