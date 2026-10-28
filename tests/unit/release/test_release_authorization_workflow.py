@@ -9,6 +9,12 @@ import pytest
 from tests.unit.release.workflow_test_helpers import read_workflow_job, read_workflow_step_script
 
 AUTHORIZATION_STEP = "Revalidate release authorization"
+RELEASE_JOB_DEPENDENCIES = [
+    ("publish-pypi.yml", "build", None, None),
+    ("publish-pypi.yml", "publish", "build", "build"),
+    ("publish-pypi.yml", "finalize", "[build, publish]", "publish"),
+    ("finalize-github-release.yml", "finalize", None, None),
+]
 RELEASE_JOBS = [
     ("publish-pypi.yml", "build"),
     ("publish-pypi.yml", "publish"),
@@ -33,6 +39,28 @@ def test_release_authorization_first_step_valid_return_unconditional_check(workf
     assert "GH_TOKEN: ${{ github.token }}" in first_step
     assert "        if:" not in first_step
     assert "continue-on-error:" not in first_step and "continue-on-error:" not in job.split("    steps:\n", 1)[0]
+
+
+@pytest.mark.parametrize("workflow_name,job_name,expected_needs,required_success", RELEASE_JOB_DEPENDENCIES)
+def test_release_job_dependencies_direct_valid_return_only_release_jobs(
+    workflow_name: str, job_name: str, expected_needs: str | None, required_success: str | None
+) -> None:
+    """Release jobs depend only on the release work they require"""
+    # Given: a release job and its expected direct dependencies
+    job = read_workflow_job(workflow_name, job_name)
+    header = job.split("    steps:\n", 1)[0]
+
+    # When: the job dependencies and conditions are inspected
+    needs = [line.strip() for line in header.splitlines() if line.startswith("    needs:")]
+
+    # Then: authorization runs inside the job rather than as a dependency
+    assert needs == ([f"needs: {expected_needs}"] if expected_needs is not None else [])
+    assert "needs.authorize" not in header
+    if required_success is None:
+        assert "    if:" not in header
+    else:
+        assert "github.ref == 'refs/heads/main'" in header
+        assert f"needs.{required_success}.result == 'success'" in header
 
 
 @pytest.fixture

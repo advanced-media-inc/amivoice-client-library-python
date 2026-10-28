@@ -20,24 +20,8 @@ env:
   DISTRIBUTION_NAME: "amivoice-api-client"
 
 jobs:
-  authorize:
-    name: Authorize release execution
-    uses: ./.github/workflows/verify-release-authorization.yml
-    permissions:
-      contents: read
-
-  authorize_build:
-    name: Reauthorize release execution before build
-    needs: authorize
-    if: ${{ needs.authorize.outputs.authorized == 'true' }}
-    uses: ./.github/workflows/verify-release-authorization.yml
-    permissions:
-      contents: read
-
   build:
     name: Build formal PyPI distribution
-    needs: [authorize, authorize_build]
-    if: ${{ github.ref == 'refs/heads/main' && needs.authorize.outputs.authorized == 'true' && needs.authorize_build.outputs.authorized == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -174,18 +158,10 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  authorize_publish:
-    name: Reauthorize release execution before publication
-    needs: build
-    if: ${{ needs.build.result == 'success' }}
-    uses: ./.github/workflows/verify-release-authorization.yml
-    permissions:
-      contents: read
-
   publish:
     name: Publish to PyPI
-    needs: [authorize, build, authorize_publish]
-    if: ${{ github.ref == 'refs/heads/main' && needs.authorize.outputs.authorized == 'true' && needs.authorize_publish.outputs.authorized == 'true' && needs.build.result == 'success' }}
+    needs: build
+    if: ${{ github.ref == 'refs/heads/main' && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
@@ -293,8 +269,8 @@ jobs:
 
   finalize:
     name: Finalize GitHub tag and Release
-    needs: [authorize, build, publish]
-    if: ${{ github.ref == 'refs/heads/main' && needs.authorize.outputs.authorized == 'true' && needs.publish.result == 'success' }}
+    needs: [build, publish]
+    if: ${{ github.ref == 'refs/heads/main' && needs.publish.result == 'success' }}
     permissions:
       contents: write # The reusable workflow creates the release tag and GitHub Release
       actions: read # The reusable workflow downloads the immutable release artifact

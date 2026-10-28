@@ -24,16 +24,8 @@ env:
   DISTRIBUTION_NAME: "amivoice-api-client"
 
 jobs:
-  authorize:
-    name: Verify release authorization
-    uses: ./.github/workflows/verify-release-authorization.yml
-    permissions:
-      contents: read
-
   finalize:
     name: Verify PyPI and create GitHub Release
-    needs: authorize
-    if: ${{ github.ref == 'refs/heads/main' && needs.authorize.outputs.authorized == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
