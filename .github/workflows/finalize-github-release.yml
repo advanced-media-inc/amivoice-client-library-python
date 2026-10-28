@@ -126,7 +126,10 @@ jobs:
             fi
           else
             git tag -a "$RELEASE_VERSION" "$SOURCE_COMMIT" -m "Release $RELEASE_VERSION"
-            git -c "http.extraheader=AUTHORIZATION: bearer $GH_TOKEN" push origin "refs/tags/$RELEASE_VERSION"
+            basic_credential=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)
+            echo "::add-mask::$basic_credential"
+            git -c "http.extraheader=AUTHORIZATION: basic $basic_credential" \
+              push origin "refs/tags/$RELEASE_VERSION"
           fi
 
       - name: Create or verify the GitHub Release
