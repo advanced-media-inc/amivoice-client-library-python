@@ -6,9 +6,7 @@ from importlib import metadata
 from pathlib import Path
 
 import amivoice
-import com.amivoice.hrp as hrp_package
-import com.amivoice.wrp as wrp_package
-from amivoice import AmiVoiceClient
+from amivoice import AmiVoiceClient, RecognitionSettings
 
 
 class PackageSmokeTestError(RuntimeError):
@@ -32,18 +30,66 @@ def run_package_smoke_test(distribution_name: str, expected_version: str) -> Non
     if installed_version != expected_version:
         raise PackageSmokeTestError(f"Installed distribution version mismatch: {installed_version} != {expected_version}")
 
-    imported_packages = (amivoice, hrp_package, wrp_package)
-    expected_module_names = {"amivoice", "com.amivoice.hrp", "com.amivoice.wrp"}
-    if {package.__name__ for package in imported_packages} != expected_module_names:
-        raise PackageSmokeTestError("One or more public package imports failed")
+    public_exports = (
+        "AmiVoiceClient",
+        "AmiVoiceAsyncClient",
+        "AsyncJobSnapshot",
+        "AsyncJobSubmission",
+        "AsyncRecognitionResult",
+        "SentimentAnalysisResult",
+        "SentimentSegment",
+        "AsyncHttpApiError",
+        "AsyncJobError",
+        "AsyncJobTimeoutError",
+        "transcribe",
+        "Codec",
+        "Engine",
+        "RecognitionResult",
+        "RecognitionSettings",
+        "UseClientDefault",
+        "StreamSession",
+        "ProfileWord",
+        "SegmenterProperties",
+        "UserDictionaryClient",
+        "ApiKeyIssuanceClient",
+        "SentimentAnalysisClient",
+        "SentimentParameterDefinition",
+        "SentimentAnalysisApiError",
+        "build_billing_extension",
+        "build_grammar_file_names",
+        "encode_grammar",
+    )
+    if any(not callable(getattr(amivoice, name, None)) for name in public_exports):
+        raise PackageSmokeTestError("One or more public package exports are missing")
+    installed_files = metadata.files(distribution_name)
+    if installed_files is None:
+        raise PackageSmokeTestError("Installed distribution file list is missing")
+    for file in installed_files:
+        if file.parts[0] == "com" or file.as_posix() == "amivoice/_transport.py":
+            raise PackageSmokeTestError("Installed distribution contains obsolete package files")
 
     amivoice_package_root = Path(next(iter(amivoice.__path__)))
     if not (amivoice_package_root / "py.typed").is_file():
         raise PackageSmokeTestError("Installed package does not contain amivoice/py.typed")
 
-    client = AmiVoiceClient(api_key="package-smoke-test")
+    client = AmiVoiceClient(
+        settings=RecognitionSettings(grammar_file_names=amivoice.Engine.A_GENERAL, codec=amivoice.Codec.HEADER_16K),
+        api_key="package-smoke-test",
+    )
     if not callable(client.transcribe) or not callable(client.stream):
         raise PackageSmokeTestError("AmiVoiceClient public methods are not callable")
+    async_client = amivoice.AmiVoiceAsyncClient(
+        settings=RecognitionSettings(
+            grammar_file_names=amivoice.Engine.A_GENERAL,
+            sentiment_analysis=True,
+            speaker_diarization=True,
+            diarization_min_speaker=1,
+            diarization_max_speaker=1,
+        ),
+        api_key="package-smoke-test",
+    )
+    if any(not callable(getattr(async_client, name, None)) for name in ("submit", "get_job", "wait")):
+        raise PackageSmokeTestError("AmiVoiceAsyncClient public methods are not callable")
 
 
 def _parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:

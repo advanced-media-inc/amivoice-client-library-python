@@ -35,7 +35,7 @@ def test_validate_package_artifacts_unexpected_wheel_file_invalid_raise_PackageA
         wheel_archive.writestr("tests/test_unpublished.py", "")
 
     # When: package artifacts are validated
-    with pytest.raises(PackageArtifactError):
+    with pytest.raises(PackageArtifactError, match="outside the package allowlist"):
         validate_package_artifacts(dist_dir, "amivoice-api-client", "1.0.0")
 
     # Then: the unsafe package is not accepted
@@ -56,14 +56,18 @@ def test_validate_package_artifacts_unexpected_sdist_file_invalid_raise_PackageA
             f"{archive_prefix}/README.md",
             f"{archive_prefix}/pyproject.toml",
             f"{archive_prefix}/src/amivoice/py.typed",
-            f"{archive_prefix}/src/com/__init__.py",
+            f"{archive_prefix}/src/amivoice/__init__.py",
+            f"{archive_prefix}/src/amivoice/client.py",
+            f"{archive_prefix}/src/amivoice/async_client.py",
+            f"{archive_prefix}/src/amivoice/async_models.py",
+            f"{archive_prefix}/src/amivoice/sentiment_analysis.py",
             f"{archive_prefix}/src/amivoice_api_client.egg-info/PKG-INFO",
             f"{archive_prefix}/docs/internal.md",
         ):
             write_tar_member(sdist_archive, member_name)
 
     # When: package artifacts are validated
-    with pytest.raises(PackageArtifactError):
+    with pytest.raises(PackageArtifactError, match="outside the package allowlist"):
         validate_package_artifacts(dist_dir, "amivoice-api-client", "1.0.0")
 
     # Then: the unsafe package is not accepted

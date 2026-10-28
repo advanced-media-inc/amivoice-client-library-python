@@ -1,183 +1,49 @@
-# pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportAny=false, reportUnusedCallResult=false
+"""モジュールレベルの同期認識を公開境界で確認する"""
 
-"""transcribe フリー関数のユニットテスト。"""
-
-import os
-import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from amivoice.client import _DEFAULT_HRP_URL, transcribe
-from amivoice.exceptions import (
-    AuthenticationError,
-    ConnectionFailedError,
-    RecognitionError,
-)
-from amivoice.models import RecognitionResult
+from amivoice import Codec, Engine, RecognitionSettings, transcribe
+from amivoice.exceptions import ConfigurationError
 
 
-def _make_mock_hrp(result_json: str = '{"text": "hello"}', *, connect_ok: bool = True) -> MagicMock:
-    """テスト用のモック HRP オブジェクトを生成する。"""
-    mock_hrp = MagicMock()
-    mock_hrp.connect.return_value = connect_ok
-    mock_hrp.feedDataResume.return_value = True
-    mock_hrp.feedData.return_value = True
-    mock_hrp.getLastMessage.return_value = "error"
-
-    def set_listener(listener: object) -> None:
-        mock_hrp.listener = listener
-
-    def finalize_result() -> bool:
-        mock_hrp.listener.resultFinalized(result_json)
-        return True
-
-    mock_hrp.setListener.side_effect = set_listener
-    mock_hrp.feedDataPause.side_effect = finalize_result
-    return mock_hrp
-
-
-def test_transcribe_success_valid_return_result() -> None:
-    """Transcribe が正常に完了した場合に RecognitionResult が返ることを確認する。"""
-    # Given: 全操作が成功するモック HRP
-    mock_hrp = _make_mock_hrp('{"text": "hello"}')
-
-    # When: transcribe フリー関数を呼び出す
-    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
-        result = transcribe(b"audio-data", api_key="test-key")
-
-    # Then: 認識結果が返る
-    assert result == RecognitionResult(raw='{"text": "hello"}', data={"text": "hello"})
-    mock_hrp.connect.assert_called_once()
-    mock_hrp.disconnect.assert_called_once()
+def test_transcribe_official_parameters_valid_return_result() -> None:
+    """便利関数も公式形式を直接生成する"""
+    # Given: HTTPレスポンスを返す注入処理
+    transport = MagicMock()
+    transport.request.return_value = (200, b'{"text":"hello","code":"","message":""}')
+    # When: 型付き定数と設定を渡す
+    result = transcribe(
+        b"audio",
+        api_key="dummy",
+        settings=RecognitionSettings(
+            grammar_file_names=Engine.A_GENERAL, codec=Codec.LSB16K, selected_channel=1, logging_opt_out=True
+        ),
+        _transport=transport,
+    )
+    # Then: 認識結果と公式multipartパートを確認する
+    assert result.text == "hello"
+    assert transport.request.call_args.args[0] == "https://acp-api.amivoice.com/v1/nolog/recognize"
+    assert b'name="c"\r\n\r\nLSB16K' in transport.request.call_args.args[2]
 
 
-def test_transcribe_default_api_url_valid_uses_default_url() -> None:
-    """api_url を省略した場合にデフォルト URL が使用されることを確認する。"""
-    # Given: モック HRP とデフォルト URL
-    mock_hrp = _make_mock_hrp()
-
-    # When: api_url を指定せずに transcribe を呼び出す
-    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
-        transcribe(b"audio-data", api_key="test-key")
-
-    # Then: デフォルト URL が setServerURL に渡される
-    mock_hrp.setServerURL.assert_called_once_with(_DEFAULT_HRP_URL)
+@pytest.mark.parametrize("name", ["mode", "result_type", "domain_id", "voice_detection"])
+def test_transcribe_removed_argument_invalid_raise_TypeError(name: str) -> None:
+    """削除した引数を黙って受け付けない"""
+    # Given: 非公式設定
+    # When / Then: Pythonの引数検証で拒否する
+    with pytest.raises(TypeError):
+        transcribe(
+            b"audio", api_key="dummy", settings=RecognitionSettings(grammar_file_names=Engine.A_GENERAL), **{name: "value"}
+        )
 
 
-def test_transcribe_custom_api_url_valid_uses_given_url() -> None:
-    """api_url を指定した場合にその URL が使用されることを確認する。"""
-    # Given: カスタム URL
-    custom_url = "https://custom.example.com/v1/recognize"
-    mock_hrp = _make_mock_hrp()
-
-    # When: カスタム api_url を指定して transcribe を呼び出す
-    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
-        transcribe(b"audio-data", api_key="test-key", api_url=custom_url)
-
-    # Then: カスタム URL が setServerURL に渡される
-    mock_hrp.setServerURL.assert_called_once_with(custom_url)
-
-
-def test_transcribe_connection_fails_invalid_raise_ConnectionFailedError() -> None:
-    """接続に失敗した場合に ConnectionFailedError が送出されることを確認する。"""
-    # Given: connect が失敗するモック HRP
-    mock_hrp = _make_mock_hrp(connect_ok=False)
-
-    # When / Then: transcribe を呼び出すと ConnectionFailedError が送出される
-    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp), pytest.raises(ConnectionFailedError):
-        transcribe(b"audio-data", api_key="test-key")
-
-
-def test_transcribe_server_error_response_invalid_raise_RecognitionError() -> None:
-    """サーバーエラーレスポンスが返った場合に RecognitionError が送出されることを確認する。"""
-    # Given: エラーレスポンスを返すモック HRP
-    mock_hrp = _make_mock_hrp('\x01\x01\x01\x01\x01{"code": "E001", "message": "bad request"}')
-
-    # When / Then: transcribe を呼び出すと RecognitionError が送出される
-    with (
-        patch("amivoice.client._Hrp.construct", return_value=mock_hrp),
-        pytest.raises(RecognitionError, match="bad request") as exc_info,
-    ):
-        transcribe(b"audio-data", api_key="test-key")
-
-    assert exc_info.value.result is not None
-    assert exc_info.value.result.is_error is True
-
-
-def test_transcribe_raise_on_error_false_invalid_return_error_result() -> None:
-    """raise_on_error=False の場合にエラー結果がそのまま返ることを確認する。"""
-    # Given: エラーレスポンスを返すモック HRP
-    mock_hrp = _make_mock_hrp('\x01\x01\x01\x01\x01{"code": "E001", "message": "bad request"}')
-
-    # When: raise_on_error=False で transcribe を呼び出す
-    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp):
-        result = transcribe(b"audio-data", api_key="test-key", raise_on_error=False)
-
-    # Then: 例外は送出されず is_error=True の結果が返る
-    assert result.is_error is True
-    assert result.data == {"code": "E001", "message": "bad request"}
-
-
-def test_transcribe_no_api_key_invalid_raise_AuthenticationError() -> None:
-    """api_key が未設定かつ環境変数も未設定の場合に AuthenticationError が送出されることを確認する。"""
-    # Given: api_key も環境変数も未設定
-    # When / Then: transcribe を呼び出すと AuthenticationError が送出される
-    with patch.dict("os.environ", {}, clear=True):
-        # 環境変数 AMIVOICE_API_KEY が存在しない状態にする
-        os.environ.pop("AMIVOICE_API_KEY", None)
-        with pytest.raises(AuthenticationError):
-            transcribe(b"audio-data")
-
-
-def test_transcribe_concurrent_calls_valid_independent_connections() -> None:
-    """複数スレッドから同時に transcribe を呼び出した場合に各呼び出しが独立して動作することを確認する。"""
-    # Given: 各スレッドに独立したモック HRP を返すファクトリ
-    call_count = 0
-    call_count_lock = threading.Lock()
-    results: list[RecognitionResult] = []
-    errors: list[Exception] = []
-
-    def make_hrp() -> MagicMock:
-        nonlocal call_count
-        with call_count_lock:
-            call_count += 1
-        return _make_mock_hrp(f'{{"text": "result-{call_count}"}}')
-
-    def worker() -> None:
-        try:
-            result = transcribe(b"audio", api_key="test-key")
-            results.append(result)
-        except Exception as exc:
-            errors.append(exc)
-
-    # When: 4 スレッドから同時に transcribe を呼び出す
-    # NOTE: patch はスレッド間で共有される属性を差し替えるためスレッドセーフではない。
-    # スレッド起動の外側で 1 度だけ patch を張り、スレッドセーフな make_hrp（ロック保護）で
-    # 各スレッドに独立したモックを配る。
-    with patch("amivoice.client._Hrp.construct", side_effect=make_hrp):
-        threads = [threading.Thread(target=worker) for _ in range(4)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-    # Then: エラーなし、4 件の認識結果が返る（各呼び出しが独立）
-    assert errors == []
-    assert len(results) == 4
-
-
-def test_transcribe_disconnect_called_even_on_error() -> None:
-    """認識処理中にエラーが発生した場合でも disconnect が呼ばれることを確認する。"""
-    # Given: feedDataResume が失敗するモック HRP
-    mock_hrp = MagicMock()
-    mock_hrp.connect.return_value = True
-    mock_hrp.feedDataResume.return_value = False
-    mock_hrp.getLastMessage.return_value = "resume failed"
-
-    # When: transcribe を呼び出すと RecognitionError が送出される
-    with patch("amivoice.client._Hrp.construct", return_value=mock_hrp), pytest.raises(RecognitionError):
-        transcribe(b"audio-data", api_key="test-key")
-
-    # Then: エラー後も disconnect が呼ばれる（リソースリークなし）
-    mock_hrp.disconnect.assert_called_once()
+def test_transcribe_engine_missing_invalid_raise_ConfigurationError() -> None:
+    """必須エンジン名は通信前に検証する"""
+    # Given: 通信処理
+    transport = MagicMock()
+    # When / Then: 設定不足で通信しない
+    with pytest.raises(ConfigurationError, match="grammar_file_names"):
+        transcribe(b"audio", api_key="dummy", settings=RecognitionSettings(), _transport=transport)
+    transport.request.assert_not_called()

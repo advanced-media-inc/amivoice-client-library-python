@@ -2,16 +2,40 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
+from ._billing import build_billing_extension
+from ._segmenter import SegmenterProperties
 from ._stream import StreamConnectionManager, StreamSession
+from .api_key import ApiKeyIssuanceClient
+from .async_client import AmiVoiceAsyncClient
+from .async_models import (
+    AsyncJobSnapshot,
+    AsyncJobStatus,
+    AsyncJobSubmission,
+    AsyncRecognitionResult,
+    SentimentAnalysisResult,
+    SentimentSegment,
+)
 from .client import AmiVoiceClient, transcribe
+from .constants import Codec, Engine
+from .dictionary import ProfileWord, UserDictionaryClient, build_profile_words
 from .exceptions import (
     AmiVoiceError,
+    ApiKeyIssuanceApiError,
+    AsyncHttpApiError,
+    AsyncHttpAuthenticationError,
+    AsyncJobError,
+    AsyncJobTimeoutError,
     AuthenticationError,
     ConfigurationError,
     ConnectionFailedError,
+    DictionaryApiError,
     RecognitionError,
+    SentimentAnalysisApiError,
 )
-from .models import NotificationEvent, RecognitionResult, StreamEvent, StreamEventType, UtteranceEvent
+from .grammar import build_grammar_file_names, encode_grammar
+from .models import NotificationEvent, RecognitionResult, StreamEvent, StreamEventType, Token, UtteranceEvent, UtteranceResult
+from .sentiment_analysis import SentimentAnalysisClient, SentimentParameterDefinition
+from .settings import USE_CLIENT_DEFAULT, RecognitionSettings, UseClientDefault
 
 try:
     __version__ = version("amivoice-api-client")
@@ -19,18 +43,49 @@ except PackageNotFoundError:
     __version__ = "0.0.0"
 
 __all__ = [
+    "USE_CLIENT_DEFAULT",
+    "AmiVoiceAsyncClient",
     "AmiVoiceClient",
     "AmiVoiceError",
+    "ApiKeyIssuanceApiError",
+    "ApiKeyIssuanceClient",
+    "AsyncHttpApiError",
+    "AsyncHttpAuthenticationError",
+    "AsyncJobError",
+    "AsyncJobSnapshot",
+    "AsyncJobStatus",
+    "AsyncJobSubmission",
+    "AsyncJobTimeoutError",
+    "AsyncRecognitionResult",
     "AuthenticationError",
+    "Codec",
     "ConfigurationError",
     "ConnectionFailedError",
+    "DictionaryApiError",
+    "Engine",
     "NotificationEvent",
+    "ProfileWord",
     "RecognitionError",
     "RecognitionResult",
+    "RecognitionSettings",
+    "SegmenterProperties",
+    "SentimentAnalysisApiError",
+    "SentimentAnalysisClient",
+    "SentimentAnalysisResult",
+    "SentimentParameterDefinition",
+    "SentimentSegment",
     "StreamConnectionManager",
     "StreamEvent",
     "StreamEventType",
     "StreamSession",
+    "Token",
+    "UseClientDefault",
+    "UserDictionaryClient",
     "UtteranceEvent",
+    "UtteranceResult",
+    "build_billing_extension",
+    "build_grammar_file_names",
+    "build_profile_words",
+    "encode_grammar",
     "transcribe",
 ]
