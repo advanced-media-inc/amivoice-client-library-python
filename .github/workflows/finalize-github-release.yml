@@ -197,7 +197,7 @@ jobs:
           {
             echo "## GitHub Release finalization"
             echo
-            echo "- Version: \\`$RELEASE_VERSION\\`"
-            echo "- Source commit: \\`$SOURCE_COMMIT\\`"
+            echo "- Version: \`$RELEASE_VERSION\`"
+            echo "- Source commit: \`$SOURCE_COMMIT\`"
             echo "- PyPI artifacts, tag, and GitHub Release were verified"
           } >> "$GITHUB_STEP_SUMMARY"

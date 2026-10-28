@@ -150,8 +150,8 @@ jobs:
           {
             echo "## PyPI build"
             echo
-            echo "- Version: \\`$RELEASE_VERSION\\`"
-            echo "- Upload required: \\`$PUBLISH_REQUIRED\\`"
+            echo "- Version: \`$RELEASE_VERSION\`"
+            echo "- Upload required: \`$PUBLISH_REQUIRED\`"
             echo
             echo '```text'
             sha256sum dist/*
@@ -263,8 +263,8 @@ jobs:
           {
             echo "## PyPI publication"
             echo
-            echo "- Version: \\`$RELEASE_VERSION\\`"
-            echo "- Upload performed: \\`$PUBLISH_REQUIRED\\`"
+            echo "- Version: \`$RELEASE_VERSION\`"
+            echo "- Upload performed: \`$PUBLISH_REQUIRED\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   finalize:

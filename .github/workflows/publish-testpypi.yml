@@ -177,8 +177,8 @@ jobs:
           {
             echo "## TestPyPI build"
             echo
-            echo "- Base version: \\`$BASE_VERSION\\`"
-            echo "- Development version: \\`$DEVELOPMENT_VERSION\\`"
+            echo "- Base version: \`$BASE_VERSION\`"
+            echo "- Development version: \`$DEVELOPMENT_VERSION\`"
             echo
             echo '```text'
             sha256sum dist/*
@@ -250,7 +250,7 @@ jobs:
           {
             echo "## TestPyPI publication"
             echo
-            echo "Published \\`$DISTRIBUTION_NAME==$DEVELOPMENT_VERSION\\`"
+            echo "Published \`$DISTRIBUTION_NAME==$DEVELOPMENT_VERSION\`"
             echo
             echo '```text'
             sha256sum dist/*
@@ -334,5 +334,5 @@ jobs:
           {
             echo "## TestPyPI smoke test"
             echo
-            echo "Verified \\`$DISTRIBUTION_NAME==$DEVELOPMENT_VERSION\\`"
+            echo "Verified \`$DISTRIBUTION_NAME==$DEVELOPMENT_VERSION\`"
           } >> "$GITHUB_STEP_SUMMARY"
